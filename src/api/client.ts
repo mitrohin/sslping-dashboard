@@ -1,0 +1,719 @@
+import { SessionStore } from './session'
+import type * as Api from './types'
+
+type QueryValue = string | number | boolean | null | undefined
+
+interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  body?: unknown
+  headers?: HeadersInit
+  auth?: boolean
+  retryUnauthorized?: boolean
+}
+
+export interface ApiClientOptions {
+  baseUrl?: string
+  sessionStore?: SessionStore
+  fetch?: typeof fetch
+}
+
+function normalizeBaseUrl(baseUrl?: string): string {
+  const configured = baseUrl ?? import.meta.env.VITE_API_URL ?? ''
+  return configured.trim().replace(/\/+$/, '')
+}
+
+function encodePath(value: string): string {
+  return encodeURIComponent(value)
+}
+
+function withQuery(path: string, query?: object): string {
+  if (!query) return path
+
+  const search = new URLSearchParams()
+  for (const [key, rawValue] of Object.entries(query)) {
+    const value = rawValue as QueryValue
+    if (value === undefined || value === null || value === '') continue
+    search.set(key, String(value))
+  }
+
+  const encoded = search.toString()
+  return encoded.length > 0 ? `${path}?${encoded}` : path
+}
+
+function isProblem(value: unknown): value is Api.Problem {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const candidate = value as Partial<Api.Problem>
+  return (
+    typeof candidate.type === 'string' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.status === 'number' &&
+    typeof candidate.detail === 'string' &&
+    typeof candidate.instance === 'string' &&
+    typeof candidate.code === 'string'
+  )
+}
+
+function fallbackProblem(response: Response, detail: string): Api.Problem {
+  const codeByStatus: Partial<Record<number, Api.ProblemCode>> = {
+    400: 'invalid_request',
+    401: 'unauthorized',
+    403: 'forbidden',
+    404: 'not_found',
+    409: 'conflict',
+    429: 'rate_limited',
+  }
+
+  return {
+    type: 'about:blank',
+    title: response.statusText || 'Request failed',
+    status: response.status,
+    detail: detail || `HTTP ${response.status}`,
+    instance: '',
+    code: codeByStatus[response.status] ?? 'internal_error',
+  }
+}
+
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: Api.ProblemCode
+  readonly problem: Api.Problem
+  readonly requestId?: string
+
+  constructor(problem: Api.Problem, requestId?: string) {
+    super(problem.detail || problem.title)
+    this.name = 'ApiError'
+    this.status = problem.status
+    this.code = problem.code
+    this.problem = problem
+    this.requestId = requestId
+  }
+}
+
+async function responseToError(response: Response): Promise<ApiError> {
+  let body: unknown
+  let text = ''
+
+  try {
+    text = await response.text()
+    body = text.length > 0 ? JSON.parse(text) : undefined
+  } catch {
+    body = undefined
+  }
+
+  const problem = isProblem(body) ? body : fallbackProblem(response, text)
+  return new ApiError(problem, response.headers.get('X-Request-ID') ?? undefined)
+}
+
+function missingRefreshTokenError(): ApiError {
+  return new ApiError({
+    type: 'about:blank',
+    title: 'Authentication required',
+    status: 401,
+    detail: 'No refresh token is available.',
+    instance: '',
+    code: 'unauthorized',
+  })
+}
+
+export class ApiClient {
+  readonly baseUrl: string
+  readonly session: SessionStore
+  readonly #fetch: typeof fetch
+  #refreshInFlight: Promise<Api.Tokens> | null = null
+
+  constructor(options: ApiClientOptions = {}) {
+    this.baseUrl = normalizeBaseUrl(options.baseUrl)
+    this.session = options.sessionStore ?? new SessionStore()
+    this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis)
+  }
+
+  get tokens(): Api.Tokens | null {
+    return this.session.getTokens()
+  }
+
+  setTokens(tokens: Api.Tokens): void {
+    this.session.setTokens(tokens)
+  }
+
+  clearSession(): void {
+    this.session.clear()
+  }
+
+  async #request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const auth = options.auth ?? true
+    const requestTokens = auth ? this.session.getTokens() : null
+    const headers = new Headers(options.headers)
+    headers.set('Accept', 'application/json')
+
+    if (requestTokens) headers.set('Authorization', `Bearer ${requestTokens.access_token}`)
+    if (options.body !== undefined) headers.set('Content-Type', 'application/json')
+
+    const response = await this.#fetch(`${this.baseUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      credentials: 'same-origin',
+    })
+
+    if (response.status === 401 && auth && (options.retryUnauthorized ?? true) && requestTokens) {
+      const currentTokens = this.session.getTokens()
+      if (currentTokens && currentTokens.access_token !== requestTokens.access_token) {
+        return this.#request<T>(path, { ...options, retryUnauthorized: false })
+      }
+
+      try {
+        await this.#refreshSession(currentTokens?.refresh_token ?? requestTokens.refresh_token)
+      } catch (error) {
+        this.session.clear()
+        throw error
+      }
+
+      return this.#request<T>(path, { ...options, retryUnauthorized: false })
+    }
+
+    if (!response.ok) throw await responseToError(response)
+    if (response.status === 204) return undefined as T
+
+    const text = await response.text()
+    return (text.length === 0 ? undefined : JSON.parse(text)) as T
+  }
+
+  #refreshSession(refreshToken: string): Promise<Api.Tokens> {
+    if (this.#refreshInFlight) return this.#refreshInFlight
+
+    this.#refreshInFlight = this.#request<Api.Tokens>('/v1/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: refreshToken },
+      auth: false,
+      retryUnauthorized: false,
+    })
+      .then((tokens) => {
+        this.session.setTokens(tokens)
+        return tokens
+      })
+      .finally(() => {
+        this.#refreshInFlight = null
+      })
+
+    return this.#refreshInFlight
+  }
+
+  async register(input: Api.RegisterRequest): Promise<Api.RegisterResponse> {
+    const result = await this.#request<Api.RegisterResponse>('/v1/auth/register', {
+      method: 'POST',
+      body: input,
+      auth: false,
+    })
+    if (result.tokens) this.session.setTokens(result.tokens)
+    return result
+  }
+
+  async login(input: Api.LoginRequest): Promise<Api.LoginResult> {
+    const result = await this.#request<Api.LoginResult>('/v1/auth/login', {
+      method: 'POST',
+      body: input,
+      auth: false,
+    })
+    if (!result.two_factor_required) this.session.setTokens(result.tokens)
+    return result
+  }
+
+  async completeTwoFactorLogin(input: Api.TwoFactorLoginRequest): Promise<Api.LoginResponse> {
+    const result = await this.#request<Api.LoginResponse>('/v1/auth/login/2fa', {
+      method: 'POST',
+      body: input,
+      auth: false,
+    })
+    this.session.setTokens(result.tokens)
+    return result
+  }
+
+  requestEmailVerification(input: Api.EmailRequest): Promise<Api.EmailVerificationRequestedResponse> {
+    return this.#request('/v1/auth/email-verification/request', { method: 'POST', body: input, auth: false })
+  }
+
+  confirmEmailVerification(input: Api.TokenRequest): Promise<Api.EmailVerifiedResponse> {
+    return this.#request('/v1/auth/email-verification/confirm', { method: 'POST', body: input, auth: false })
+  }
+
+  forgotPassword(input: Api.EmailRequest): Promise<Api.PasswordResetRequestedResponse> {
+    return this.#request('/v1/auth/password/forgot', { method: 'POST', body: input, auth: false })
+  }
+
+  resetPassword(input: Api.PasswordResetRequest): Promise<void> {
+    return this.#request('/v1/auth/password/reset', { method: 'POST', body: input, auth: false })
+  }
+
+  async refresh(): Promise<Api.Tokens> {
+    const refreshToken = this.session.getTokens()?.refresh_token
+    if (!refreshToken) throw missingRefreshTokenError()
+    return this.#refreshSession(refreshToken)
+  }
+
+  async logout(): Promise<void> {
+    const refreshToken = this.session.getTokens()?.refresh_token
+    if (!refreshToken) {
+      this.session.clear()
+      return
+    }
+
+    try {
+      await this.#request<void>('/v1/auth/logout', {
+        method: 'POST',
+        body: { refresh_token: refreshToken },
+        auth: false,
+      })
+    } finally {
+      this.session.clear()
+    }
+  }
+
+  me(): Promise<Api.MeResponse> {
+    return this.#request('/v1/me')
+  }
+
+  async changePassword(input: Api.PasswordChangeRequest): Promise<void> {
+    await this.#request<void>('/v1/auth/password/change', { method: 'POST', body: input })
+    this.session.clear()
+  }
+
+  setupTwoFactor(input: Api.PasswordProofRequest): Promise<Api.TwoFactorSetup> {
+    return this.#request('/v1/auth/2fa/setup', { method: 'POST', body: input })
+  }
+
+  async confirmTwoFactor(input: Api.TOTPCodeRequest): Promise<Api.RecoveryCodesResponse> {
+    const result = await this.#request<Api.RecoveryCodesResponse>('/v1/auth/2fa/confirm', {
+      method: 'POST',
+      body: input,
+    })
+    this.session.clear()
+    return result
+  }
+
+  async disableTwoFactor(input: Api.TwoFactorProofRequest): Promise<void> {
+    await this.#request<void>('/v1/auth/2fa/disable', { method: 'POST', body: input })
+    this.session.clear()
+  }
+
+  regenerateRecoveryCodes(input: Api.TwoFactorProofRequest): Promise<Api.RecoveryCodesResponse> {
+    return this.#request('/v1/auth/2fa/recovery-codes/regenerate', { method: 'POST', body: input })
+  }
+
+  listRegions(): Promise<Api.ItemList<Api.Region>> {
+    return this.#request('/v1/regions', { auth: false })
+  }
+
+  listTenants(): Promise<Api.ItemList<Api.Workspace>> {
+    return this.#request('/v1/tenants')
+  }
+
+  getTenant(tenantId: Api.UUID): Promise<Api.Workspace> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/`)
+  }
+
+  updateTenant(tenantId: Api.UUID, input: Api.WorkspacePatch): Promise<Api.Workspace> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/`, { method: 'PATCH', body: input })
+  }
+
+  listMembers(tenantId: Api.UUID): Promise<Api.ItemList<Api.Membership>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/members`)
+  }
+
+  updateMember(tenantId: Api.UUID, memberId: Api.UUID, input: Api.MembershipPatch): Promise<Api.Membership> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/members/${encodePath(memberId)}`, {
+      method: 'PATCH',
+      body: input,
+    })
+  }
+
+  removeMember(tenantId: Api.UUID, memberId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/members/${encodePath(memberId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  inviteMember(tenantId: Api.UUID, input: Api.InvitationRequest): Promise<Api.InvitationCreateResponse> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/invitations`, { method: 'POST', body: input })
+  }
+
+  acceptInvitation(input: Api.TokenRequest): Promise<Api.Membership> {
+    return this.#request('/v1/invitations/accept', { method: 'POST', body: input })
+  }
+
+  listMonitors(tenantId: Api.UUID, query?: Api.ListQuery): Promise<Api.Page<Api.Monitor>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors`, query))
+  }
+
+  createMonitor(tenantId: Api.UUID, input: Api.MonitorCreateRequest): Promise<Api.MonitorCreateResponse> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors`, { method: 'POST', body: input })
+  }
+
+  getMonitor(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.Monitor> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`)
+  }
+
+  updateMonitor(
+    tenantId: Api.UUID,
+    monitorId: Api.UUID,
+    input: Api.MonitorUpdateRequest,
+  ): Promise<Api.Monitor> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`, {
+      method: 'PATCH',
+      body: input,
+    })
+  }
+
+  deleteMonitor(tenantId: Api.UUID, monitorId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  pauseMonitor(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.Monitor> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/actions/pause`,
+      { method: 'POST' },
+    )
+  }
+
+  resumeMonitor(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.Monitor> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/actions/resume`,
+      { method: 'POST' },
+    )
+  }
+
+  testMonitor(tenantId: Api.UUID, monitorId: Api.UUID, region?: string): Promise<Api.CheckResult> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/actions/test`, { region }),
+      { method: 'POST' },
+    )
+  }
+
+  rotateHeartbeatToken(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.HeartbeatTokenResponse> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/heartbeat-token/rotate`,
+      { method: 'POST' },
+    )
+  }
+
+  listMonitorChecks(
+    tenantId: Api.UUID,
+    monitorId: Api.UUID,
+    query?: Api.HistoryQuery,
+  ): Promise<Api.Page<Api.CheckResult>> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/checks`, query),
+    )
+  }
+
+  listChecks(tenantId: Api.UUID, monitorId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.Page<Api.CheckResult>> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/checks`, { ...query, monitor_id: monitorId }),
+    )
+  }
+
+  getMonitorMetrics(tenantId: Api.UUID, monitorId: Api.UUID, query?: Api.TimeRangeQuery): Promise<Api.UptimeStats> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/metrics`, query),
+    )
+  }
+
+  getMetricsSummary(tenantId: Api.UUID, query?: Api.TimeRangeQuery): Promise<Api.MetricsSummary> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/metrics/summary`, query))
+  }
+
+  listCertificateEvidence(
+    tenantId: Api.UUID,
+    monitorId: Api.UUID,
+    query?: Api.HistoryQuery,
+  ): Promise<Api.Page<Api.CheckResult>> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/certificates`, query),
+    )
+  }
+
+  listDnsEvidence(
+    tenantId: Api.UUID,
+    monitorId: Api.UUID,
+    query?: Api.HistoryQuery,
+  ): Promise<Api.Page<Api.CheckResult>> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/dns-snapshots`, query),
+    )
+  }
+
+  listDomainEvidence(
+    tenantId: Api.UUID,
+    monitorId: Api.UUID,
+    query?: Api.HistoryQuery,
+  ): Promise<Api.Page<Api.CheckResult>> {
+    return this.#request(
+      withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/domain-snapshots`, query),
+    )
+  }
+
+  listIncidents(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.Page<Api.Incident>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/incidents`, query))
+  }
+
+  getIncident(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Api.IncidentDetail> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}`)
+  }
+
+  acknowledgeIncident(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Api.Incident> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}/actions/acknowledge`,
+      { method: 'POST' },
+    )
+  }
+
+  assignIncident(tenantId: Api.UUID, incidentId: Api.UUID, userId: Api.UUID): Promise<Api.Incident> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}/actions/assign`,
+      { method: 'POST', body: { user_id: userId } },
+    )
+  }
+
+  resolveIncident(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Api.Incident> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}/actions/resolve`,
+      { method: 'POST' },
+    )
+  }
+
+  listIncidentComments(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Api.ItemList<Api.IncidentUpdate>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}/comments`)
+  }
+
+  addIncidentComment(tenantId: Api.UUID, incidentId: Api.UUID, message: string): Promise<Api.IncidentUpdate> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}/comments`, {
+      method: 'POST',
+      body: { message },
+    })
+  }
+
+  listMaintenanceWindows(tenantId: Api.UUID): Promise<Api.ItemList<Api.MaintenanceWindow>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/maintenance-windows`)
+  }
+
+  createMaintenanceWindow(
+    tenantId: Api.UUID,
+    input: Api.MaintenanceWindowWrite,
+  ): Promise<Api.MaintenanceWindow> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/maintenance-windows`, {
+      method: 'POST',
+      body: input,
+    })
+  }
+
+  getMaintenanceWindow(tenantId: Api.UUID, maintenanceId: Api.UUID): Promise<Api.MaintenanceWindow> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/maintenance-windows/${encodePath(maintenanceId)}`)
+  }
+
+  updateMaintenanceWindow(
+    tenantId: Api.UUID,
+    maintenanceId: Api.UUID,
+    input: Api.MaintenanceWindowWrite,
+  ): Promise<Api.MaintenanceWindow> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/maintenance-windows/${encodePath(maintenanceId)}`, {
+      method: 'PUT',
+      body: input,
+    })
+  }
+
+  deleteMaintenanceWindow(tenantId: Api.UUID, maintenanceId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/maintenance-windows/${encodePath(maintenanceId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  listStatusPages(tenantId: Api.UUID): Promise<Api.ItemList<Api.StatusPage>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages`)
+  }
+
+  createStatusPage(tenantId: Api.UUID, input: Api.StatusPageCreateRequest): Promise<Api.StatusPage> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages`, { method: 'POST', body: input })
+  }
+
+  getStatusPage(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<Api.StatusPageDetail> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}`)
+  }
+
+  updateStatusPage(
+    tenantId: Api.UUID,
+    statusPageId: Api.UUID,
+    input: Api.StatusPageUpdateRequest,
+  ): Promise<Api.StatusPage> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}`, {
+      method: 'PUT',
+      body: input,
+    })
+  }
+
+  deleteStatusPage(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  claimStatusPageCustomDomain(
+    tenantId: Api.UUID,
+    statusPageId: Api.UUID,
+    domain: string,
+  ): Promise<Api.CustomDomainClaimResponse> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/custom-domain`,
+      { method: 'PUT', body: { domain } },
+    )
+  }
+
+  verifyStatusPageCustomDomain(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<Api.StatusPage> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/custom-domain/verify`,
+      { method: 'POST' },
+    )
+  }
+
+  listStatusPageComponents(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<Api.ItemList<Api.StatusPageComponent>> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/components`,
+    )
+  }
+
+  replaceStatusPageComponents(
+    tenantId: Api.UUID,
+    statusPageId: Api.UUID,
+    monitorIds: Api.UUID[],
+  ): Promise<Api.StatusPage> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/components`,
+      { method: 'PUT', body: { monitor_ids: monitorIds } },
+    )
+  }
+
+  listAnnouncements(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<Api.ItemList<Api.Announcement>> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/announcements`,
+    )
+  }
+
+  createAnnouncement(
+    tenantId: Api.UUID,
+    statusPageId: Api.UUID,
+    input: Api.AnnouncementRequest,
+  ): Promise<Api.Announcement> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/announcements`,
+      { method: 'POST', body: input },
+    )
+  }
+
+  getPublicStatusPage(slug: string, password?: string): Promise<Api.PublicStatusSnapshot> {
+    return this.#request(`/v1/public/status-pages/${encodePath(slug)}`, {
+      auth: false,
+      headers: password ? { 'X-Status-Page-Password': password } : undefined,
+    })
+  }
+
+  accessPublicStatusPage(slug: string, password: string): Promise<Api.PublicStatusSnapshot> {
+    return this.#request(`/v1/public/status-pages/${encodePath(slug)}/access`, {
+      method: 'POST',
+      body: { password },
+      auth: false,
+    })
+  }
+
+  getPublicStatusPageByDomain(customDomain: string, password?: string): Promise<Api.PublicStatusSnapshot> {
+    return this.#request(`/v1/public/status-pages/by-domain/${encodePath(customDomain)}`, {
+      auth: false,
+      headers: password ? { 'X-Status-Page-Password': password } : undefined,
+    })
+  }
+
+  accessPublicStatusPageByDomain(customDomain: string, password: string): Promise<Api.PublicStatusSnapshot> {
+    return this.#request(`/v1/public/status-pages/by-domain/${encodePath(customDomain)}/access`, {
+      method: 'POST',
+      body: { password },
+      auth: false,
+    })
+  }
+
+  subscribeStatusPage(slug: string, email: string): Promise<Api.SubscriptionAcceptedResponse> {
+    return this.#request(`/v1/public/status-pages/${encodePath(slug)}/subscribers`, {
+      method: 'POST',
+      body: { email },
+      auth: false,
+    })
+  }
+
+  confirmStatusPageSubscription(token: string): Promise<void> {
+    return this.#request('/v1/public/status-page-subscriptions/confirm', {
+      method: 'POST',
+      body: { token },
+      auth: false,
+    })
+  }
+
+  unsubscribeStatusPage(token: string): Promise<void> {
+    return this.#request('/v1/public/status-page-subscriptions/unsubscribe', {
+      method: 'POST',
+      body: { token },
+      auth: false,
+    })
+  }
+
+  listIntegrations(tenantId: Api.UUID): Promise<Api.ItemList<Api.Integration>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/integrations`)
+  }
+
+  createIntegration(tenantId: Api.UUID, input: Api.IntegrationCreateRequest): Promise<Api.Integration> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/integrations`, { method: 'POST', body: input })
+  }
+
+  getIntegration(tenantId: Api.UUID, integrationId: Api.UUID): Promise<Api.Integration> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/integrations/${encodePath(integrationId)}`)
+  }
+
+  updateIntegration(
+    tenantId: Api.UUID,
+    integrationId: Api.UUID,
+    input: Api.IntegrationUpdateRequest,
+  ): Promise<Api.Integration> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/integrations/${encodePath(integrationId)}`, {
+      method: 'PUT',
+      body: input,
+    })
+  }
+
+  deleteIntegration(tenantId: Api.UUID, integrationId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/integrations/${encodePath(integrationId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  testIntegration(tenantId: Api.UUID, integrationId: Api.UUID): Promise<Api.SentResponse> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/integrations/${encodePath(integrationId)}/actions/test`,
+      { method: 'POST' },
+    )
+  }
+
+  listApiKeys(tenantId: Api.UUID): Promise<Api.ItemList<Api.APIKey>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/api-keys`)
+  }
+
+  createApiKey(tenantId: Api.UUID, input: Api.APIKeyRequest): Promise<Api.APIKeyCreateResponse> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/api-keys`, { method: 'POST', body: input })
+  }
+
+  revokeApiKey(tenantId: Api.UUID, apiKeyId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/api-keys/${encodePath(apiKeyId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  listAuditLogs(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.Page<Api.AuditLog>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/audit-logs`, query))
+  }
+}
