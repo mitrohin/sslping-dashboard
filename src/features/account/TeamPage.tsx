@@ -73,6 +73,7 @@ export function TeamPage({
   const [detailsDraft, setDetailsDraft] = useState(initialDetails)
   const [section, setSection] = useState<'members' | 'details'>('members')
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [seatsOpen, setSeatsOpen] = useState(false)
   const [editing, setEditing] = useState<TeamMemberViewModel | null>(null)
   const [invite, setInvite] = useState<InviteMemberInput>({ email: '', role: 'reader' })
   const [editRole, setEditRole] = useState<Exclude<TeamRole, 'owner'>>('reader')
@@ -283,7 +284,7 @@ export function TeamPage({
               </div>
               <footer className="account-table-footer">
                 Currently using {summary.notifySeatsUsed} of {summary.notifySeatsTotal} notify-only seats and {summary.loginSeatsUsed} of {summary.loginSeatsTotal} login seats.
-                <Button variant="secondary" size="sm">Manage seats</Button>
+                <Button variant="secondary" size="sm" type="button" onClick={() => setSeatsOpen(true)}>Manage seats</Button>
               </footer>
             </Panel>
           </div>
@@ -361,6 +362,23 @@ export function TeamPage({
             <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Updating…' : 'Update access'}</Button></div>
           </form>
         )}
+      </Modal>
+
+      <Modal open={seatsOpen} onClose={() => setSeatsOpen(false)} title="Workspace seats" icon={<Users size={36} />} width="sm">
+        <div className="account-seat-dialog">
+          <p>Review the access capacity currently available to this workspace.</p>
+          <div className="account-seat-dialog__grid">
+            <div><span>Login seats</span><strong>{summary.loginSeatsUsed} / {summary.loginSeatsTotal}</strong></div>
+            <div><span>Notify-only seats</span><strong>{summary.notifySeatsUsed} / {summary.notifySeatsTotal}</strong></div>
+          </div>
+          <div className="account-security-summary">
+            <ShieldCheck size={20} />
+            <span><strong>Billing-safe workflow</strong><small>Seat purchases are intentionally unavailable until a billing provider is connected. No charge will be created from this dashboard.</small></span>
+          </div>
+          <div className="form-actions">
+            <Button type="button" onClick={() => setSeatsOpen(false)}>Done</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

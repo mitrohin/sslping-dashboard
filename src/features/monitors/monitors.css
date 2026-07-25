@@ -1,14 +1,20 @@
 .monitor-toolbar { display: grid; grid-template-columns: auto auto minmax(220px, 1fr) auto auto; gap: 10px; align-items: center; margin-bottom: 16px; }
 .monitor-toolbar__count, .monitor-toolbar__groups, .filter-dropdown { min-height: 45px; display: flex; align-items: center; gap: 10px; padding: 0 13px; border: 1px solid transparent; border-radius: var(--radius-sm); color: #b2becc; background: var(--panel); white-space: nowrap; }
 .monitor-toolbar__groups { justify-content: space-between; }
-.check-box { width: 16px; height: 16px; border: 1px solid #536078; border-radius: 4px; }
+.monitor-checkbox { width: 17px; height: 17px; flex: 0 0 auto; margin: 0; border: 1px solid #61708a; border-radius: 4px; accent-color: var(--purple); cursor: pointer; }
+.monitor-checkbox:disabled { cursor: not-allowed; opacity: .45; }
 .filter-dropdown { border-color: var(--line-soft); background: var(--panel); }
 .filter-dropdown select { min-width: 110px; border: 0; outline: 0; color: #d1dae5; background: transparent; cursor: pointer; }
+.monitor-action-feedback { margin: -4px 0 14px; padding: 10px 13px; border: 1px solid rgb(52 215 123 / 25%); border-radius: var(--radius-sm); color: #bff4d3; background: rgb(52 215 123 / 8%); font-size: 12px; }
+.monitor-action-feedback--danger { border-color: rgb(240 82 85 / 28%); color: #ffc3c5; background: rgb(240 82 85 / 8%); }
 .monitor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 24px; align-items: start; }
-.monitor-list { overflow: hidden; }
-.monitor-row { min-height: 80px; display: grid; grid-template-columns: 28px minmax(230px, 1.4fr) minmax(170px, 1fr) 82px minmax(170px, .9fr) 40px; gap: 13px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); transition: background 140ms ease; }
+.monitor-list { overflow: visible; }
+.monitor-row { position: relative; min-height: 80px; display: grid; grid-template-columns: 55px minmax(230px, 1.4fr) minmax(170px, 1fr) 82px minmax(170px, .9fr) 40px; gap: 13px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); transition: background 140ms ease; }
 .monitor-row:last-child { border-bottom: 0; }
 .monitor-row:hover { background: rgb(255 255 255 / 1.5%); }
+.monitor-row--selected { background: rgb(59 43 224 / 8%); }
+.monitor-row--selected:hover { background: rgb(59 43 224 / 11%); }
+.monitor-row__lead { display: flex; align-items: center; gap: 10px; }
 .monitor-row__status { display: grid; place-items: center; width: 28px; height: 28px; }
 .monitor-row__identity { min-width: 0; display: grid; gap: 6px; }
 .monitor-row__identity > a { overflow: hidden; color: #f2f5f9; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -17,6 +23,12 @@
 .monitor-row__meta { min-width: 0; display: flex; gap: 5px; overflow: hidden; }
 .monitor-row__interval { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .monitor-row__uptime { display: grid; grid-template-columns: 1fr 48px; gap: 9px; align-items: center; color: #9aabc0; font-size: 11px; text-align: right; }
+.monitor-row__actions { position: relative; display: grid; place-items: center; }
+.monitor-action-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: 178px; overflow: hidden; padding: 6px; border: 1px solid #354258; border-radius: 10px; background: #111a27; box-shadow: 0 18px 42px rgb(0 0 0 / 35%); }
+.monitor-action-menu a, .monitor-action-menu button { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border: 0; border-radius: 7px; color: #dbe3ec; text-align: left; text-decoration: none; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.monitor-action-menu a:hover, .monitor-action-menu button:hover, .monitor-action-menu a:focus-visible, .monitor-action-menu button:focus-visible { color: #fff; outline: 0; background: #202b3d; }
+.monitor-action-menu__danger { color: #ff9b9e !important; }
+.monitor-action-menu__danger:hover, .monitor-action-menu__danger:focus-visible { color: #fff !important; background: rgb(240 82 85 / 18%) !important; }
 .monitor-group > header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 19px; border-bottom: 1px solid var(--line); color: #cdd7e2; background: var(--panel-soft); font-size: 13px; font-weight: 650; }
 .monitor-group > header > span { display: flex; align-items: center; gap: 8px; }
 .monitor-summary { display: grid; gap: 18px; }
@@ -116,7 +128,7 @@
 .monitor-edit-panel { padding: 30px; }
 
 @media (max-width: 1380px) {
-  .monitor-row { grid-template-columns: 28px minmax(210px, 1.4fr) minmax(140px, .9fr) 72px minmax(135px, .8fr) 40px; padding-inline: 14px; }
+  .monitor-row { grid-template-columns: 55px minmax(190px, 1.4fr) minmax(125px, .9fr) 68px minmax(125px, .8fr) 40px; padding-inline: 14px; }
 }
 
 @media (max-width: 1100px) {
@@ -125,7 +137,7 @@
   .monitor-toolbar .filter-dropdown:last-child { grid-column: 2; }
   .monitor-layout { grid-template-columns: 1fr; }
   .monitor-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); order: -1; }
-  .monitor-row { grid-template-columns: 28px minmax(230px, 1.3fr) minmax(150px, .7fr) 70px minmax(170px, .8fr) 40px; }
+  .monitor-row { grid-template-columns: 55px minmax(210px, 1.3fr) 70px minmax(150px, .8fr) 40px; }
   .monitor-row__meta { display: none; }
   .monitor-detail-grid { grid-template-columns: 1fr; }
   .monitor-detail-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -140,7 +152,7 @@
   .monitor-toolbar .filter-dropdown:last-child { grid-column: auto; }
   .monitor-summary { grid-template-columns: 1fr; }
   .monitor-summary .status-summary:first-child { display: none; }
-  .monitor-row { grid-template-columns: 25px minmax(0, 1fr) 40px; gap: 10px; padding: 14px; }
+  .monitor-row { grid-template-columns: 55px minmax(0, 1fr) 40px; gap: 10px; padding: 14px; }
   .monitor-row__meta, .monitor-row__interval { display: none; }
   .monitor-row__uptime { grid-column: 2 / 4; grid-row: 2; }
   .monitor-type-grid { grid-template-columns: 1fr; }

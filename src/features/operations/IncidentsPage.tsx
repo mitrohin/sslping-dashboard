@@ -187,6 +187,14 @@ export function IncidentsPage({
   }
 
   const openCount = incidents.filter((incident) => incident.status !== 'resolved').length
+  const filtersActive = query.trim() !== '' || tag !== 'all' || status !== 'all' || sort !== 'newest'
+
+  const resetFilters = () => {
+    setQuery('')
+    setTag('all')
+    setStatus('all')
+    setSort('newest')
+  }
 
   return (
     <div className="page page--wide ops-page">
@@ -228,8 +236,8 @@ export function IncidentsPage({
           <option value="oldest">Started · Oldest</option>
           <option value="duration">Longest duration</option>
         </Select>
-        <Button variant="secondary" size="sm" type="button">
-          <Filter size={16} /> Filter
+        <Button variant="secondary" size="sm" type="button" disabled={!filtersActive} onClick={resetFilters}>
+          <Filter size={16} /> {filtersActive ? 'Clear filters' : 'Filters'}
         </Button>
       </div>
 

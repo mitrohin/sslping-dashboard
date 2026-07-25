@@ -123,7 +123,7 @@ export function AuthPage(props: AuthPageProps) {
             {props.error && <div className="auth-message auth-message--error">{props.error}</div>}
             {'success' in props && props.success && <div className="auth-message auth-message--success">{props.success}</div>}
 
-            {props.mode === 'login' && <div className="auth-form__meta"><label><input type="checkbox" /> Remember me</label><Link to="/forgot-password">Forgot password?</Link></div>}
+            {props.mode === 'login' && <div className="auth-form__meta"><Link to="/forgot-password">Forgot password?</Link></div>}
             <Button type="submit" size="lg" disabled={props.busy}>
               {props.busy ? 'Please wait…' : props.mode === 'login' ? 'Sign in' : props.mode === 'register' ? 'Create account' : 'Send reset link'}
               {!props.busy && <ArrowRight size={18} />}

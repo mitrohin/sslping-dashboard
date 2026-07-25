@@ -42,6 +42,7 @@ function emptyCheckPage(): { items: CheckResult[] } {
 
 export function LiveMonitorsPage() {
   const { api, authenticated, workspace } = useAuth()
+  const navigate = useNavigate()
   const demo = isDemoSession()
   const [data, setData] = useState<readonly MonitorViewModel[]>([])
   const [loading, setLoading] = useState(!demo)
@@ -94,7 +95,39 @@ export function LiveMonitorsPage() {
     await reload()
   }
 
-  return <MonitorsPage data={data} loading={loading} error={error} onRetry={() => void reload()} onCreate={create} />
+  const togglePause = async (monitor: MonitorViewModel, pause: boolean) => {
+    if (!workspace) throw new Error('No active workspace is selected.')
+    if (pause) await api.pauseMonitor(workspace.id, monitor.id)
+    else await api.resumeMonitor(workspace.id, monitor.id)
+    await reload()
+  }
+
+  const test = async (monitor: MonitorViewModel) => {
+    if (!workspace) throw new Error('No active workspace is selected.')
+    await api.testMonitor(workspace.id, monitor.id)
+    await reload()
+  }
+
+  const remove = async (monitor: MonitorViewModel) => {
+    if (!workspace) throw new Error('No active workspace is selected.')
+    await api.deleteMonitor(workspace.id, monitor.id)
+    await reload()
+  }
+
+  return (
+    <MonitorsPage
+      data={data}
+      loading={loading}
+      error={error}
+      onRetry={() => void reload()}
+      onCreate={create}
+      onView={(monitor) => navigate(`/monitors/${monitor.id}`)}
+      onEdit={(monitor) => navigate(`/monitors/${monitor.id}/edit`)}
+      onTogglePause={togglePause}
+      onTest={test}
+      onDelete={remove}
+    />
+  )
 }
 
 export function LiveMonitorDetailPage() {

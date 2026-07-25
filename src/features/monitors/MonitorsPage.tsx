@@ -1,6 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ChevronDown, Filter, Layers3, MoreHorizontal, Plus, RotateCw, SearchX } from 'lucide-react'
+import {
+  Activity,
+  BellRing,
+  ChevronDown,
+  Eye,
+  Filter,
+  Layers3,
+  MoreHorizontal,
+  PauseCircle,
+  Pencil,
+  PlayCircle,
+  Plus,
+  RotateCw,
+  SearchX,
+  Trash2,
+} from 'lucide-react'
 import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
 import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
@@ -16,9 +31,27 @@ export interface MonitorsPageProps {
   error?: string | null
   onRetry?: () => void
   onCreate?: (draft: MonitorDraft) => Promise<void>
+  onView?: (monitor: MonitorViewModel) => void
+  onEdit?: (monitor: MonitorViewModel) => void
+  onTogglePause?: (monitor: MonitorViewModel, pause: boolean) => Promise<void>
+  onTest?: (monitor: MonitorViewModel) => Promise<void>
+  onDelete?: (monitor: MonitorViewModel) => Promise<void>
 }
 
-export function MonitorsPage({ data, loading = false, error = null, onRetry, onCreate }: MonitorsPageProps = {}) {
+type MonitorRowAction = 'pause' | 'resume' | 'test' | 'delete'
+
+export function MonitorsPage({
+  data,
+  loading = false,
+  error = null,
+  onRetry,
+  onCreate,
+  onView,
+  onEdit,
+  onTogglePause,
+  onTest,
+  onDelete,
+}: MonitorsPageProps = {}) {
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
   const [query, setQuery] = useState('')
@@ -26,6 +59,13 @@ export function MonitorsPage({ data, loading = false, error = null, onRetry, onC
   const [sort, setSort] = useState<'status' | 'name' | 'response'>('status')
   const [showGroups, setShowGroups] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [openActionId, setOpenActionId] = useState<string | null>(null)
+  const [busyActionId, setBusyActionId] = useState<string | null>(null)
+  const [actionFeedback, setActionFeedback] = useState<{ tone: 'success' | 'danger'; message: string } | null>(null)
+  const previousStatuses = useRef(new Map<string, MonitorStatus>())
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  const actionMenuRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => monitors
     .filter((monitor) => filter === 'all' || monitor.status === filter)
@@ -39,6 +79,38 @@ export function MonitorsPage({ data, loading = false, error = null, onRetry, onC
     paused: monitors.filter((monitor) => monitor.status === 'paused').length,
     uptime: monitors.filter((monitor) => monitor.uptime24h !== undefined).reduce((total, monitor) => total + (monitor.uptime24h ?? 0), 0) / Math.max(1, monitors.filter((monitor) => monitor.uptime24h !== undefined).length),
   }), [monitors])
+
+  const visibleIds = useMemo(() => filtered.map((monitor) => monitor.id), [filtered])
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const available = new Set(monitors.map((monitor) => monitor.id))
+      const next = new Set([...current].filter((id) => available.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [monitors])
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someVisibleSelected
+  }, [someVisibleSelected])
+
+  useEffect(() => {
+    if (!openActionId) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!actionMenuRef.current?.contains(event.target as Node)) setOpenActionId(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenActionId(null)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [openActionId])
 
   const createMonitor = async (draft: MonitorDraft) => {
     if (onCreate) {
@@ -64,9 +136,85 @@ export function MonitorsPage({ data, loading = false, error = null, onRetry, onC
     setCreateOpen(false)
   }
 
+  const toggleMonitorSelection = (monitorId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(monitorId)) next.delete(monitorId)
+      else next.add(monitorId)
+      return next
+    })
+  }
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id))
+      else visibleIds.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  const applyDemoAction = (monitor: MonitorViewModel, action: MonitorRowAction) => {
+    if (action === 'pause' && monitor.status !== 'paused') previousStatuses.current.set(monitor.id, monitor.status)
+    setDemoMonitorState((current) => action === 'delete'
+      ? current.filter((item) => item.id !== monitor.id)
+      : current.map((item) => item.id === monitor.id
+        ? {
+            ...item,
+            ...(action === 'pause' ? { status: 'paused' as const, statusChangedAt: new Date().toISOString() } : {}),
+            ...(action === 'resume' ? { status: previousStatuses.current.get(item.id) ?? 'pending', statusChangedAt: new Date().toISOString() } : {}),
+            ...(action === 'test' ? { lastCheckedAt: new Date().toISOString() } : {}),
+          }
+        : item))
+  }
+
+  const runMonitorAction = async (monitor: MonitorViewModel, action: MonitorRowAction) => {
+    setOpenActionId(null)
+    if (action === 'delete' && !window.confirm(`Delete “${monitor.name}”? This cannot be undone.`)) return
+
+    setBusyActionId(monitor.id)
+    setActionFeedback(null)
+    try {
+      if (action === 'pause' || action === 'resume') {
+        if (onTogglePause) await onTogglePause(monitor, action === 'pause')
+        else applyDemoAction(monitor, action)
+      } else if (action === 'test') {
+        if (onTest) await onTest(monitor)
+        else applyDemoAction(monitor, action)
+      } else {
+        if (onDelete) await onDelete(monitor)
+        else applyDemoAction(monitor, action)
+        setSelectedIds((current) => {
+          if (!current.has(monitor.id)) return current
+          const next = new Set(current)
+          next.delete(monitor.id)
+          return next
+        })
+      }
+      const verb = action === 'test' ? 'Test completed for' : action === 'delete' ? 'Deleted' : action === 'pause' ? 'Paused' : 'Resumed'
+      setActionFeedback({ tone: 'success', message: `${verb} ${monitor.name}.` })
+    } catch (actionError) {
+      setActionFeedback({
+        tone: 'danger',
+        message: actionError instanceof Error ? actionError.message : `Could not ${action} ${monitor.name}.`,
+      })
+    } finally {
+      setBusyActionId(null)
+    }
+  }
+
   const renderRows = (rows: MonitorViewModel[]) => rows.map((monitor) => (
-    <article className="monitor-row" key={monitor.id}>
-      <Link to={`/monitors/${monitor.id}`} className="monitor-row__status" aria-label={`Open ${monitor.name}`}><StatusDot status={monitor.status} /></Link>
+    <article className={`monitor-row ${selectedIds.has(monitor.id) ? 'monitor-row--selected' : ''}`} key={monitor.id}>
+      <div className="monitor-row__lead">
+        <input
+          className="monitor-checkbox"
+          type="checkbox"
+          checked={selectedIds.has(monitor.id)}
+          onChange={() => toggleMonitorSelection(monitor.id)}
+          aria-label={`Select ${monitor.name}`}
+        />
+        <Link to={`/monitors/${monitor.id}`} className="monitor-row__status" aria-label={`Open ${monitor.name}`}><StatusDot status={monitor.status} /></Link>
+      </div>
       <div className="monitor-row__identity">
         <Link to={`/monitors/${monitor.id}`}>{monitor.name}</Link>
         <div><Badge>{monitor.typeLabel}</Badge><span>{monitor.status === 'up' ? `Up ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : monitor.status}</span></div>
@@ -78,7 +226,27 @@ export function MonitorsPage({ data, loading = false, error = null, onRetry, onC
       </div>
       <div className="monitor-row__interval"><RotateCw size={15} /> {formatDuration(monitor.intervalSeconds)}</div>
       <div className="monitor-row__uptime"><UptimeBars compact values={monitor.last24Hours.map((bar) => bar.status === 'up' ? 100 : bar.status === 'down' ? 0 : 98)} /><span>{monitor.uptime24h === undefined ? '—' : formatUptime(monitor.uptime24h)}</span></div>
-      <IconButton label={`Actions for ${monitor.name}`}><MoreHorizontal size={19} /></IconButton>
+      <div className="monitor-row__actions" ref={openActionId === monitor.id ? actionMenuRef : undefined}>
+        <IconButton
+          label={`Actions for ${monitor.name}`}
+          aria-haspopup="menu"
+          aria-expanded={openActionId === monitor.id}
+          disabled={busyActionId === monitor.id}
+          onClick={() => setOpenActionId((current) => current === monitor.id ? null : monitor.id)}
+        ><MoreHorizontal size={19} /></IconButton>
+        {openActionId === monitor.id && (
+          <div className="monitor-action-menu" role="menu" aria-label={`Actions for ${monitor.name}`}>
+            <Link role="menuitem" to={`/monitors/${monitor.id}`} onClick={() => { setOpenActionId(null); onView?.(monitor) }}><Eye size={16} /> View</Link>
+            <Link role="menuitem" to={`/monitors/${monitor.id}/edit`} onClick={() => { setOpenActionId(null); onEdit?.(monitor) }}><Pencil size={16} /> Edit</Link>
+            <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, monitor.status === 'paused' ? 'resume' : 'pause')}>
+              {monitor.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
+              {monitor.status === 'paused' ? 'Resume' : 'Pause'}
+            </button>
+            <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}><BellRing size={16} /> Test now</button>
+            <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'delete')}><Trash2 size={16} /> Delete</button>
+          </div>
+        )}
+      </div>
     </article>
   ))
 
@@ -96,12 +264,25 @@ export function MonitorsPage({ data, loading = false, error = null, onRetry, onC
       <PageHeader title="Monitors" actions={<Button onClick={() => setCreateOpen(true)}><Plus size={18} /> New monitor <ChevronDown size={16} /></Button>} />
 
       <div className="monitor-toolbar">
-        <div className="monitor-toolbar__count"><span className="check-box" /> 0 / {monitors.length}</div>
+        <label className="monitor-toolbar__count">
+          <input
+            ref={selectAllRef}
+            className="monitor-checkbox"
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={toggleSelectAllVisible}
+            disabled={visibleIds.length === 0}
+            aria-label="Select all visible monitors"
+          />
+          <span>{selectedIds.size} / {monitors.length}</span>
+        </label>
         <label className="monitor-toolbar__groups"><span>Show groups</span><Toggle checked={showGroups} onChange={setShowGroups} label="Show monitor groups" /></label>
         <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or URL" />
         <div className="filter-dropdown"><Filter size={17} /><select value={filter} onChange={(event) => setFilter(event.target.value as 'all' | MonitorStatus)}><option value="all">All statuses</option><option value="down">Down</option><option value="degraded">Degraded</option><option value="up">Up</option><option value="paused">Paused</option></select></div>
         <div className="filter-dropdown"><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="status">Down first</option><option value="name">Name A–Z</option><option value="response">Slowest first</option></select></div>
       </div>
+
+      {actionFeedback && <div className={`monitor-action-feedback monitor-action-feedback--${actionFeedback.tone}`} role={actionFeedback.tone === 'danger' ? 'alert' : 'status'}>{actionFeedback.message}</div>}
 
       <div className="monitor-layout">
         <Panel className="monitor-list">

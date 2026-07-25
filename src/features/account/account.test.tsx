@@ -27,6 +27,15 @@ describe('TeamPage', () => {
     expect(screen.getByRole('heading', { name: /workspace details/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/workspace name/i)).toHaveValue('SSLPing production')
   })
+
+  it('shows seat usage without pretending to start a billing action', () => {
+    render(<TeamPage />)
+    fireEvent.click(screen.getByRole('button', { name: /manage seats/i }))
+    expect(screen.getByRole('heading', { name: /workspace seats/i })).toBeInTheDocument()
+    expect(screen.getByText(/no charge will be created/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.queryByRole('heading', { name: /workspace seats/i })).not.toBeInTheDocument()
+  })
 })
 
 describe('IntegrationsPage', () => {
