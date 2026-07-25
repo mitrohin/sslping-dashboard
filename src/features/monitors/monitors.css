@@ -127,6 +127,19 @@
 .notification-logos span:first-child { color: var(--green) !important; }
 .monitor-edit-panel { padding: 30px; }
 
+.heartbeat-credential { display: grid; gap: 22px; }
+.heartbeat-credential__warning { display: grid; grid-template-columns: auto 1fr; gap: 13px; padding: 15px; border: 1px solid rgb(250 173 53 / 32%); border-radius: var(--radius-sm); color: #f8cd86; background: rgb(250 173 53 / 8%); }
+.heartbeat-credential__warning svg { margin-top: 1px; }
+.heartbeat-credential__warning strong { display: block; margin-bottom: 4px; color: #ffe3b5; font-size: 13px; }
+.heartbeat-credential__warning p { margin: 0; color: #cdbd9f; font-size: 12px; line-height: 1.55; }
+.heartbeat-credential__field { gap: 8px; }
+.heartbeat-credential__control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+.heartbeat-credential__control input { min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+.heartbeat-credential__control .button { white-space: nowrap; }
+.heartbeat-credential__feedback { margin: -12px 0 0; font-size: 12px; }
+.heartbeat-credential__actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 18px; border-top: 1px solid var(--line); }
+.heartbeat-credential__actions p { margin: 0; color: var(--muted); font-size: 11px; }
+
 @media (max-width: 1380px) {
   .monitor-row { grid-template-columns: 55px minmax(190px, 1.4fr) minmax(125px, .9fr) 68px minmax(125px, .8fr) 40px; padding-inline: 14px; }
 }
@@ -180,4 +193,8 @@
   .latest-incidents__row > span:nth-child(2), .latest-incidents__row > span:nth-child(3) { grid-column: 1 / -1; }
   .monitor-detail-side { grid-template-columns: 1fr; }
   .monitor-edit-panel { padding: 22px 16px; }
+  .heartbeat-credential__control { grid-template-columns: 1fr; }
+  .heartbeat-credential__control .button { width: 100%; }
+  .heartbeat-credential__actions { align-items: stretch; flex-direction: column; }
+  .heartbeat-credential__actions .button { width: 100%; }
 }

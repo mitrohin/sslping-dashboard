@@ -184,6 +184,18 @@ beforeEach(() => {
 })
 
 describe('LiveTeamPage', () => {
+  it('loads an empty new workspace when the members endpoint returns null items', async () => {
+    const api = fakeApi()
+    api.listMembers.mockResolvedValue({ items: null as never })
+    mockAuth(api)
+
+    render(<LiveTeamPage />)
+
+    expect(await screen.findByRole('heading', { name: /^Team members/ })).toBeInTheDocument()
+    expect(screen.queryByText(/unable to load team/i)).not.toBeInTheDocument()
+    expect(api.getTenant).toHaveBeenCalledWith(workspace.id)
+  })
+
   it('keeps demo data local and never calls an account endpoint', async () => {
     const api = fakeApi()
     authMocks.isDemoSession.mockReturnValue(true)
@@ -271,6 +283,22 @@ describe('LiveTeamPage', () => {
 })
 
 describe('LiveIntegrationsPage', () => {
+  it('normalizes null list items for a new workspace into empty account collections', async () => {
+    const api = fakeApi()
+    api.listIntegrations.mockResolvedValue({ items: null as never })
+    api.listApiKeys.mockResolvedValue({ items: null as never })
+    api.listAuditLogs.mockResolvedValue({ items: null as never })
+    api.listMonitors.mockResolvedValue({ items: null as never })
+    mockAuth(api)
+
+    render(<LiveIntegrationsPage />)
+
+    expect(await screen.findByRole('heading', { name: /^Integrations & API/ })).toBeInTheDocument()
+    expect(screen.queryByText(/unable to load integrations/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'API keys' }))
+    expect(screen.getByText('No API keys')).toBeInTheDocument()
+  })
+
   it('keeps the existing demo integration defaults without hitting live endpoints', async () => {
     const api = fakeApi()
     authMocks.isDemoSession.mockReturnValue(true)

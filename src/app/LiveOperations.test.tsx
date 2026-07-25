@@ -289,6 +289,41 @@ describe('demo operations routes', () => {
   })
 })
 
+describe('empty workspace list responses', () => {
+  it('normalizes null items for incidents, maintenance, status pages, and the status editor', async () => {
+    mocks.api.listMonitors.mockResolvedValue({ items: null })
+    mocks.api.listIncidents.mockResolvedValue({ items: null })
+    mocks.api.listMembers.mockResolvedValue({ items: null })
+    mocks.api.listMaintenanceWindows.mockResolvedValue({ items: null })
+    mocks.api.listStatusPages.mockResolvedValue({ items: null })
+    mocks.api.listAnnouncements.mockResolvedValue({ items: null })
+    mocks.api.getStatusPage.mockResolvedValue(statusPageDetail)
+
+    const incidentsView = renderRoute(<LiveIncidentsPage />)
+    await waitFor(() => expect(mocks.incidentProps).toBeDefined())
+    expect(mocks.incidentProps).toMatchObject({ incidents: [], monitors: [], members: [] })
+    incidentsView.unmount()
+
+    mocks.maintenanceProps = undefined
+    const maintenanceView = renderRoute(<LiveMaintenancePage />)
+    await waitFor(() => expect(mocks.maintenanceProps).toBeDefined())
+    expect(mocks.maintenanceProps).toMatchObject({ windows: [], monitors: [] })
+    maintenanceView.unmount()
+
+    mocks.statusPagesProps = undefined
+    const pagesView = renderRoute(<LiveStatusPagesPage />)
+    await waitFor(() => expect(mocks.statusPagesProps).toBeDefined())
+    expect(mocks.statusPagesProps).toMatchObject({ pages: [], monitors: [] })
+    pagesView.unmount()
+
+    mocks.editorProps = undefined
+    const editorView = renderEditor()
+    await waitFor(() => expect(mocks.editorProps).toBeDefined())
+    expect(mocks.editorProps).toMatchObject({ monitors: [], announcements: [] })
+    editorView.unmount()
+  })
+})
+
 describe('LiveIncidentsPage', () => {
   it('loads adapted data and wires every incident mutation', async () => {
     mocks.api.listMonitors.mockResolvedValue({ items: [monitor] })

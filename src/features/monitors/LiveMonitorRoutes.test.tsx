@@ -73,11 +73,13 @@ function baseMonitor(): Monitor {
 function fakeApi() {
   let stored = baseMonitor()
   const api = {
+    baseUrl: 'https://api.sslping.test',
     listMonitors: vi.fn(async () => ({ items: [stored] })),
     getMetricsSummary: vi.fn().mockResolvedValue({ from: now, to: now, items: [] }),
     listIncidents: vi.fn().mockResolvedValue({ items: [] }),
     listMonitorChecks: vi.fn().mockResolvedValue({ items: [] }),
     createMonitor: vi.fn(),
+    rotateHeartbeatToken: vi.fn(),
     pauseMonitor: vi.fn(async () => {
       stored = { ...stored, status: 'paused', paused: true }
       return stored
@@ -120,6 +122,21 @@ beforeEach(() => {
 })
 
 describe('LiveMonitorsPage controls', () => {
+  it('renders the new-workspace empty state when list endpoints return null items', async () => {
+    const api = fakeApi()
+    api.listMonitors.mockResolvedValue({ items: null as never })
+    api.getMetricsSummary.mockResolvedValue({ from: now, to: now, items: null as never })
+    api.listIncidents.mockResolvedValue({ items: null as never })
+    mockAuth(api)
+
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+
+    expect(await screen.findByText('No monitors found')).toBeInTheDocument()
+    expect(screen.getByText('Try another filter or create a new monitor.')).toBeInTheDocument()
+    expect(api.listMonitorChecks).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('connects pause, resume, test and delete menu actions to the active workspace API', async () => {
     const api = fakeApi()
     mockAuth(api)
@@ -143,6 +160,41 @@ describe('LiveMonitorsPage controls', () => {
     await waitFor(() => expect(api.deleteMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
     expect(window.confirm).toHaveBeenCalledWith('Delete “Checkout API”? This cannot be undone.')
     expect(api.listMonitors.mock.calls.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('shows the full one-time URL returned when a heartbeat monitor is created', async () => {
+    const api = fakeApi()
+    const monitor: Monitor = {
+      ...baseMonitor(),
+      id: 'heartbeat-1',
+      name: 'Nightly backup',
+      type: 'heartbeat',
+      status: 'pending',
+      config: { heartbeat: { period_seconds: 86_400, grace_seconds: 300 } },
+    }
+    api.createMonitor.mockResolvedValue({
+      monitor,
+      heartbeat_token: 'one-time-secret',
+      heartbeat_url: '/v1/heartbeat/one-time-secret',
+    })
+    mockAuth(api)
+
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+    await screen.findByText('Checkout API')
+    fireEvent.click(screen.getByRole('button', { name: /new monitor/i }))
+    const createDialog = screen.getByRole('dialog', { name: /create monitor/i })
+    fireEvent.click(within(createDialog).getByRole('button', { name: /heartbeat/i }))
+    fireEvent.change(within(createDialog).getByPlaceholderText('Heartbeat monitor'), { target: { value: 'Nightly backup' } })
+    fireEvent.click(within(createDialog).getByRole('button', { name: 'Create monitor' }))
+
+    await waitFor(() => expect(api.createMonitor).toHaveBeenCalledWith(
+      workspace.id,
+      expect.objectContaining({ type: 'heartbeat', name: 'Nightly backup' }),
+    ))
+    expect(await screen.findByRole('dialog', { name: /heartbeat is ready/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Heartbeat URL' }))
+      .toHaveValue('https://api.sslping.test/v1/heartbeat/one-time-secret')
+    expect(api.rotateHeartbeatToken).not.toHaveBeenCalled()
   })
 
   it('keeps demo actions local without touching a monitor endpoint', async () => {

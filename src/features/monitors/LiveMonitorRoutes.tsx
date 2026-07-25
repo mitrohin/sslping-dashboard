@@ -7,6 +7,7 @@ import { toMonitorViewModel } from '../../app/viewAdapters'
 import type { MonitorViewModel, UptimePeriodSummary } from '../../data'
 import { MonitorDetailPage } from './MonitorDetailPage'
 import { MonitorEditPage } from './MonitorEditPage'
+import type { HeartbeatCredential } from './HeartbeatCredentialModal'
 import type { MonitorDraft } from './MonitorForm'
 import { MonitorsPage } from './MonitorsPage'
 import {
@@ -40,6 +41,24 @@ function emptyCheckPage(): { items: CheckResult[] } {
   return { items: [] }
 }
 
+export function resolveHeartbeatUrl(baseUrl: string, heartbeatUrl: string, origin = window.location.origin): string {
+  const base = new URL(baseUrl || '/', origin)
+  if (!base.pathname.endsWith('/')) base.pathname += '/'
+  return new URL(heartbeatUrl, base).toString()
+}
+
+function heartbeatCredential(
+  baseUrl: string,
+  monitorName: string,
+  response: { heartbeat_url?: string },
+): HeartbeatCredential | undefined {
+  if (!response.heartbeat_url) return undefined
+  return {
+    monitorName,
+    url: resolveHeartbeatUrl(baseUrl, response.heartbeat_url),
+  }
+}
+
 export function LiveMonitorsPage() {
   const { api, authenticated, workspace } = useAuth()
   const navigate = useNavigate()
@@ -60,20 +79,25 @@ export function LiveMonitorsPage() {
         api.getMetricsSummary(workspace.id, { from, to: now.toISOString() }),
         api.listIncidents(workspace.id, { from, to: now.toISOString(), limit: 100 }),
       ])
+      const monitors = page.items ?? []
+      const metricItems = summary.items ?? []
+      const incidents = incidentsPage.items ?? []
       const checkResults = await Promise.allSettled(
-        page.items.map((monitor) =>
+        monitors.map((monitor) =>
           api.listMonitorChecks(workspace.id, monitor.id, { from, to: now.toISOString(), limit: 30 }),
         ),
       )
-      const metrics = new Map(summary.items.map((item) => [item.monitor_id, item.stats] as const))
+      const metrics = new Map(metricItems.map((item) => [item.monitor_id, item.stats] as const))
       const activeIncidents = new Map(
-        incidentsPage.items
+        incidents
           .filter((incident) => incident.status !== 'resolved')
           .map((incident) => [incident.monitor_id, incident] as const),
       )
-      setData(page.items.map((monitor, index) =>
+      setData(monitors.map((monitor, index) =>
         toMonitorViewModel(monitor, {
-          checks: checkResults[index].status === 'fulfilled' ? checkResults[index].value.items : [],
+          checks: checkResults[index].status === 'fulfilled'
+            ? checkResults[index].value.items ?? []
+            : [],
           stats: metrics.get(monitor.id),
           activeIncident: activeIncidents.get(monitor.id),
         }),
@@ -91,8 +115,15 @@ export function LiveMonitorsPage() {
 
   const create = async (draft: MonitorDraft) => {
     if (!workspace) throw new Error('No active workspace is selected.')
-    await api.createMonitor(workspace.id, monitorDraftToCreateRequest(draft))
+    const response = await api.createMonitor(workspace.id, monitorDraftToCreateRequest(draft))
+    let credential = heartbeatCredential(api.baseUrl, response.monitor.name, response)
+    if (draft.type === 'heartbeat' && !credential) {
+      const rotated = await api.rotateHeartbeatToken(workspace.id, response.monitor.id)
+      credential = heartbeatCredential(api.baseUrl, response.monitor.name, rotated)
+    }
     await reload()
+    if (draft.type === 'heartbeat' && !credential) throw new Error('The monitoring service did not return a heartbeat URL.')
+    return credential
   }
 
   const togglePause = async (monitor: MonitorViewModel, pause: boolean) => {
@@ -174,12 +205,12 @@ export function LiveMonitorDetailPage() {
       const stats = Object.fromEntries(periods.map((period, index) => [period, metrics[index]])) as Record<UptimePeriodSummary['period'], UptimeStats>
       setData(toLiveMonitorDetail({
         monitor,
-        checks: checksPage.items,
-        responseChecks: responseChecksPage.items,
-        certificateEvidence: certificates.items,
-        dnsEvidence: dns.items,
-        domainEvidence: domains.items,
-        incidents: incidentsPage.items.filter((incident) => incident.monitor_id === monitor.id),
+        checks: checksPage.items ?? [],
+        responseChecks: responseChecksPage.items ?? [],
+        certificateEvidence: certificates.items ?? [],
+        dnsEvidence: dns.items ?? [],
+        domainEvidence: domains.items ?? [],
+        incidents: (incidentsPage.items ?? []).filter((incident) => incident.monitor_id === monitor.id),
         stats,
       }))
     } catch (loadError) {
@@ -217,6 +248,14 @@ export function LiveMonitorDetailPage() {
     navigate('/monitors', { replace: true })
   }
 
+  const rotateHeartbeat = async () => {
+    const context = requireContext()
+    const response = await api.rotateHeartbeatToken(context.workspaceId, context.monitorId)
+    const credential = heartbeatCredential(api.baseUrl, data?.monitor.name ?? 'Heartbeat monitor', response)
+    if (!credential) throw new Error('The monitoring service did not return a heartbeat URL.')
+    return credential
+  }
+
   return (
     <MonitorDetailPage
       monitor={data?.monitor}
@@ -230,6 +269,7 @@ export function LiveMonitorDetailPage() {
       onTogglePause={togglePause}
       onTest={test}
       onDelete={remove}
+      onRotateHeartbeat={data?.monitor.type === 'heartbeat' ? rotateHeartbeat : undefined}
       onRangeChange={setResponseRange}
     />
   )

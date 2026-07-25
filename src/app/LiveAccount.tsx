@@ -347,7 +347,7 @@ export function LiveTeamPage() {
     void Promise.all([api.getTenant(workspace.id), api.listMembers(workspace.id)])
       .then(([freshWorkspace, response]) => {
         if (cancelled) return
-        const members = response.items.map((membership) =>
+        const members = (response.items ?? []).map((membership) =>
           toTeamMemberViewModel(membership, {
             currentUserId: user?.id,
             ...(user && membership.user_id === user.id ? { user } : {}),
@@ -442,10 +442,10 @@ export function LiveIntegrationsPage() {
     ])
       .then(([integrationResponse, keyResponse, auditResponse, monitorResponse]) => {
         if (cancelled) return
-        const monitors = monitorResponse.items.map((monitor) => toMonitorViewModel(monitor))
-        const integrations = integrationResponse.items.map(toIntegrationViewModel)
-        const apiKeys = keyResponse.items.map((key) => keyViewModel(key, monitors))
-        const auditEntries = auditResponse.items.map((entry) =>
+        const monitors = (monitorResponse.items ?? []).map((monitor) => toMonitorViewModel(monitor))
+        const integrations = (integrationResponse.items ?? []).map(toIntegrationViewModel)
+        const apiKeys = (keyResponse.items ?? []).map((key) => keyViewModel(key, monitors))
+        const auditEntries = (auditResponse.items ?? []).map((entry) =>
           toAuditLogViewModel(entry, {
             ...(user ? { actor: { id: user.id, name: user.name, email: user.email } } : {}),
           }),

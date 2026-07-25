@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ExternalLink,
   Globe2,
+  KeyRound,
   MoreVertical,
   PauseCircle,
   Pencil,
@@ -31,6 +32,7 @@ import {
 import { formatDate, formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
 import { Badge, Button, EmptyState, IconButton, Panel, Select, StatusDot } from '../../components/ui'
+import { HeartbeatCredentialModal, type HeartbeatCredential } from './HeartbeatCredentialModal'
 
 export interface MonitorDetailPageProps {
   monitor?: MonitorViewModel
@@ -44,6 +46,7 @@ export interface MonitorDetailPageProps {
   onTogglePause?: (pause: boolean) => Promise<void>
   onTest?: () => Promise<void>
   onDelete?: () => Promise<void>
+  onRotateHeartbeat?: () => Promise<HeartbeatCredential>
   onRangeChange?: (range: string) => void
 }
 
@@ -59,6 +62,7 @@ export function MonitorDetailPage({
   onTogglePause,
   onTest,
   onDelete,
+  onRotateHeartbeat,
   onRangeChange,
 }: MonitorDetailPageProps = {}) {
   const { monitorId } = useParams()
@@ -73,6 +77,7 @@ export function MonitorDetailPage({
   const [range, setRange] = useState('1h')
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [heartbeatCredential, setHeartbeatCredential] = useState<HeartbeatCredential | null>(null)
 
   useEffect(() => setPausedOverride(null), [monitor.id, monitor.status])
   const paused = pausedOverride ?? monitor.status === 'paused'
@@ -132,6 +137,12 @@ export function MonitorDetailPage({
     })
   }
 
+  const rotateHeartbeat = () => {
+    if (!onRotateHeartbeat) return
+    if (!window.confirm('Rotate this heartbeat URL? The current URL will stop working immediately.')) return
+    void runAction(async () => setHeartbeatCredential(await onRotateHeartbeat()))
+  }
+
   if (loading) {
     return <div className="page page--wide monitor-detail-page"><Link to="/monitors" className="back-link"><ArrowLeft size={17} /> Monitoring</Link><Panel><EmptyState icon={<Globe2 size={34} />} title="Loading monitor" description="Fetching checks, metrics, incidents and evidence…" /></Panel></div>
   }
@@ -152,6 +163,7 @@ export function MonitorDetailPage({
           {actionError && <small className="danger-text" role="alert">{actionError}</small>}
         </div>
         <div className="monitor-detail-header__actions">
+          {monitor.type === 'heartbeat' && onRotateHeartbeat && <Button variant="secondary" disabled={actionBusy} onClick={rotateHeartbeat}><KeyRound size={17} /> Rotate URL</Button>}
           <Button variant="secondary" disabled={actionBusy} onClick={testNotification}><BellRing size={17} /> {notificationSent ? 'Test completed' : 'Test monitor'}</Button>
           <Button variant="secondary" disabled={actionBusy} onClick={togglePause}>{paused ? <PlayCircle size={17} /> : <PauseCircle size={17} />}{paused ? 'Resume' : 'Pause'}</Button>
           <Link className="button button--secondary button--md" to={`/monitors/${monitor.id}/edit`}><Pencil size={17} /> Edit</Link>
@@ -206,6 +218,7 @@ export function MonitorDetailPage({
           <Panel className="side-card"><h2>Appears on<span className="title-dot">.</span></h2><RadioTower size={25} className="side-card__feature-icon" /><p>{suppliedMonitor ? 'Not attached to a status page.' : 'System status'}</p><Button variant="secondary" size="sm">Manage status pages</Button></Panel>
         </aside>
       </div>
+      {heartbeatCredential && <HeartbeatCredentialModal credential={heartbeatCredential} onClose={() => setHeartbeatCredential(null)} />}
     </div>
   )
 }

@@ -21,6 +21,7 @@ import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/form
 import { UptimeBars } from '../../components/UptimeBars'
 import { Badge, Button, EmptyState, IconButton, Modal, PageHeader, Panel, SearchInput, StatusDot, Toggle } from '../../components/ui'
 import { defaultMonitorDraft, MonitorForm, type MonitorDraft } from './MonitorForm'
+import { HeartbeatCredentialModal, type HeartbeatCredential } from './HeartbeatCredentialModal'
 import './monitors.css'
 
 const statusOrder: Record<MonitorStatus, number> = { down: 0, degraded: 1, pending: 2, up: 3, paused: 4 }
@@ -30,7 +31,7 @@ export interface MonitorsPageProps {
   loading?: boolean
   error?: string | null
   onRetry?: () => void
-  onCreate?: (draft: MonitorDraft) => Promise<void>
+  onCreate?: (draft: MonitorDraft) => Promise<HeartbeatCredential | void>
   onView?: (monitor: MonitorViewModel) => void
   onEdit?: (monitor: MonitorViewModel) => void
   onTogglePause?: (monitor: MonitorViewModel, pause: boolean) => Promise<void>
@@ -59,6 +60,7 @@ export function MonitorsPage({
   const [sort, setSort] = useState<'status' | 'name' | 'response'>('status')
   const [showGroups, setShowGroups] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [heartbeatCredential, setHeartbeatCredential] = useState<HeartbeatCredential | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [openActionId, setOpenActionId] = useState<string | null>(null)
   const [busyActionId, setBusyActionId] = useState<string | null>(null)
@@ -114,8 +116,9 @@ export function MonitorsPage({
 
   const createMonitor = async (draft: MonitorDraft) => {
     if (onCreate) {
-      await onCreate(draft)
+      const credential = await onCreate(draft)
       setCreateOpen(false)
+      if (credential) setHeartbeatCredential(credential)
       return
     }
     const id = crypto.randomUUID()
@@ -310,6 +313,12 @@ export function MonitorsPage({
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={<>Create <span className="success-text">monitor</span></>} icon={<Activity size={31} />} width="xl">
         <MonitorForm initialValue={{ ...defaultMonitorDraft }} onSubmit={createMonitor} onCancel={() => setCreateOpen(false)} />
       </Modal>
+      {heartbeatCredential && (
+        <HeartbeatCredentialModal
+          credential={heartbeatCredential}
+          onClose={() => setHeartbeatCredential(null)}
+        />
+      )}
     </div>
   )
 }
