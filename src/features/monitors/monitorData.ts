@@ -99,6 +99,8 @@ function draftConfig(draft: MonitorDraft): MonitorCreateRequest['config'] {
           method: normaliseHttpMethod(draft.method),
           follow_redirects: draft.followRedirects,
           validate_tls: draft.checkSSLErrors,
+          tls_expiry_warn_days: draft.sslReminders ? sslReminderDays : null,
+          domain_expiry_warn_days: draft.domainReminders ? sslReminderDays : null,
           ...(draft.type === 'keyword'
             ? {
                 keyword: {
@@ -242,8 +244,12 @@ export function monitorToDraft(monitor: Monitor): MonitorDraft {
     method: http?.method ?? 'GET',
     followRedirects: http?.follow_redirects ?? true,
     checkSSLErrors: http?.validate_tls ?? true,
-    sslReminders: monitor.config.tls?.warn_days !== null,
-    domainReminders: monitor.config.domain?.warn_days !== null,
+    sslReminders: http
+      ? http.tls_expiry_warn_days !== null
+      : monitor.config.tls?.warn_days !== null,
+    domainReminders: http
+      ? http.domain_expiry_warn_days !== null
+      : monitor.config.domain?.warn_days !== null,
     slowThresholdMs: monitor.slow_threshold_ms ?? 0,
     failureThreshold: monitor.retry_policy.failure_threshold,
     recoveryThreshold: monitor.retry_policy.recovery_threshold,

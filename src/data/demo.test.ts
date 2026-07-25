@@ -47,6 +47,12 @@ describe('demo monitor data', () => {
     expect(demoMonitorList.summary.pending).toBe(count('pending'))
   })
 
+  it('models certificate and domain expiry as supplemental HTTP evidence', () => {
+    expect(demoMonitors.some((monitor) => monitor.type === 'tls' || monitor.type === 'domain')).toBe(false)
+    expect(demoMonitors.some((monitor) => monitor.type === 'http' && monitor.sslCertificate)).toBe(true)
+    expect(demoMonitors.some((monitor) => monitor.type === 'http' && monitor.domainRegistration)).toBe(true)
+  })
+
   it('provides realistic response-time series with exact aggregates', () => {
     expect(demoResponseTimeSeries.length).toBeGreaterThanOrEqual(3)
 

@@ -182,6 +182,8 @@ Region selector обязан учитывать capability: keyword исполь
 - `ip_family`: auto, IPv4 only, IPv6 only;
 - `user_agent`;
 - `validate_tls`;
+- optional `tls_expiry_warn_days[]` for certificate evidence and expiry notifications;
+- optional `domain_expiry_warn_days[]` for RDAP evidence and expiry notifications;
 - `max_body_bytes` 1..10 MiB.
 
 Sensitive fields приходят как `********`. Edit form должен трактовать mask как «секрет сохранён», не отправлять его как новый secret и дать явную команду replace/clear.
@@ -205,17 +207,17 @@ Sensitive fields приходят как `********`. Edit form должен тр
 
 `config.udp`: host, port 1–65535, optional payload и expected response.
 
-### 5.6. TLS certificate monitor
+### 5.6. TLS certificate monitor (legacy API compatibility)
 
-`config.tls`: host, port (default 443), optional SNI/server_name и unique `warn_days[]` 0–3650.
+`config.tls`: host, port (default 443), optional SNI/server_name и unique `warn_days[]` 0–3650. Dashboard больше не предлагает этот тип при создании: для новых HTTPS HTTP/keyword monitors сертификат настраивается в блоке `SSL certificate & domain checks`. Существующие standalone monitors остаются доступны для просмотра и редактирования.
 
 ### 5.7. DNS monitor
 
 `config.dns`: FQDN name, record type A/AAAA/CNAME/MX/TXT/NS/CAA/SRV, expected records list, optional authoritative/custom nameserver, `require_dnssec`.
 
-### 5.8. Domain expiry monitor
+### 5.8. Domain expiry monitor (legacy API compatibility)
 
-`config.domain`: registered domain и `warn_days[]`. Evidence строится из RDAP.
+`config.domain`: registered domain и `warn_days[]`. Dashboard больше не предлагает этот тип при создании: для новых HTTP/keyword monitors RDAP и expiry notifications включаются в блоке `SSL certificate & domain checks`. Существующие standalone monitors остаются доступны для просмотра и редактирования.
 
 ### 5.9. Reachability monitor
 
@@ -227,7 +229,7 @@ Sensitive fields приходят как `********`. Edit form должен тр
 
 ### 5.11. Дополнительные блоки из референса
 
-Визуально форма должна иметь секции `Monitor details`, `Integrations & Team`, `Maintenance info`, SSL/domain и Advanced settings. Следующие элементы референса пока не имеют полного backend mapping: per-monitor email/SMS/voice/push recipients, notification delay/repeat, HTTP-monitor domain-expiry reminders, meta fields. Их нельзя показывать как работающие controls до расширения API.
+Визуально форма должна иметь секции `Monitor details`, `Integrations & Team`, `Maintenance info`, SSL/domain и Advanced settings. SSL validation, certificate-expiry reminders и domain-expiry reminders сохраняются в `config.http` и выполняются как дополнительные проверки одного HTTP/keyword monitor. Следующие элементы референса пока не имеют полного backend mapping: per-monitor email/SMS/voice/push recipients, notification delay/repeat и meta fields. Их нельзя показывать как работающие controls до расширения API.
 
 ## 6. Monitor detail
 
@@ -547,7 +549,7 @@ P1 | Нет billing/plan quota/seats endpoints | Не показывать фи�
 P1 | Invitations нельзя list/resend/revoke; user profile/phone нельзя редактировать | Team lifecycle неполный
 P2 | Maintenance list без search/filter/next-occurrence endpoint | Small list фильтровать локально; occurrence считать клиентом по тем же recurrence rules
 P2 | Monitor groups — только строка, нет CRUD/order; monitor list filter только search | Group toggle требует client grouping и не покрывает весь cursor dataset
-P2 | HTTP/keyword monitor не имеет отдельных SSL/domain reminder days и meta fields | Использовать отдельные TLS/domain monitors; meta fields скрыть
+P2 | HTTP/keyword monitor не имеет meta fields | Meta fields скрыть до расширения API
 P2 | Regions capability metadata не включает UDP/keyword/heartbeat напрямую | keyword map → http; heartbeat no region; UDP только supported/default region до уточнения
 P2 | Status-page access level не виден в list response; monitor association reverse lookup отсутствует | Требуются detail fan-outs; лучше добавить summary fields/query by monitor
 P2 | API keys нельзя update/rotate, только create/revoke | Rotation UI = create replacement, reveal once, revoke old

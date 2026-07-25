@@ -52,6 +52,8 @@ const monitorTypes: Array<{ value: MonitorType; label: string; description: stri
   { value: 'heartbeat', label: 'Heartbeat', description: 'Cron jobs and scheduled tasks', icon: HeartPulse },
 ]
 
+const creatableMonitorTypes = monitorTypes.filter(({ value }) => value !== 'tls' && value !== 'domain')
+
 export const defaultMonitorDraft: MonitorDraft = {
   name: '',
   type: 'http',
@@ -104,6 +106,9 @@ export function MonitorForm({
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const selectedType = useMemo(() => monitorTypes.find((item) => item.value === draft.type)!, [draft.type])
+  const visibleMonitorTypes = lockType
+    ? monitorTypes.filter((item) => item.value === draft.type)
+    : creatableMonitorTypes
   const set = <K extends keyof MonitorDraft>(key: K, value: MonitorDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
 
   const handleSubmit = async (event: FormEvent) => {
@@ -124,7 +129,7 @@ export function MonitorForm({
       <section className="form-section">
         <h3 className="form-section__title">What should we monitor?</h3>
         <div className="monitor-type-grid">
-          {monitorTypes.map(({ value, label, description, icon: Icon }) => (
+          {visibleMonitorTypes.map(({ value, label, description, icon: Icon }) => (
             <button
               key={value}
               type="button"

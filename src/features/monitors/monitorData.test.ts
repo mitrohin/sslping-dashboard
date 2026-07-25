@@ -20,10 +20,21 @@ describe('monitor request conversion', () => {
       method: 'POST',
       followRedirects: false,
       checkSSLErrors: false,
+      sslReminders: false,
+      domainReminders: true,
     }))
     expect(http).toMatchObject({
       type: 'http',
-      config: { http: { url: 'https://example.com/health', method: 'POST', follow_redirects: false, validate_tls: false } },
+      config: {
+        http: {
+          url: 'https://example.com/health',
+          method: 'POST',
+          follow_redirects: false,
+          validate_tls: false,
+          tls_expiry_warn_days: null,
+          domain_expiry_warn_days: [30, 14, 7, 0],
+        },
+      },
       retry_policy: { failure_threshold: 2, recovery_threshold: 1 },
     })
 
@@ -33,7 +44,11 @@ describe('monitor request conversion', () => {
       keyword: 'healthy',
       keywordMode: 'absent',
     }))
-    expect(keyword.config.http?.keyword).toEqual({ value: 'healthy', mode: 'absent', case_sensitive: false })
+    expect(keyword.config.http).toMatchObject({
+      keyword: { value: 'healthy', mode: 'absent', case_sensitive: false },
+      tls_expiry_warn_days: [30, 14, 7, 0],
+      domain_expiry_warn_days: [30, 14, 7, 0],
+    })
   })
 
   it('maps socket targets, including bracketed IPv6, and certificate reminders', () => {
@@ -99,6 +114,65 @@ describe('monitor edit and chart adapters', () => {
       recoveryThreshold: 2,
       slowThresholdMs: 500,
     })
+  })
+
+  it('restores supplemental certificate and domain settings from an HTTP monitor', () => {
+    const monitor: Monitor = {
+      id: 'monitor-http',
+      workspace_id: 'workspace-1',
+      name: 'Production website',
+      type: 'http',
+      status: 'up',
+      config: {
+        http: {
+          url: 'https://example.com',
+          validate_tls: false,
+          tls_expiry_warn_days: null,
+          domain_expiry_warn_days: [30, 14, 7, 0],
+        },
+      },
+      interval_seconds: 60,
+      timeout_seconds: 15,
+      regions: ['local'],
+      tags: [],
+      retry_policy: { failure_threshold: 2, recovery_threshold: 1, confirmation_delay_seconds: 0 },
+      paused: false,
+      next_check_at: '2026-07-26T12:00:00.000Z',
+      consecutive_failures: 0,
+      consecutive_recoveries: 1,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-07-26T11:55:00.000Z',
+    }
+
+    expect(monitorToDraft(monitor)).toMatchObject({
+      checkSSLErrors: false,
+      sslReminders: false,
+      domainReminders: true,
+    })
+  })
+
+  it('keeps supplemental expiry checks enabled for legacy HTTP configs without explicit fields', () => {
+    const monitor: Monitor = {
+      id: 'monitor-legacy-http',
+      workspace_id: 'workspace-1',
+      name: 'Legacy website',
+      type: 'http',
+      status: 'pending',
+      config: { http: { url: 'https://legacy.example.com' } },
+      interval_seconds: 60,
+      timeout_seconds: 15,
+      regions: ['local'],
+      tags: [],
+      retry_policy: { failure_threshold: 2, recovery_threshold: 1, confirmation_delay_seconds: 0 },
+      paused: false,
+      next_check_at: '2026-07-26T12:00:00.000Z',
+      consecutive_failures: 0,
+      consecutive_recoveries: 0,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-07-26T11:55:00.000Z',
+    }
+
+    expect(monitorToDraft(monitor)).toMatchObject({ sslReminders: true, domainReminders: true })
   })
 
   it('groups response samples by region and calculates statistics', () => {

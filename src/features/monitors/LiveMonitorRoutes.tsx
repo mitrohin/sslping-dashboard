@@ -183,13 +183,21 @@ export function LiveMonitorDetailPage() {
       const metricsPromise = Promise.all(periods.map((period) =>
         api.getMonitorMetrics(workspace.id, monitor.id, { from: fromForPeriod(period, now), to }),
       ))
-      const certificatePromise = monitor.type === 'tls' || /^https:\/\//i.test(monitor.config.http?.url ?? '')
+      const httpConfig = monitor.config.http
+      const certificatePromise = monitor.type === 'tls' || (
+        /^https:\/\//i.test(httpConfig?.url ?? '') && (
+          httpConfig?.validate_tls === true || httpConfig?.tls_expiry_warn_days != null
+        )
+      )
         ? api.listCertificateEvidence(workspace.id, monitor.id, { limit: 30 })
         : Promise.resolve(emptyCheckPage())
       const dnsPromise = monitor.type === 'dns'
         ? api.listDnsEvidence(workspace.id, monitor.id, { limit: 30 })
         : Promise.resolve(emptyCheckPage())
-      const domainPromise = monitor.type === 'domain'
+      const domainPromise = monitor.type === 'domain' || (
+        (monitor.type === 'http' || monitor.type === 'keyword') &&
+        httpConfig?.domain_expiry_warn_days != null
+      )
         ? api.listDomainEvidence(workspace.id, monitor.id, { limit: 30 })
         : Promise.resolve(emptyCheckPage())
 

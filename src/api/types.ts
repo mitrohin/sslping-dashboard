@@ -259,7 +259,9 @@ export interface HTTPConfig {
   max_body_bytes?: number
   ip_family?: '' | 'ip4' | 'ip6'
   user_agent?: string
-  validate_tls?: boolean
+  validate_tls?: boolean | null
+  tls_expiry_warn_days?: number[] | null
+  domain_expiry_warn_days?: number[] | null
 }
 
 export interface TCPConfig {

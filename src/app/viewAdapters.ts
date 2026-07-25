@@ -296,7 +296,16 @@ export function toMonitorViewModel(
   const checks = options.checks ?? []
   const lastCheck = latestCheck(monitor.id, checks)
   const referenceTime = nowTimestamp(options.now)
-  const isSecureHttp = /^https:\/\//i.test(monitor.config?.http?.url ?? '')
+  const httpConfig = monitor.config?.http
+  const isSecureHttp = /^https:\/\//i.test(httpConfig?.url ?? '')
+  const tracksCertificateExpiry = type === 'tls' || (
+    isSecureHttp && (
+      httpConfig?.validate_tls === true || httpConfig?.tls_expiry_warn_days != null
+    )
+  )
+  const tracksDomainExpiry = type === 'domain' || (
+    (type === 'http' || type === 'keyword') && httpConfig?.domain_expiry_warn_days != null
+  )
 
   return {
     id: nonEmpty(monitor.id, 'unknown-monitor'),
@@ -317,11 +326,11 @@ export function toMonitorViewModel(
     regions: Array.isArray(monitor.regions) ? [...monitor.regions] : [],
     incidentId: options.activeIncident?.id ?? lastCheck?.incident_id,
     sslCertificate:
-      type === 'tls' || isSecureHttp
+      tracksCertificateExpiry
         ? expirySnapshot(lastCheck, 'certificate', referenceTime)
         : undefined,
     domainRegistration:
-      type === 'domain' ? expirySnapshot(lastCheck, 'domain', referenceTime) : undefined,
+      tracksDomainExpiry ? expirySnapshot(lastCheck, 'domain', referenceTime) : undefined,
   }
 }
 

@@ -6,7 +6,7 @@ Production-oriented Vite/React dashboard for the SSLPing monitoring platform. It
 
 - authentication, registration, e-mail verification, password reset and 2FA;
 - workspace-aware session lifecycle with access-token refresh;
-- HTTP, keyword, TCP, UDP, TLS, DNS, domain, reachability and heartbeat monitors;
+- HTTP/keyword monitors with optional TLS-certificate and domain-expiry checks, plus TCP, UDP, DNS, reachability and heartbeat monitors;
 - monitor creation, editing, pause/resume, test checks, deletion, response metrics, evidence and incident history;
 - incidents, maintenance windows and branded public status pages;
 - team invitations and member management;

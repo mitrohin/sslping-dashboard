@@ -48,6 +48,7 @@ const monitor: Monitor = {
   config: {
     http: {
       url: 'https://api.example.com/health',
+      validate_tls: true,
       keyword: { value: 'ok', mode: 'present', case_sensitive: false },
     },
   },
@@ -207,6 +208,54 @@ describe('toMonitorViewModel', () => {
       group: 'Ungrouped',
       tags: [],
       regions: [],
+    })
+  })
+
+  it('adapts supplemental domain evidence for an HTTP monitor when enabled', () => {
+    const result = toMonitorViewModel({
+      ...monitor,
+      type: 'http',
+      config: {
+        http: {
+          url: 'https://api.example.com/health',
+          tls_expiry_warn_days: [30, 14, 7, 0],
+          domain_expiry_warn_days: [30, 14, 7, 0],
+        },
+      },
+    }, {
+      checks: [{
+        ...checks[0],
+        details: {
+          domain_expires_at: '2027-08-01T00:00:00.000Z',
+          registrar: 'Example Registrar',
+        },
+      }],
+      now,
+    })
+
+    expect(result.domainRegistration).toMatchObject({
+      expiresAt: '2027-08-01T00:00:00.000Z',
+      issuer: 'Example Registrar',
+      state: 'ok',
+    })
+  })
+
+  it('does not expose disabled supplemental expiry evidence', () => {
+    const disabled = {
+      ...monitor,
+      type: 'http' as const,
+      config: {
+        http: {
+          url: 'https://api.example.com/health',
+          tls_expiry_warn_days: null,
+          domain_expiry_warn_days: null,
+        },
+      },
+    }
+
+    expect(toMonitorViewModel(disabled, { checks, now })).toMatchObject({
+      sslCertificate: undefined,
+      domainRegistration: undefined,
     })
   })
 })

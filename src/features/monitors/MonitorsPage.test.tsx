@@ -40,6 +40,21 @@ describe('MonitorsPage selection', () => {
   })
 })
 
+describe('MonitorsPage monitor creation', () => {
+  it('keeps certificate and domain expiry as supplemental checks instead of standalone monitor types', () => {
+    renderPage({ data: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'New monitor' }))
+    const dialog = screen.getByRole('dialog', { name: 'Create monitor' })
+
+    expect(within(dialog).queryByRole('button', { name: 'SSL / TLS Certificate validity and expiry' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Domain expiry RDAP registration and expiry' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('switch', { name: 'Check SSL errors' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('switch', { name: 'SSL expiry reminders' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('switch', { name: 'Domain expiry reminders' })).toBeInTheDocument()
+  })
+})
+
 describe('MonitorsPage row actions', () => {
   it('exposes navigation and delegates pause, resume, test and delete actions', async () => {
     const up = demoMonitors[0]
