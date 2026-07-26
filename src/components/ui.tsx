@@ -85,7 +85,13 @@ export function Toggle({
       aria-checked={checked}
       aria-label={label}
       className={`toggle ${checked ? 'toggle--on' : ''}`}
-      onClick={() => onChange(!checked)}
+      onClick={(event) => {
+        // A few settings rows use the switch next to descriptive text. Prevent
+        // an enclosing label from activating the button a second time.
+        event.preventDefault()
+        event.stopPropagation()
+        onChange(!checked)
+      }}
       disabled={disabled}
     >
       <span />

@@ -179,4 +179,18 @@ describe('ApiClient', () => {
     })
     expect(authorization(fetchMock.mock.calls[3]?.[1])).toBe('Bearer old-access')
   })
+
+  it('preserves an explicit false flag for a public administrator ticket reply', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ ticket: {}, message: {} }, 201))
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+
+    await client.adminReplyTicket('ticket-1', { message: 'Visible to the customer', internal: false })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/admin/tickets/ticket-1/messages')
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ message: 'Visible to the customer', internal: false }),
+    })
+  })
 })
