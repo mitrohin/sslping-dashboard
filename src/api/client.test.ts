@@ -193,4 +193,34 @@ describe('ApiClient', () => {
       body: JSON.stringify({ message: 'Visible to the customer', internal: false }),
     })
   })
+
+  it('uploads support attachments as multipart data and downloads their binary body', async () => {
+    const attachment = {
+      id: 'attachment-1',
+      ticket_id: 'ticket-1',
+      message_id: 'message-1',
+      file_name: 'status.pdf',
+      content_type: 'application/pdf',
+      size_bytes: 12,
+      created_at: '2026-07-26T17:00:00Z',
+    }
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(attachment, 201))
+      .mockResolvedValueOnce(new Response('%PDF-1.7', { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+    const file = new File(['%PDF-1.7'], 'status.pdf', { type: 'application/pdf' })
+
+    await expect(client.uploadSupportAttachment('ticket-1', 'message-1', file)).resolves.toEqual(attachment)
+    const upload = fetchMock.mock.calls[0]
+    expect(upload?.[0]).toBe('/api/v1/support/tickets/ticket-1/messages/message-1/attachments')
+    expect(upload?.[1]?.method).toBe('POST')
+    expect(upload?.[1]?.body).toBeInstanceOf(FormData)
+    expect(new Headers(upload?.[1]?.headers).has('Content-Type')).toBe(false)
+    expect((upload?.[1]?.body as FormData).get('file')).toBe(file)
+
+    const downloaded = await client.downloadSupportAttachment('ticket-1', 'attachment-1')
+    expect(downloaded.size).toBe(8)
+    expect(downloaded.type).toBe('application/pdf')
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/v1/support/tickets/ticket-1/attachments/attachment-1')
+  })
 })

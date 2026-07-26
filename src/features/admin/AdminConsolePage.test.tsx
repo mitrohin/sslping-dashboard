@@ -29,9 +29,12 @@ function ReplyHarness({ onSubmit }: { onSubmit: (event: FormEvent, internal: boo
       busy={false}
       reply={reply}
       internal={internal}
+      files={[]}
       onClose={() => undefined}
       onReply={setReply}
       onInternal={setInternal}
+      onFiles={() => undefined}
+      onOpenAttachment={() => undefined}
       onUpdate={() => undefined}
       onSubmit={onSubmit}
     />

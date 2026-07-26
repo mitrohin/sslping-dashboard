@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { ArrowLeft, LifeBuoy, MessageSquarePlus, Send, Ticket } from 'lucide-react'
-import type { SupportMessage, SupportTicket, SupportTicketDetail, SupportTicketPriority } from '../../api/types'
+import type { SupportAttachment, SupportMessage, SupportTicket, SupportTicketDetail, SupportTicketPriority } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
 import { Badge, Button, EmptyState, Field, PageHeader, Panel, Select } from '../../components/ui'
 import { formatDate } from '../../lib/format'
+import { AttachmentList, AttachmentPicker, openAttachmentBlob } from './SupportAttachments'
 import './support.css'
 
 function ticketTone(status: SupportTicket['status']) {
@@ -21,6 +22,8 @@ export function SupportPage() {
   const [priority, setPriority] = useState<SupportTicketPriority>('normal')
   const [message, setMessage] = useState('')
   const [reply, setReply] = useState('')
+  const [ticketFiles, setTicketFiles] = useState<File[]>([])
+  const [replyFiles, setReplyFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -56,13 +59,19 @@ export function SupportPage() {
     if (subject.trim().length < 4 || message.trim().length < 2) return
     setBusy(true)
     try {
-      const created = await api.createSupportTicket({ subject: subject.trim(), priority, message: message.trim() })
+      let created = await api.createSupportTicket({ subject: subject.trim(), priority, message: message.trim() })
       setTickets((current) => [created.ticket, ...current])
       setDetail(created)
+      if (ticketFiles.length > 0) {
+        for (const file of ticketFiles) await api.uploadSupportAttachment(created.ticket.id, created.messages[0].id, file)
+        created = await api.getSupportTicket(created.ticket.id)
+        setDetail(created)
+      }
       setCreating(false)
       setSubject('')
       setMessage('')
       setPriority('normal')
+      setTicketFiles([])
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not create the ticket.')
@@ -79,7 +88,12 @@ export function SupportPage() {
       const result = await api.replySupportTicket(detail.ticket.id, reply.trim())
       setDetail((current) => current ? { ticket: result.ticket, messages: [...current.messages, result.message] } : current)
       setTickets((current) => current.map((ticket) => ticket.id === result.ticket.id ? result.ticket : ticket))
+      if (replyFiles.length > 0) {
+        for (const file of replyFiles) await api.uploadSupportAttachment(result.ticket.id, result.message.id, file)
+        setDetail(await api.getSupportTicket(result.ticket.id))
+      }
       setReply('')
+      setReplyFiles([])
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not send the reply.')
@@ -89,6 +103,19 @@ export function SupportPage() {
   }
 
   const messages = useMemo(() => detail?.messages ?? [], [detail])
+
+  const openAttachment = async (attachment: SupportAttachment) => {
+    if (!detail) return
+    setBusy(true)
+    try {
+      openAttachmentBlob(await api.downloadSupportAttachment(detail.ticket.id, attachment.id), attachment.file_name)
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not download the attachment.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (detail) {
     return (
@@ -106,6 +133,7 @@ export function SupportPage() {
               <article key={item.id} className={`support-message ${item.author_role === 'superadmin' ? 'support-message--staff' : ''}`}>
                 <div><strong>{item.author_role === 'superadmin' ? 'SSLPing support' : item.author_id === user?.id ? 'You' : 'Workspace member'}</strong><time>{formatDate(item.created_at)}</time></div>
                 <p>{item.body}</p>
+                <AttachmentList attachments={item.attachments} onOpen={(attachment) => void openAttachment(attachment)} busy={busy} />
               </article>
             ))}
           </div>
@@ -114,6 +142,7 @@ export function SupportPage() {
               <Field label="Reply" hint="Your message will be visible to the SSLPing support team.">
                 <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Add more context, expected behaviour or steps to reproduce…" />
               </Field>
+              <AttachmentPicker files={replyFiles} onChange={setReplyFiles} disabled={busy} />
               <Button type="submit" disabled={busy || reply.trim().length < 2}><Send size={17} /> Send reply</Button>
             </form>
           )}
@@ -134,6 +163,7 @@ export function SupportPage() {
               <Field label="Priority" hint="Choose urgent only for production-impacting issues."><Select value={priority} onChange={(event) => setPriority(event.target.value as SupportTicketPriority)}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></Select></Field>
             </div>
             <Field label="Message"><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe the problem, what you expected and what happened…" /></Field>
+            <AttachmentPicker files={ticketFiles} onChange={setTicketFiles} disabled={busy} />
             <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreating(false)}>Cancel</Button><Button type="submit" disabled={busy || subject.trim().length < 4 || message.trim().length < 2}>Create ticket</Button></div>
           </form>
         </Panel>

@@ -1,0 +1,16 @@
+.support-attachment-picker { display: grid; gap: 9px; }
+.support-attachment-picker > input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.support-attachment-add { width: fit-content; display: inline-flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--surface); cursor: pointer; }
+.support-attachment-add span { color: var(--muted); font-size: 11px; }
+.support-attachment-add:hover:not(:disabled) { border-color: rgb(52 215 123 / 38%); color: var(--green); }
+.support-attachment-add:disabled { opacity: .55; cursor: not-allowed; }
+.support-pending-files, .support-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
+.support-pending-files > span, .support-attachments > button { min-width: 0; display: inline-flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: rgb(255 255 255 / 2.5%); }
+.support-pending-files > span > span, .support-attachments > button > span { min-width: 0; display: grid; text-align: left; }
+.support-pending-files small, .support-attachments small { color: var(--muted); font-size: 10px; }
+.support-pending-files .icon-button { width: 25px; height: 25px; margin-left: 2px; }
+.support-attachments { margin-top: 12px; }
+.support-attachments > button { max-width: 260px; cursor: pointer; }
+.support-attachments > button:hover:not(:disabled) { border-color: rgb(52 215 123 / 38%); color: var(--green); }
+.support-attachment-error { margin: 0; color: var(--danger); font-size: 12px; }
+@media (max-width: 560px) { .support-attachment-add span { display: none; } .support-attachments > button { max-width: 100%; } }

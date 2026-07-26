@@ -9,6 +9,7 @@ interface RequestOptions {
   headers?: HeadersInit
   auth?: boolean
   retryUnauthorized?: boolean
+  responseType?: 'json' | 'blob'
 }
 
 export interface ApiClientOptions {
@@ -60,6 +61,7 @@ function fallbackProblem(response: Response, detail: string): Api.Problem {
     403: 'forbidden',
     404: 'not_found',
     409: 'conflict',
+    413: 'payload_too_large',
     429: 'rate_limited',
   }
 
@@ -146,12 +148,19 @@ export class ApiClient {
     headers.set('Accept', 'application/json')
 
     if (requestTokens) headers.set('Authorization', `Bearer ${requestTokens.access_token}`)
-    if (options.body !== undefined) headers.set('Content-Type', 'application/json')
+    const multipart = typeof FormData !== 'undefined' && options.body instanceof FormData
+    if (options.body !== undefined && !multipart) headers.set('Content-Type', 'application/json')
+
+    const body: BodyInit | undefined = options.body === undefined
+      ? undefined
+      : multipart
+        ? options.body as FormData
+        : JSON.stringify(options.body)
 
     const response = await this.#fetch(`${this.baseUrl}${path}`, {
       method: options.method ?? 'GET',
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body,
       credentials: 'same-origin',
     })
 
@@ -173,6 +182,7 @@ export class ApiClient {
 
     if (!response.ok) throw await responseToError(response)
     if (response.status === 204) return undefined as T
+    if (options.responseType === 'blob') return await response.blob() as T
 
     const text = await response.text()
     return (text.length === 0 ? undefined : JSON.parse(text)) as T
@@ -733,6 +743,16 @@ export class ApiClient {
     return this.#request(`/v1/support/tickets/${encodePath(ticketId)}/messages`, { method: 'POST', body: { message } })
   }
 
+  uploadSupportAttachment(ticketId: Api.UUID, messageId: Api.UUID, file: File): Promise<Api.SupportAttachment> {
+    const body = new FormData()
+    body.append('file', file)
+    return this.#request(`/v1/support/tickets/${encodePath(ticketId)}/messages/${encodePath(messageId)}/attachments`, { method: 'POST', body })
+  }
+
+  downloadSupportAttachment(ticketId: Api.UUID, attachmentId: Api.UUID): Promise<Blob> {
+    return this.#request(`/v1/support/tickets/${encodePath(ticketId)}/attachments/${encodePath(attachmentId)}`, { responseType: 'blob' })
+  }
+
   adminListUsers(query?: Api.ListQuery): Promise<Api.Page<Api.AdminUser>> {
     return this.#request(withQuery('/v1/admin/users', query))
   }
@@ -784,6 +804,16 @@ export class ApiClient {
 
   adminReplyTicket(ticketId: Api.UUID, input: { message: string; internal: boolean }): Promise<{ ticket: Api.SupportTicket; message: Api.SupportMessage }> {
     return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}/messages`, { method: 'POST', body: input })
+  }
+
+  adminUploadSupportAttachment(ticketId: Api.UUID, messageId: Api.UUID, file: File): Promise<Api.SupportAttachment> {
+    const body = new FormData()
+    body.append('file', file)
+    return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}/messages/${encodePath(messageId)}/attachments`, { method: 'POST', body })
+  }
+
+  adminDownloadSupportAttachment(ticketId: Api.UUID, attachmentId: Api.UUID): Promise<Blob> {
+    return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}/attachments/${encodePath(attachmentId)}`, { responseType: 'blob' })
   }
 
   adminListNotificationChannels(): Promise<Api.ItemList<Api.SupportNotificationChannel>> {

@@ -8,10 +8,12 @@ export type JsonObject = { [key: string]: JsonValue }
 export type ProblemCode =
   | 'invalid_request'
   | 'unauthorized'
+  | 'two_factor_required'
   | 'forbidden'
   | 'not_found'
   | 'conflict'
   | 'rate_limited'
+  | 'payload_too_large'
   | 'internal_error'
 
 export interface Problem {
@@ -885,6 +887,17 @@ export interface SupportMessage {
   author_role: 'user' | 'superadmin'
   body: string
   internal: boolean
+  created_at: ISODateTime
+  attachments: SupportAttachment[]
+}
+
+export interface SupportAttachment {
+  id: UUID
+  ticket_id: UUID
+  message_id: UUID
+  file_name: string
+  content_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | 'application/pdf'
+  size_bytes: number
   created_at: ISODateTime
 }
 
