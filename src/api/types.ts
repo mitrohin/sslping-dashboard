@@ -40,6 +40,7 @@ export interface User {
   timezone: string
   email_verified_at?: ISODateTime
   two_factor_enabled: boolean
+  system_role: 'user' | 'superadmin'
   created_at: ISODateTime
   updated_at: ISODateTime
 }
@@ -162,6 +163,10 @@ export interface MeResponse {
   user: User
   tenants: Workspace[]
   active_tenant_id: UUID
+  impersonation?: {
+    administrator_id: UUID
+    reason: string
+  }
 }
 
 export interface WorkspacePatch {
@@ -826,6 +831,79 @@ export interface AuditLog {
   ip?: string
   metadata?: JsonValue
   created_at: ISODateTime
+}
+
+export interface PlanLimits {
+  max_monitors: number
+  min_interval_seconds: number
+  max_team_members: number
+  max_status_pages: number
+  max_integrations: number
+  max_locations: number
+  data_retention_days: number
+}
+
+export interface Plan {
+  id: UUID
+  code: string
+  name: string
+  description?: string
+  price_monthly_cents: number
+  currency: string
+  public: boolean
+  active: boolean
+  limits: PlanLimits
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+export interface AdminUser extends User {
+  workspaces: Workspace[]
+}
+
+export type SupportTicketStatus = 'open' | 'in_progress' | 'waiting' | 'resolved' | 'closed'
+export type SupportTicketPriority = 'low' | 'normal' | 'high' | 'urgent'
+
+export interface SupportTicket {
+  id: UUID
+  workspace_id: UUID
+  created_by: UUID
+  assigned_to?: UUID
+  subject: string
+  status: SupportTicketStatus
+  priority: SupportTicketPriority
+  created_at: ISODateTime
+  updated_at: ISODateTime
+  last_reply_at: ISODateTime
+  closed_at?: ISODateTime
+}
+
+export interface SupportMessage {
+  id: UUID
+  ticket_id: UUID
+  author_id: UUID
+  author_role: 'user' | 'superadmin'
+  body: string
+  internal: boolean
+  created_at: ISODateTime
+}
+
+export interface SupportTicketDetail {
+  ticket: SupportTicket
+  messages: SupportMessage[]
+}
+
+export interface SupportNotificationChannel {
+  id: UUID
+  name: string
+  type: 'slack' | 'telegram' | 'webhook'
+  config?: JsonObject
+  active: boolean
+  created_by: UUID
+  last_delivery_at?: ISODateTime
+  last_delivery_error?: string
+  created_at: ISODateTime
+  updated_at: ISODateTime
 }
 
 export interface ListQuery {

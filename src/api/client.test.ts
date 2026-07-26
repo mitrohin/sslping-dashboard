@@ -147,4 +147,36 @@ describe('ApiClient', () => {
     await expect(client.me()).rejects.toMatchObject({ status: 401 })
     expect(store.getTokens()).toBeNull()
   })
+
+  it('uses the dedicated support and system-administration endpoints', async () => {
+    const store = new SessionStore(localStorage)
+    store.setTokens(oldTokens)
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/v1/admin/impersonations') return jsonResponse({ tokens: newTokens })
+      if (url === '/v1/support/tickets' || url === '/v1/admin/users' || url === '/v1/admin/plans') return jsonResponse({ items: [] })
+      return new Response(null, { status: 204 })
+    })
+    const client = new ApiClient({ sessionStore: store, fetch: fetchMock })
+
+    await client.listSupportTickets()
+    await client.adminListUsers()
+    await client.adminListPlans()
+    const tokens = await client.adminImpersonate({ user_id: 'user-1', workspace_id: 'workspace-1', reason: 'Investigating ticket SUP-42' })
+    await client.adminTestNotificationChannel('channel/id')
+
+    expect(tokens).toEqual(newTokens)
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/v1/support/tickets',
+      '/v1/admin/users',
+      '/v1/admin/plans',
+      '/v1/admin/impersonations',
+      '/v1/admin/notification-channels/channel%2Fid/actions/test',
+    ])
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ user_id: 'user-1', workspace_id: 'workspace-1', reason: 'Investigating ticket SUP-42' }),
+    })
+    expect(authorization(fetchMock.mock.calls[3]?.[1])).toBe('Bearer old-access')
+  })
 })

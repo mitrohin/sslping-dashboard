@@ -138,6 +138,10 @@ input::placeholder, textarea::placeholder { color: var(--muted-2); }
 .sidebar__mobile-close { display: none !important; }
 
 .app-main { min-height: 100vh; padding: 41px clamp(30px, 4vw, 70px) 80px; background: var(--bg); }
+.impersonation-banner { min-height: 48px; display: flex; align-items: center; gap: 11px; margin: -18px 0 28px; padding: 10px 14px; border: 1px solid rgb(244 165 43 / 28%); border-radius: var(--radius-sm); color: #dec999; background: rgb(244 165 43 / 8%); font-size: 13px; }
+.impersonation-banner svg { flex: 0 0 auto; color: var(--orange); }
+.impersonation-banner span { flex: 1; }
+.impersonation-banner button { padding: 7px 10px; border: 1px solid rgb(244 165 43 / 25%); border-radius: 7px; color: #f3dca5; background: rgb(244 165 43 / 8%); cursor: pointer; }
 .mobile-header { display: none; }
 .sidebar-backdrop { display: none; }
 .support-button {
@@ -160,7 +164,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-2); }
 
 .shell-dialog-copy { margin-bottom: 21px; color: var(--muted); line-height: 1.55; }
 .shell-dialog-copy p, .shell-dialog-notice { margin: 0; }
-.support-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.support-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .support-shortcuts button {
   min-width: 0;
   display: flex;

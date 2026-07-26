@@ -21,6 +21,7 @@ const user: User = {
   timezone: 'UTC',
   email_verified_at: '2026-01-01T00:00:00Z',
   two_factor_enabled: true,
+  system_role: 'user',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }

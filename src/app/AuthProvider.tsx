@@ -18,6 +18,7 @@ import type {
   User,
   UUID,
   Workspace,
+  MeResponse,
 } from '../api/types'
 
 export interface TwoFactorChallenge {
@@ -48,6 +49,7 @@ export interface AuthContextValue {
   emailVerificationRequired: boolean
   pendingVerificationEmail: string | null
   restorationError: Error | null
+  impersonation: MeResponse['impersonation'] | null
   login: (input: LoginRequest) => Promise<LoginOutcome>
   register: (input: RegisterRequest) => Promise<RegisterOutcome>
   complete2FA: (code: string) => Promise<void>
@@ -84,6 +86,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
   const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallenge | null>(null)
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null)
   const [restorationError, setRestorationError] = useState<Error | null>(null)
+  const [impersonation, setImpersonation] = useState<MeResponse['impersonation'] | null>(null)
 
   const clearIdentity = useCallback(() => {
     setUser(null)
@@ -91,6 +94,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
     setTenants([])
     setAuthenticated(false)
     setTwoFactorChallenge(null)
+    setImpersonation(null)
   }, [])
 
   const hydrateIdentity = useCallback(async () => {
@@ -103,6 +107,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
     setTwoFactorChallenge(null)
     setPendingVerificationEmail(null)
     setRestorationError(null)
+    setImpersonation(identity.impersonation ?? null)
     return identity
   }, [api])
 
@@ -124,6 +129,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
         setWorkspace(activeWorkspace)
         setAuthenticated(true)
         setRestorationError(null)
+        setImpersonation(identity.impersonation ?? null)
       } catch (error) {
         if (cancelled) return
         clearIdentity()
@@ -286,6 +292,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
       emailVerificationRequired: pendingVerificationEmail !== null,
       pendingVerificationEmail,
       restorationError,
+      impersonation,
       login,
       register,
       complete2FA,
@@ -311,6 +318,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
       register,
       requestEmailVerification,
       restorationError,
+      impersonation,
       tenants,
       twoFactorChallenge,
       user,
@@ -338,4 +346,12 @@ export function GuestOnly() {
   const { authenticated, loading } = useAuth()
   if (loading) return null
   return authenticated ? <Navigate to="/" replace /> : <Outlet />
+}
+
+export function RequireSystemAdmin() {
+  const { authenticated, loading, user, impersonation } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!authenticated) return <Navigate to="/login" replace state={{ from: location }} />
+  return user?.system_role === 'superadmin' && !impersonation ? <Outlet /> : <Navigate to="/monitors" replace />
 }

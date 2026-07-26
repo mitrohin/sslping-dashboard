@@ -12,6 +12,9 @@ Production-oriented Vite/React dashboard for the SSLPing monitoring platform. It
 - team invitations and member management;
 - Slack, Telegram, webhook and other notification integrations;
 - API keys, audit-ready models and responsive public status pages;
+- customer support tickets with threaded replies;
+- a role-protected system-administration console for users, workspaces,
+  enforceable plan limits, audited support impersonation and support alerts;
 - GDPR cookie preferences and status-page subscription consent;
 - desktop, tablet and mobile layouts with keyboard-accessible controls.
 
@@ -58,6 +61,8 @@ The test suite covers API/session behavior, auth flows, monitor mappings, live d
 - `/monitors`, `/monitors/:monitorId`, `/monitors/:monitorId/edit`
 - `/incidents`, `/status-pages`, `/status-pages/:statusPageId/edit`
 - `/maintenance`, `/team`, `/integrations`
+- `/support` for customer tickets
+- `/admin` for system administrators only
 - `/status/:slug` for public status pages
 - `/demo` for the local product preview
 

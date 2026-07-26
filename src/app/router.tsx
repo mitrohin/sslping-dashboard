@@ -9,7 +9,7 @@ import {
   TwoFactorController,
 } from '../features/auth/AuthFlows'
 import { DashboardGate, DemoEntry } from './DashboardGate'
-import { GuestOnly } from './AuthProvider'
+import { GuestOnly, RequireSystemAdmin } from './AuthProvider'
 import { demoPublicStatusApi } from './demoPublicStatus'
 
 const LiveMonitorsPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorsPage })))
@@ -22,6 +22,8 @@ const LiveStatusPagesPage = lazy(() => import('./LiveOperations').then((module) 
 const LiveStatusPageEditorPage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveStatusPageEditorPage })))
 const LiveIntegrationsPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveIntegrationsPage })))
 const LiveTeamPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveTeamPage })))
+const SupportPage = lazy(() => import('../features/support/SupportPage').then((module) => ({ default: module.SupportPage })))
+const AdminConsolePage = lazy(() => import('../features/admin/AdminConsolePage').then((module) => ({ default: module.AdminConsolePage })))
 
 function RouteSuspense({ children }: { children: ReactNode }) {
   return (
@@ -57,6 +59,8 @@ const dashboardChildren = [
   { path: 'maintenance', element: <RouteSuspense><LiveMaintenancePage /></RouteSuspense> },
   { path: 'team', element: <RouteSuspense><LiveTeamPage /></RouteSuspense> },
   { path: 'integrations', element: <RouteSuspense><LiveIntegrationsPage /></RouteSuspense> },
+  { path: 'support', element: <RouteSuspense><SupportPage /></RouteSuspense> },
+  { element: <RequireSystemAdmin />, children: [{ path: 'admin', element: <RouteSuspense><AdminConsolePage /></RouteSuspense> }] },
 ]
 
 export const router = createBrowserRouter([

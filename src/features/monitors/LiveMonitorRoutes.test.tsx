@@ -39,6 +39,7 @@ const user: User = {
   locale: 'en',
   timezone: 'UTC',
   two_factor_enabled: false,
+  system_role: 'user',
   created_at: now,
   updated_at: now,
 }

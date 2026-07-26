@@ -716,4 +716,93 @@ export class ApiClient {
   listAuditLogs(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.Page<Api.AuditLog>> {
     return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/audit-logs`, query))
   }
+
+  listSupportTickets(query?: Api.ListQuery): Promise<Api.Page<Api.SupportTicket>> {
+    return this.#request(withQuery('/v1/support/tickets', query))
+  }
+
+  createSupportTicket(input: { subject: string; priority: Api.SupportTicketPriority; message: string }): Promise<Api.SupportTicketDetail> {
+    return this.#request('/v1/support/tickets', { method: 'POST', body: input })
+  }
+
+  getSupportTicket(ticketId: Api.UUID): Promise<Api.SupportTicketDetail> {
+    return this.#request(`/v1/support/tickets/${encodePath(ticketId)}`)
+  }
+
+  replySupportTicket(ticketId: Api.UUID, message: string): Promise<{ ticket: Api.SupportTicket; message: Api.SupportMessage }> {
+    return this.#request(`/v1/support/tickets/${encodePath(ticketId)}/messages`, { method: 'POST', body: { message } })
+  }
+
+  adminListUsers(query?: Api.ListQuery): Promise<Api.Page<Api.AdminUser>> {
+    return this.#request(withQuery('/v1/admin/users', query))
+  }
+
+  adminGetUser(userId: Api.UUID): Promise<Api.AdminUser> {
+    return this.#request(`/v1/admin/users/${encodePath(userId)}`)
+  }
+
+  adminUpdateUser(userId: Api.UUID, input: Partial<Pick<Api.User, 'name' | 'locale' | 'timezone' | 'system_role'>> & { email_verified?: boolean; revoke_sessions?: boolean }): Promise<Api.User> {
+    return this.#request(`/v1/admin/users/${encodePath(userId)}`, { method: 'PATCH', body: input })
+  }
+
+  adminUpdateWorkspace(workspaceId: Api.UUID, input: { name?: string; timezone?: string; plan?: string }): Promise<Api.Workspace> {
+    return this.#request(`/v1/admin/workspaces/${encodePath(workspaceId)}`, { method: 'PATCH', body: input })
+  }
+
+  async adminImpersonate(input: { user_id: Api.UUID; workspace_id: Api.UUID; reason: string }): Promise<Api.Tokens> {
+    const result = await this.#request<{ tokens: Api.Tokens }>('/v1/admin/impersonations', { method: 'POST', body: input })
+    return result.tokens
+  }
+
+  adminListPlans(): Promise<Api.ItemList<Api.Plan>> {
+    return this.#request('/v1/admin/plans')
+  }
+
+  adminCreatePlan(plan: Omit<Api.Plan, 'id' | 'created_at' | 'updated_at'>): Promise<Api.Plan> {
+    return this.#request('/v1/admin/plans', { method: 'POST', body: plan })
+  }
+
+  adminUpdatePlan(plan: Api.Plan): Promise<Api.Plan> {
+    return this.#request(`/v1/admin/plans/${encodePath(plan.id)}`, { method: 'PATCH', body: plan })
+  }
+
+  adminDeletePlan(planId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/admin/plans/${encodePath(planId)}`, { method: 'DELETE' })
+  }
+
+  adminListTickets(query?: Api.ListQuery): Promise<Api.Page<Api.SupportTicket>> {
+    return this.#request(withQuery('/v1/admin/tickets', query))
+  }
+
+  adminGetTicket(ticketId: Api.UUID): Promise<Api.SupportTicketDetail> {
+    return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}`)
+  }
+
+  adminUpdateTicket(ticketId: Api.UUID, input: { assigned_to?: Api.UUID; status: Api.SupportTicketStatus; priority: Api.SupportTicketPriority }): Promise<Api.SupportTicket> {
+    return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}`, { method: 'PATCH', body: input })
+  }
+
+  adminReplyTicket(ticketId: Api.UUID, input: { message: string; internal: boolean }): Promise<{ ticket: Api.SupportTicket; message: Api.SupportMessage }> {
+    return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}/messages`, { method: 'POST', body: input })
+  }
+
+  adminListNotificationChannels(): Promise<Api.ItemList<Api.SupportNotificationChannel>> {
+    return this.#request('/v1/admin/notification-channels')
+  }
+
+  adminCreateNotificationChannel(input: { name: string; type: Api.SupportNotificationChannel['type']; config: Api.JsonObject }): Promise<Api.SupportNotificationChannel> {
+    return this.#request('/v1/admin/notification-channels', { method: 'POST', body: input })
+  }
+
+  adminUpdateNotificationChannel(channelId: Api.UUID, input: { name: string; active: boolean; config?: Api.JsonObject }): Promise<Api.SupportNotificationChannel> {
+    return this.#request(`/v1/admin/notification-channels/${encodePath(channelId)}`, { method: 'PATCH', body: input })
+  }
+
+  adminDeleteNotificationChannel(channelId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/admin/notification-channels/${encodePath(channelId)}`, { method: 'DELETE' })
+  }
+
+  adminTestNotificationChannel(channelId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/admin/notification-channels/${encodePath(channelId)}/actions/test`, { method: 'POST' })
+  }
 }

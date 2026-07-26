@@ -97,6 +97,7 @@ const user: User = {
   locale: 'en',
   timezone: 'UTC',
   two_factor_enabled: true,
+  system_role: 'user',
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: now,
 }

@@ -11,6 +11,7 @@ import {
   Mail,
   Menu,
   RadioTower,
+  Shield,
   ShieldAlert,
   Sparkles,
   Users,
@@ -20,6 +21,7 @@ import {
 import { Button, IconButton, Modal } from './ui'
 import { useAuth } from '../app/AuthProvider'
 import { endDemoSession, isDemoSession } from '../app/DashboardGate'
+import { clearAdministratorSessionBackup, restoreAdministratorSession } from '../app/impersonation'
 
 const navItems = [
   { to: '/monitors', label: 'Monitoring', icon: CircleGauge },
@@ -28,6 +30,7 @@ const navItems = [
   { to: '/maintenance', label: 'Maintenance', icon: Wrench },
   { to: '/team', label: 'Team members', icon: Users },
   { to: '/integrations', label: 'Integrations & API', icon: Activity },
+  { to: '/support', label: 'Support tickets', icon: LifeBuoy },
 ]
 
 export function Brand({ compact = false }: { compact?: boolean }) {
@@ -44,7 +47,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
-  const { user, workspace, authenticated, logout } = useAuth()
+  const { api, user, workspace, authenticated, logout, impersonation } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const demo = !authenticated && isDemoSession()
@@ -58,6 +61,9 @@ export function AppShell() {
   const currentPlan = workspace?.plan || (demo ? 'demo' : 'free')
   const planLabel = currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1).replaceAll('_', ' ')
   const salesSubject = encodeURIComponent(`SSLPing plan enquiry — ${workspace?.name || 'workspace'}`)
+  const availableNavItems = user?.system_role === 'superadmin' && !impersonation
+    ? [...navItems, { to: '/admin', label: 'System administration', icon: Shield }]
+    : navItems
 
   const openSupportRoute = (path: string) => {
     setSupportOpen(false)
@@ -67,8 +73,13 @@ export function AppShell() {
 
   const signOut = async () => {
     endDemoSession()
+    clearAdministratorSessionBackup()
     if (authenticated) await logout()
     navigate('/login', { replace: true })
+  }
+
+  const leaveImpersonation = () => {
+    if (restoreAdministratorSession(api)) window.location.assign('/admin')
   }
 
   return (
@@ -89,7 +100,7 @@ export function AppShell() {
           </IconButton>
         </div>
         <nav className="sidebar__nav" aria-label="Primary">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {availableNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -134,6 +145,13 @@ export function AppShell() {
       </aside>
 
       <main className="app-main">
+        {impersonation && (
+          <div className="impersonation-banner" role="status">
+            <Shield size={18} />
+            <span>Support session: acting as <strong>{displayName}</strong> · {impersonation.reason}</span>
+            <button type="button" onClick={leaveImpersonation}>Return to administration</button>
+          </div>
+        )}
         <Outlet />
       </main>
 
@@ -163,6 +181,10 @@ export function AppShell() {
             <Wrench size={21} />
             <span><strong>Review maintenance</strong><small>Confirm that planned work is configured correctly.</small></span>
           </button>
+          <button type="button" onClick={() => openSupportRoute('/support')}>
+            <LifeBuoy size={21} />
+            <span><strong>Contact SSLPing support</strong><small>Create a ticket or continue an existing conversation.</small></span>
+          </button>
         </div>
         <section className="diagnostic-summary" aria-labelledby="diagnostic-summary-title">
           <div>
@@ -176,7 +198,7 @@ export function AppShell() {
             <div><dt>Current page</dt><dd>{location.pathname}</dd></div>
           </dl>
         </section>
-        <p className="shell-dialog-notice">This panel does not create a support ticket. It is safe to close at any time.</p>
+        <p className="shell-dialog-notice">Account data is shared with support only when you explicitly create a ticket.</p>
         <div className="shell-dialog-actions">
           <Button variant="secondary" onClick={() => setSupportOpen(false)}>Close</Button>
         </div>
