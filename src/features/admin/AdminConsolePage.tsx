@@ -238,7 +238,36 @@ function PlansSection({ plans, onCreate, onEdit, onDelete }: { plans: Plan[]; on
 
 function TicketsSection({ tickets, users, busy, onOpen }: { tickets: SupportTicket[]; users: AdminUser[]; busy: boolean; onOpen: (ticket: SupportTicket) => void }) {
   const userName = (id: string) => users.find((entry) => entry.id === id)?.name ?? id.slice(0, 8)
-  return <Panel className="admin-table-panel"><div className="account-table-wrap"><table className="account-table"><thead><tr><th>Ticket</th><th>Customer</th><th>Priority</th><th>Status</th><th>Last activity</th><th /></tr></thead><tbody>{tickets.map((ticket) => <tr key={ticket.id}><td><strong>{ticket.subject}</strong><small>{ticket.id}</small></td><td>{userName(ticket.created_by)}</td><td><Badge tone={ticket.priority === 'urgent' ? 'danger' : ticket.priority === 'high' ? 'warning' : 'neutral'}>{ticket.priority}</Badge></td><td><Badge tone={statusTone(ticket.status)}>{ticket.status.replace('_', ' ')}</Badge></td><td>{formatDate(ticket.last_reply_at)}</td><td><Button size="sm" variant="secondary" disabled={busy} onClick={() => void onOpen(ticket)}>Open conversation</Button></td></tr>)}</tbody></table></div></Panel>
+  return <Panel className="admin-ticket-list-panel">
+    {tickets.length > 0 && <div className="admin-ticket-list-heading" aria-hidden="true">
+      <span>Ticket & customer</span>
+      <span>State</span>
+      <span>Last activity</span>
+      <span>Actions</span>
+    </div>}
+    {tickets.length === 0 ? <div className="admin-tickets-empty"><MessageSquare size={30} /><strong>No support tickets</strong><span>New customer conversations will appear here.</span></div> : (
+      <div className="admin-ticket-list" role="list">
+        {tickets.map((ticket) => <article className="admin-ticket-row" role="listitem" key={ticket.id}>
+          <div className="admin-ticket-identity">
+            <strong>{ticket.subject}</strong>
+            <small title={ticket.id}>{ticket.id}</small>
+            <span>Customer · {userName(ticket.created_by)}</span>
+          </div>
+          <div className="admin-ticket-state admin-ticket-cell" data-label="State">
+            <Badge tone={ticket.priority === 'urgent' ? 'danger' : ticket.priority === 'high' ? 'warning' : 'neutral'}>{ticket.priority}</Badge>
+            <Badge tone={statusTone(ticket.status)}>{ticket.status.replace('_', ' ')}</Badge>
+          </div>
+          <div className="admin-ticket-activity admin-ticket-cell" data-label="Last activity">
+            <small>Last activity</small>
+            <time dateTime={ticket.last_reply_at}>{formatDate(ticket.last_reply_at)}</time>
+          </div>
+          <div className="admin-ticket-actions admin-ticket-cell" data-label="Actions">
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void onOpen(ticket)}>Open conversation</Button>
+          </div>
+        </article>)}
+      </div>
+    )}
+  </Panel>
 }
 
 function NotificationsSection({ channels, onCreate, onTest, onToggle, onDelete }: { channels: SupportNotificationChannel[]; onCreate: () => void; onTest: (channel: SupportNotificationChannel) => void; onToggle: (channel: SupportNotificationChannel) => void; onDelete: (channel: SupportNotificationChannel) => void }) {
