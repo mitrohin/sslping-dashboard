@@ -11,6 +11,7 @@ import {
   KeyRound,
   LockKeyhole,
   Network,
+  Plus,
   Radio,
   ServerCog,
   X,
@@ -142,28 +143,41 @@ export function MonitorForm({
   const [draft, setDraft] = useState<MonitorDraft>(initialValue)
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [tagInput, setTagInput] = useState(draft.tags.join(', '))
+  const [selectedTagValues, setSelectedTagValues] = useState<string[]>([...draft.tags])
+  const [tagPickerOpen, setTagPickerOpen] = useState(false)
+  const [tagQuery, setTagQuery] = useState('')
   const [statusPickerOpen, setStatusPickerOpen] = useState(false)
   const [statusQuery, setStatusQuery] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const tagPickerRef = useRef<HTMLDivElement>(null)
   const statusPickerRef = useRef<HTMLDivElement>(null)
 
-  const selectedTags = useMemo(() => tagInput.split(',').map((tag) => tag.trim()).filter(Boolean), [tagInput])
-  const currentTagQuery = tagInput.split(',').at(-1)?.trim().toLocaleLowerCase() ?? ''
   const tagSuggestions = useMemo(() => {
-    const selected = new Set(selectedTags.map((tag) => tag.toLocaleLowerCase()))
+    const selected = new Set(selectedTagValues.map((tag) => tag.toLocaleLowerCase()))
+    const query = tagQuery.trim().toLocaleLowerCase()
     return [...new Set(availableTags.map((tag) => tag.trim()).filter(Boolean))]
       .filter((tag) => !selected.has(tag.toLocaleLowerCase()))
-      .map((tag) => ({ tag, score: tagMatchScore(tag, currentTagQuery) }))
+      .map((tag) => ({ tag, score: tagMatchScore(tag, query) }))
       .filter(({ score }) => score > 0)
       .sort((left, right) => right.score - left.score || left.tag.localeCompare(right.tag))
-      .slice(0, 8)
-  }, [availableTags, currentTagQuery, selectedTags])
+      .slice(0, 20)
+  }, [availableTags, selectedTagValues, tagQuery])
+  const canCreateTag = tagQuery.trim().length > 0
+    && ![...availableTags, ...selectedTagValues].some((tag) => tag.toLocaleLowerCase() === tagQuery.trim().toLocaleLowerCase())
   const filteredStatusCodes = useMemo(() => {
     const query = statusQuery.trim().toLocaleLowerCase()
     if (!query) return knownHttpStatusCodes
     return knownHttpStatusCodes.filter(([code, label]) => `${code} ${label}`.toLocaleLowerCase().includes(query))
   }, [statusQuery])
+
+  useEffect(() => {
+    if (!tagPickerOpen) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!tagPickerRef.current?.contains(event.target as Node)) setTagPickerOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
+  }, [tagPickerOpen])
 
   useEffect(() => {
     if (!statusPickerOpen) return
@@ -180,9 +194,11 @@ export function MonitorForm({
     : creatableMonitorTypes
   const set = <K extends keyof MonitorDraft>(key: K, value: MonitorDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
 
-  const addSuggestedTag = (tag: string) => {
-    const completed = tagInput.split(',').slice(0, -1).map((value) => value.trim()).filter(Boolean)
-    setTagInput(`${[...new Set([...completed, tag])].join(', ')}, `)
+  const addTag = (tag: string) => {
+    const value = tag.trim()
+    if (!value || selectedTagValues.some((selected) => selected.toLocaleLowerCase() === value.toLocaleLowerCase())) return
+    setSelectedTagValues((selected) => [...selected, value])
+    setTagQuery('')
   }
 
   const acceptedRuleCount = draft.allowedStatusClasses.length + draft.allowedStatusCodes.length
@@ -202,7 +218,7 @@ export function MonitorForm({
     setSaving(true)
     setSubmitError(null)
     try {
-      await onSubmit({ ...draft, tags: tagInput.split(',').map((tag) => tag.trim()).filter(Boolean) })
+      await onSubmit({ ...draft, tags: selectedTagValues })
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'The monitor could not be saved.')
     } finally {
@@ -287,10 +303,40 @@ export function MonitorForm({
 
         <div className="form-grid monitor-form__conditional">
           <Field label="Group"><Select value={draft.group} onChange={(event) => set('group', event.target.value)}><option>Monitors</option><option>Production</option><option>Core API</option><option>Infrastructure</option><option>Security</option></Select></Field>
-          <Field label="Tags" hint="Type a new tag or choose an existing workspace tag.">
-            <div className="tag-editor">
-              <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} placeholder="production, critical" autoComplete="off" />
-              {tagSuggestions.length > 0 && <div className="tag-suggestions" aria-label="Existing tag suggestions">{tagSuggestions.map(({ tag }) => <button type="button" key={tag} onMouseDown={(event) => event.preventDefault()} onClick={() => addSuggestedTag(tag)}>{tag}</button>)}</div>}
+          <Field label="Tags" hint="Choose an existing tag or create a new one.">
+            <div className="tag-picker" ref={tagPickerRef}>
+              <div
+                className={`tag-picker__control${tagPickerOpen ? ' is-open' : ''}`}
+                data-testid="tag-picker-control"
+                tabIndex={0}
+                aria-label="Monitor tags"
+                aria-haspopup="listbox"
+                aria-expanded={tagPickerOpen}
+                onClick={(event) => {
+                  event.preventDefault()
+                  setTagPickerOpen((open) => !open)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setTagPickerOpen((open) => !open)
+                  } else if (event.key === 'Escape') setTagPickerOpen(false)
+                }}
+              >
+                <div className="tag-picker__chips">
+                  {selectedTagValues.map((tag) => <span className="tag-chip" key={tag}><strong>{tag}</strong><button type="button" aria-label={`Remove tag ${tag}`} onClick={(event) => { event.stopPropagation(); setSelectedTagValues((selected) => selected.filter((value) => value !== tag)) }}><X size={13} /></button></span>)}
+                  <span className="tag-picker__placeholder">Add tag…</span>
+                </div>
+                <ChevronDown size={17} aria-hidden="true" />
+              </div>
+              {tagPickerOpen && (
+                <div className="tag-picker__menu" role="listbox" aria-label="Workspace tags">
+                  <input aria-label="Filter or create tags" value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} onClick={(event) => event.stopPropagation()} placeholder="Search or create a tag…" autoFocus />
+                  {tagSuggestions.map(({ tag }) => <button type="button" role="option" aria-selected="false" key={tag} onClick={() => addTag(tag)}><span>{tag}</span><small>Existing tag</small></button>)}
+                  {canCreateTag && <button type="button" role="option" aria-selected="false" className="tag-picker__create" onClick={() => addTag(tagQuery)}><Plus size={14} /><span>Create “{tagQuery.trim()}”</span></button>}
+                  {tagSuggestions.length === 0 && !canCreateTag && <p>No more workspace tags.</p>}
+                </div>
+              )}
             </div>
           </Field>
         </div>

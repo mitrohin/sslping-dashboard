@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MonitorForm, defaultMonitorDraft, type MonitorDraft } from './MonitorForm'
 
@@ -31,13 +31,26 @@ describe('MonitorForm legacy monitor compatibility', () => {
     const onSubmit = vi.fn()
     render(<MonitorForm initialValue={{ ...defaultMonitorDraft, name: 'API', target: 'https://example.com' }} availableTags={['production', 'critical', 'payments']} onSubmit={onSubmit} />)
 
-    const tags = screen.getByRole('textbox', { name: /tags/i })
+    fireEvent.click(screen.getByTestId('tag-picker-control'))
+    const tags = screen.getByRole('textbox', { name: 'Filter or create tags' })
+    const tagList = screen.getByRole('listbox', { name: 'Workspace tags' })
     fireEvent.change(tags, { target: { value: 'prod' } })
-    expect(screen.getByRole('button', { name: 'production' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'critical' })).not.toBeInTheDocument()
+    expect(within(tagList).getByRole('option', { name: /production/i })).toBeInTheDocument()
+    expect(within(tagList).queryByRole('option', { name: /critical/i })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'production' }))
-    fireEvent.change(tags, { target: { value: 'production, custom' } })
+    fireEvent.click(within(tagList).getByRole('option', { name: /production/i }))
+    fireEvent.change(tags, { target: { value: 'custom' } })
+    fireEvent.click(within(tagList).getByRole('option', { name: /create “custom”/i }))
+    expect(screen.getByRole('button', { name: 'Remove tag production' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove tag custom' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('tag-picker-control'))
+    expect(screen.getByRole('button', { name: 'Remove tag custom' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag custom' }))
+    expect(screen.queryByRole('button', { name: 'Remove tag custom' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('tag-picker-control'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter or create tags' }), { target: { value: 'custom' } })
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Workspace tags' })).getByRole('option', { name: /create “custom”/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Create monitor' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['production', 'custom'] })))
