@@ -329,7 +329,25 @@ describe('LiveIncidentsPage', () => {
     mocks.api.listMonitors.mockResolvedValue({ items: [monitor] })
     mocks.api.listIncidents.mockResolvedValue({ items: [incident] })
     mocks.api.listMembers.mockResolvedValue({ items: [membership] })
-    mocks.api.listIncidentComments.mockResolvedValue({ items: [{ id: 'comment-1' }] })
+    mocks.api.listIncidentComments.mockResolvedValue({
+      items: [
+        {
+          id: 'comment-1',
+          incident_id: incident.id,
+          status: 'investigating',
+          message: 'Connection timeout confirmed',
+          created_at: incident.started_at,
+        },
+        {
+          id: 'comment-2',
+          incident_id: incident.id,
+          status: 'investigating',
+          message: 'Checking the upstream provider',
+          created_by: user.id,
+          created_at: now,
+        },
+      ],
+    })
     mocks.api.acknowledgeIncident.mockResolvedValue(incident)
     mocks.api.assignIncident.mockResolvedValue(incident)
     mocks.api.addIncidentComment.mockResolvedValue({ id: 'comment-2' })
@@ -343,9 +361,19 @@ describe('LiveIncidentsPage', () => {
       id: incident.id,
       monitorName: monitor.name,
       assignedTo: user.name,
-      commentCount: 1,
+      commentCount: 2,
       rootCauseCode: 'T/O',
     })
+    expect(props.initialComments?.[incident.id]).toEqual([
+      expect.objectContaining({
+        author: 'Incident opened',
+        message: 'Connection timeout confirmed',
+      }),
+      expect.objectContaining({
+        author: user.name,
+        message: 'Checking the upstream provider',
+      }),
+    ])
     expect(props.monitors?.[0].target).toBe('https://api.example.com/health')
     expect(props.members?.[0]).toMatchObject({ id: user.id, role: 'admin' })
 

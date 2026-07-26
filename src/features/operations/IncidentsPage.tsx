@@ -29,12 +29,14 @@ export interface IncidentCommentViewModel {
   author: string
   message: string
   createdAt: string
+  status?: IncidentStatus
 }
 
 export interface IncidentsPageProps {
   incidents?: readonly IncidentViewModel[]
   monitors?: readonly MonitorViewModel[]
   members?: readonly TeamMemberViewModel[]
+  initialComments?: Readonly<Record<string, readonly IncidentCommentViewModel[]>>
   onAcknowledge?: (incidentId: string) => MaybePromise<void>
   onAssign?: (incidentId: string, memberId: string) => MaybePromise<void>
   onComment?: (incidentId: string, message: string) => MaybePromise<void>
@@ -59,6 +61,7 @@ export function IncidentsPage({
   incidents: initialIncidents = demoIncidents,
   monitors = demoMonitors,
   members = demoTeamMembers,
+  initialComments = {},
   onAcknowledge,
   onAssign,
   onComment,
@@ -72,7 +75,7 @@ export function IncidentsPage({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [acknowledged, setAcknowledged] = useState<ReadonlySet<string>>(() => new Set())
   const [assignments, setAssignments] = useState<Readonly<Record<string, string>>>({})
-  const [comments, setComments] = useState<Readonly<Record<string, readonly IncidentCommentViewModel[]>>>({})
+  const [comments, setComments] = useState<Readonly<Record<string, readonly IncidentCommentViewModel[]>>>(() => initialComments)
   const [commentDraft, setCommentDraft] = useState('')
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
@@ -113,6 +116,7 @@ export function IncidentsPage({
   }, [incidents, monitorById, query, sort, status, tag])
 
   const selected = selectedId ? incidents.find((incident) => incident.id === selectedId) : undefined
+  const selectedComments = selected ? comments[selected.id] ?? [] : []
   const selectedAssignment = selected
     ? assignments[selected.id] ?? members.find((member) => member.name === selected.assignedTo)?.id ?? ''
     : ''
@@ -170,7 +174,8 @@ export function IncidentsPage({
           id: makeId(),
           author: 'You',
           message,
-          createdAt: DEMO_NOW,
+          createdAt: new Date().toISOString(),
+          status: selected.status,
         }
         setComments((current) => ({
           ...current,
@@ -347,21 +352,26 @@ export function IncidentsPage({
 
             <section className="ops-timeline">
               <h3>Timeline</h3>
-              <div className="ops-timeline__item">
-                <span className="ops-timeline__marker" />
-                <div><strong>Incident opened</strong><span>{formatDate(selected.startedAt, { includeSeconds: true })}</span><p>{selected.rootCause}</p></div>
-              </div>
-              {(comments[selected.id] ?? []).map((comment) => (
-                <div className="ops-timeline__item" key={comment.id}>
-                  <span className="ops-timeline__marker" />
-                  <div><strong>{comment.author}</strong><span>{formatDate(comment.createdAt, { includeSeconds: true })}</span><p>{comment.message}</p></div>
-                </div>
-              ))}
-              {selected.resolvedAt && (
-                <div className="ops-timeline__item">
-                  <span className="ops-timeline__marker ops-timeline__marker--success" />
-                  <div><strong>Incident resolved</strong><span>{formatDate(selected.resolvedAt, { includeSeconds: true })}</span></div>
-                </div>
+              {selectedComments.length > 0 ? (
+                selectedComments.map((comment) => (
+                  <div className="ops-timeline__item" key={comment.id}>
+                    <span className={`ops-timeline__marker${comment.status === 'resolved' ? ' ops-timeline__marker--success' : ''}`} />
+                    <div><strong>{comment.author}</strong><span>{formatDate(comment.createdAt, { includeSeconds: true })}</span><p>{comment.message}</p></div>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="ops-timeline__item">
+                    <span className="ops-timeline__marker" />
+                    <div><strong>Incident opened</strong><span>{formatDate(selected.startedAt, { includeSeconds: true })}</span><p>{selected.rootCause}</p></div>
+                  </div>
+                  {selected.resolvedAt && (
+                    <div className="ops-timeline__item">
+                      <span className="ops-timeline__marker ops-timeline__marker--success" />
+                      <div><strong>Incident resolved</strong><span>{formatDate(selected.resolvedAt, { includeSeconds: true })}</span></div>
+                    </div>
+                  )}
+                </>
               )}
             </section>
 

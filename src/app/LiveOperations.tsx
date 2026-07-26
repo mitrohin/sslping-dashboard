@@ -12,6 +12,7 @@ import type {
   StatusPageUpdateRequest,
 } from '../api/types'
 import { Button, Panel } from '../components/ui'
+import { formatStatus } from '../lib/format'
 import {
   demoStatusPages,
   type IncidentViewModel,
@@ -26,6 +27,7 @@ import {
   StatusPageEditorPage,
   StatusPagesPage,
   type MaintenanceWindowInput,
+  type IncidentCommentViewModel,
   type StatusPageAnnouncementInput,
   type StatusPageAnnouncementViewModel,
   type StatusPageCreateInput,
@@ -110,6 +112,7 @@ interface IncidentData {
   incidents: readonly IncidentViewModel[]
   monitors: readonly MonitorViewModel[]
   members: readonly TeamMemberViewModel[]
+  comments: Readonly<Record<string, readonly IncidentCommentViewModel[]>>
 }
 
 function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceId?: string }) {
@@ -123,15 +126,26 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
     const memberships = memberList.items ?? []
     const monitorById = new Map(rawMonitors.map((monitor) => [monitor.id, monitor]))
     const memberById = new Map(memberships.map((membership) => [membership.user_id, membership]))
-    const commentCounts = new Map<string, number>()
+    const commentsByIncident = new Map<string, readonly IncidentCommentViewModel[]>()
 
     await Promise.all(
       (incidentPage.items ?? []).map(async (incident) => {
         try {
-          const comments = await api.listIncidentComments(activeWorkspaceId, incident.id)
-          commentCounts.set(incident.id, comments.items?.length ?? 0)
+          const response = await api.listIncidentComments(activeWorkspaceId, incident.id)
+          const updates = response.items ?? []
+          commentsByIncident.set(incident.id, updates.map((update, index) => {
+            const author = update.created_by ? memberById.get(update.created_by)?.user?.name : undefined
+            const isOpeningUpdate = index === 0 && !update.created_by
+            return {
+              id: update.id,
+              author: author ?? (update.status === 'resolved' ? 'Incident resolved' : isOpeningUpdate ? 'Incident opened' : formatStatus(update.status)),
+              message: update.message,
+              createdAt: update.created_at,
+              status: update.status,
+            }
+          }))
         } catch {
-          commentCounts.set(incident.id, 0)
+          commentsByIncident.set(incident.id, [])
         }
       }),
     )
@@ -139,12 +153,13 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
     return {
       monitors: rawMonitors.map((monitor) => toMonitorViewModel(monitor)),
       members: memberships.map((membership) => toTeamMemberViewModel(membership)),
+      comments: Object.fromEntries(commentsByIncident),
       incidents: (incidentPage.items ?? []).map((incident) => {
         const membership = incident.assigned_to ? memberById.get(incident.assigned_to) : undefined
         return toIncidentViewModel(incident, {
           monitor: monitorById.get(incident.monitor_id),
           assignee: membership?.user,
-          commentCount: commentCounts.get(incident.id),
+          commentCount: commentsByIncident.get(incident.id)?.length,
         })
       }),
     }
@@ -164,6 +179,7 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
       incidents={state.data.incidents}
       monitors={state.data.monitors}
       members={state.data.members}
+      initialComments={state.data.comments}
       onAcknowledge={(incidentId) => api.acknowledgeIncident(requireWorkspace(), incidentId).then(() => undefined)}
       onAssign={(incidentId, memberId) => api.assignIncident(requireWorkspace(), incidentId, memberId).then(() => undefined)}
       onComment={(incidentId, message) => api.addIncidentComment(requireWorkspace(), incidentId, message).then(() => undefined)}
