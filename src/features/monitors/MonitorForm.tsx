@@ -1,7 +1,9 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   Activity,
   Braces,
+  Check,
+  ChevronDown,
   Clock3,
   DatabaseZap,
   Globe2,
@@ -141,8 +143,10 @@ export function MonitorForm({
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
   const [tagInput, setTagInput] = useState(draft.tags.join(', '))
-  const [statusPickerValue, setStatusPickerValue] = useState('')
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false)
+  const [statusQuery, setStatusQuery] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const statusPickerRef = useRef<HTMLDivElement>(null)
 
   const selectedTags = useMemo(() => tagInput.split(',').map((tag) => tag.trim()).filter(Boolean), [tagInput])
   const currentTagQuery = tagInput.split(',').at(-1)?.trim().toLocaleLowerCase() ?? ''
@@ -155,6 +159,20 @@ export function MonitorForm({
       .sort((left, right) => right.score - left.score || left.tag.localeCompare(right.tag))
       .slice(0, 8)
   }, [availableTags, currentTagQuery, selectedTags])
+  const filteredStatusCodes = useMemo(() => {
+    const query = statusQuery.trim().toLocaleLowerCase()
+    if (!query) return knownHttpStatusCodes
+    return knownHttpStatusCodes.filter(([code, label]) => `${code} ${label}`.toLocaleLowerCase().includes(query))
+  }, [statusQuery])
+
+  useEffect(() => {
+    if (!statusPickerOpen) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!statusPickerRef.current?.contains(event.target as Node)) setStatusPickerOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
+  }, [statusPickerOpen])
 
   const selectedType = useMemo(() => monitorTypes.find((item) => item.value === draft.type)!, [draft.type])
   const visibleMonitorTypes = lockType
@@ -318,20 +336,50 @@ export function MonitorForm({
                 <div className="form-grid">
                   <Field label="Authentication"><Select><option>None</option><option>Basic auth</option><option>Bearer token</option></Select></Field>
                   <Field label="Accepted HTTP codes" hint="A response is up when it matches any selected class or exact code.">
-                    <div className="http-status-editor">
-                      <div className="http-status-editor__chips">
-                        {draft.allowedStatusClasses.map((statusClass) => <span key={`class-${statusClass}`} className={`http-status-chip http-status-chip--${statusClass}`}><strong>{statusClass}xx</strong><button type="button" aria-label={`Remove ${statusClass}xx`} disabled={acceptedRuleCount === 1} onClick={() => set('allowedStatusClasses', draft.allowedStatusClasses.filter((value) => value !== statusClass))}><X size={13} /></button></span>)}
-                        {draft.allowedStatusCodes.map((statusCode) => <span key={`code-${statusCode}`} className={`http-status-chip http-status-chip--${Math.floor(statusCode / 100)}`}><strong>{statusCode}</strong><button type="button" aria-label={`Remove ${statusCode}`} disabled={acceptedRuleCount === 1} onClick={() => set('allowedStatusCodes', draft.allowedStatusCodes.filter((value) => value !== statusCode))}><X size={13} /></button></span>)}
+                    <div className="http-status-editor" ref={statusPickerRef}>
+                      <div
+                        className={`http-status-editor__control${statusPickerOpen ? ' is-open' : ''}`}
+                        data-testid="http-status-control"
+                        tabIndex={0}
+                        aria-label="Accepted HTTP statuses"
+                        aria-haspopup="listbox"
+                        aria-expanded={statusPickerOpen}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          setStatusPickerOpen((open) => !open)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            setStatusPickerOpen((open) => !open)
+                          } else if (event.key === 'Escape') setStatusPickerOpen(false)
+                        }}
+                      >
+                        <div className="http-status-editor__chips">
+                          {draft.allowedStatusClasses.map((statusClass) => <span key={`class-${statusClass}`} className={`http-status-chip http-status-chip--${statusClass}`}><strong>{statusClass}xx</strong><button type="button" aria-label={`Remove ${statusClass}xx`} disabled={acceptedRuleCount === 1} onClick={(event) => { event.stopPropagation(); set('allowedStatusClasses', draft.allowedStatusClasses.filter((value) => value !== statusClass)) }}><X size={13} /></button></span>)}
+                          {draft.allowedStatusCodes.map((statusCode) => <span key={`code-${statusCode}`} className={`http-status-chip http-status-chip--${Math.floor(statusCode / 100)}`}><strong>{statusCode}</strong><button type="button" aria-label={`Remove ${statusCode}`} disabled={acceptedRuleCount === 1} onClick={(event) => { event.stopPropagation(); set('allowedStatusCodes', draft.allowedStatusCodes.filter((value) => value !== statusCode)) }}><X size={13} /></button></span>)}
+                          <span className="http-status-editor__placeholder">Add status…</span>
+                        </div>
+                        <ChevronDown size={17} aria-hidden="true" />
                       </div>
-                      <Select aria-label="Add accepted HTTP status" value={statusPickerValue} onChange={(event) => {
-                        const value = event.target.value
-                        setStatusPickerValue(value)
-                        addAcceptedStatus(value)
-                      }}>
-                        <option value="">+ Add status class or exact code</option>
-                        <optgroup label="Status classes">{httpStatusClasses.map(({ value, label, description }) => <option key={value} value={`class:${value}`}>{label} — {description}{draft.allowedStatusClasses.includes(value) ? ' (selected)' : ''}</option>)}</optgroup>
-                        {[1, 2, 3, 4, 5].map((statusClass) => <optgroup key={statusClass} label={`${statusClass}xx exact codes`}>{knownHttpStatusCodes.filter(([code]) => Math.floor(code / 100) === statusClass).map(([code, label]) => <option key={code} value={`code:${code}`}>{code} — {label}{draft.allowedStatusCodes.includes(code) ? ' (selected)' : ''}</option>)}</optgroup>)}
-                      </Select>
+                      {statusPickerOpen && (
+                        <div className="http-status-menu" role="listbox" aria-label="Known HTTP statuses">
+                          <input aria-label="Filter HTTP statuses" value={statusQuery} onChange={(event) => setStatusQuery(event.target.value)} onClick={(event) => event.stopPropagation()} placeholder="Search by code or name…" autoFocus />
+                          {!statusQuery.trim() && <section><strong>Status classes</strong>{httpStatusClasses.map(({ value, label, description }) => {
+                            const selected = draft.allowedStatusClasses.includes(value)
+                            return <button type="button" role="option" aria-selected={selected} key={value} disabled={selected} onClick={() => addAcceptedStatus(`class:${value}`)}><span className={`http-status-menu__dot http-status-menu__dot--${value}`} /><span><b>{label}</b><small>{description}</small></span>{selected && <Check size={15} />}</button>
+                          })}</section>}
+                          {[1, 2, 3, 4, 5].map((statusClass) => {
+                            const codes = filteredStatusCodes.filter(([code]) => Math.floor(code / 100) === statusClass)
+                            if (!codes.length) return null
+                            return <section key={statusClass}><strong>{statusClass}xx exact codes</strong>{codes.map(([code, label]) => {
+                              const selected = draft.allowedStatusCodes.includes(code)
+                              return <button type="button" role="option" aria-selected={selected} key={code} disabled={selected} onClick={() => addAcceptedStatus(`code:${code}`)}><span className={`http-status-menu__dot http-status-menu__dot--${statusClass}`} /><span><b>{code}</b><small>{label}</small></span>{selected && <Check size={15} />}</button>
+                            })}</section>
+                          })}
+                          {filteredStatusCodes.length === 0 && <p className="http-status-menu__empty">No known HTTP status found.</p>}
+                        </div>
+                      )}
                     </div>
                   </Field>
                 </div>

@@ -68,8 +68,13 @@
 .http-methods button { min-height: 42px; border: 0; border-right: 1px solid var(--line); color: var(--muted); background: var(--panel-strong); cursor: pointer; }
 .http-methods button:last-child { border-right: 0; }
 .http-methods button.is-active { color: var(--green); background: #2b3548; }
-.http-status-editor { display: grid; gap: 9px; }
-.http-status-editor__chips { min-height: 43px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-strong); }
+.http-status-editor { position: relative; }
+.http-status-editor__control { min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); background: var(--panel-strong); cursor: pointer; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.http-status-editor__control:hover, .http-status-editor__control.is-open, .http-status-editor__control:focus-visible { border-color: #66758e; outline: 0; box-shadow: 0 0 0 3px rgb(101 88 245 / 10%); }
+.http-status-editor__control > svg { flex: 0 0 auto; margin-left: auto; transition: transform 140ms ease; }
+.http-status-editor__control.is-open > svg { transform: rotate(180deg); }
+.http-status-editor__chips { min-width: 0; display: flex; flex: 1; flex-wrap: wrap; gap: 6px; align-items: center; }
+.http-status-editor__placeholder { padding: 0 5px; color: #74859d; font-size: 11px; }
 .http-status-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 27px; padding: 0 5px 0 9px; border-radius: 7px; color: #d8e3ee; background: #334056; font-size: 11px; }
 .http-status-chip--1 { color: #cfe8ff; background: rgb(67 183 232 / 18%); }
 .http-status-chip--2 { color: #bdf5d3; background: rgb(52 215 123 / 18%); }
@@ -79,6 +84,20 @@
 .http-status-chip button { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }
 .http-status-chip button:hover:not(:disabled), .http-status-chip button:focus-visible:not(:disabled) { outline: 0; background: rgb(255 255 255 / 12%); }
 .http-status-chip button:disabled { opacity: .35; cursor: not-allowed; }
+.http-status-menu { position: absolute; z-index: 60; top: calc(100% + 7px); left: 0; right: 0; max-height: 360px; overflow-y: auto; padding: 8px; border: 1px solid #3b4961; border-radius: 11px; background: #101927; box-shadow: 0 20px 48px rgb(0 0 0 / 40%); }
+.http-status-menu > input { position: sticky; z-index: 1; top: 0; width: 100%; min-height: 39px; margin-bottom: 8px; background: #0d1521; }
+.http-status-menu section { display: grid; gap: 2px; padding: 5px 0; }
+.http-status-menu section + section { border-top: 1px solid var(--line-soft); }
+.http-status-menu section > strong { padding: 7px 9px 5px; color: #7f90a8; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.http-status-menu section > button { width: 100%; min-height: 39px; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 6px 9px; border: 0; border-radius: 7px; color: #dbe4ee; text-align: left; background: transparent; cursor: pointer; }
+.http-status-menu section > button:hover:not(:disabled), .http-status-menu section > button:focus-visible:not(:disabled) { outline: 0; background: #202b3d; }
+.http-status-menu section > button:disabled { opacity: .5; cursor: default; }
+.http-status-menu section > button > span:nth-child(2) { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.http-status-menu section b { min-width: 34px; color: #f0f4f8; font-size: 12px; }
+.http-status-menu section small { overflow: hidden; color: #93a2b6; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.http-status-menu__dot { width: 8px; height: 8px; border-radius: 50%; background: #718096; }
+.http-status-menu__dot--1 { background: #43b7e8; }.http-status-menu__dot--2 { background: var(--green); }.http-status-menu__dot--3 { background: #8b7ffc; }.http-status-menu__dot--4 { background: #f5a742; }.http-status-menu__dot--5 { background: var(--red); }
+.http-status-menu__empty { margin: 8px; color: var(--muted); font-size: 11px; text-align: center; }
 
 .back-link { width: max-content; min-height: 39px; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 26px; padding: 0 13px; border-radius: var(--radius-sm); color: #a8b5c5; background: var(--panel); font-size: 13px; }
 .back-link:hover { color: #fff; }

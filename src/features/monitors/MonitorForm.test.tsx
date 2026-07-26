@@ -49,10 +49,19 @@ describe('MonitorForm legacy monitor compatibility', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /advanced settings/i }))
     expect(screen.getByText('2xx')).toBeInTheDocument()
-    const statuses = screen.getByRole('combobox', { name: 'Add accepted HTTP status' })
+    fireEvent.click(screen.getByTestId('http-status-control'))
+    expect(screen.getByRole('listbox', { name: 'Known HTTP statuses' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /999/ })).not.toBeInTheDocument()
-    fireEvent.change(statuses, { target: { value: 'code:404' } })
-    expect(screen.getByText('404')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: /404 Not Found/ }))
+    expect(screen.getByRole('button', { name: 'Remove 404' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('http-status-control'))
+    expect(screen.getByRole('button', { name: 'Remove 404' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove 404' }))
+    expect(screen.queryByRole('button', { name: 'Remove 404' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('http-status-control'))
+    fireEvent.click(screen.getByRole('option', { name: /404 Not Found/ }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Create monitor' }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
