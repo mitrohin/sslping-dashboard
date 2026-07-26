@@ -14,7 +14,9 @@ import {
   Plus,
   RotateCw,
   SearchX,
+  Tags,
   Trash2,
+  X,
 } from 'lucide-react'
 import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
 import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
@@ -37,6 +39,8 @@ export interface MonitorsPageProps {
   onTogglePause?: (monitor: MonitorViewModel, pause: boolean) => Promise<void>
   onTest?: (monitor: MonitorViewModel) => Promise<void>
   onDelete?: (monitor: MonitorViewModel) => Promise<void>
+  onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void>
+  onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void>
 }
 
 type MonitorRowAction = 'pause' | 'resume' | 'test' | 'delete'
@@ -52,12 +56,15 @@ export function MonitorsPage({
   onTogglePause,
   onTest,
   onDelete,
+  onBulkAction,
+  onBulkTags,
 }: MonitorsPageProps = {}) {
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
   const availableTags = useMemo(() => [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(), [monitors])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MonitorStatus>('all')
+  const [tagFilter, setTagFilter] = useState('all')
   const [sort, setSort] = useState<'status' | 'name' | 'response'>('status')
   const [showGroups, setShowGroups] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -66,14 +73,20 @@ export function MonitorsPage({
   const [openActionId, setOpenActionId] = useState<string | null>(null)
   const [busyActionId, setBusyActionId] = useState<string | null>(null)
   const [actionFeedback, setActionFeedback] = useState<{ tone: 'success' | 'danger'; message: string } | null>(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkTagsOpen, setBulkTagsOpen] = useState(false)
+  const [bulkTagMode, setBulkTagMode] = useState<'add' | 'remove'>('add')
+  const [bulkTagSelection, setBulkTagSelection] = useState<Set<string>>(() => new Set())
+  const [bulkTagQuery, setBulkTagQuery] = useState('')
   const previousStatuses = useRef(new Map<string, MonitorStatus>())
   const selectAllRef = useRef<HTMLInputElement>(null)
   const actionMenuRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => monitors
     .filter((monitor) => filter === 'all' || monitor.status === filter)
+    .filter((monitor) => tagFilter === 'all' || monitor.tags.includes(tagFilter))
     .filter((monitor) => `${monitor.name} ${monitor.target} ${monitor.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
-    .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'response' ? (b.responseTimeMs ?? 0) - (a.responseTimeMs ?? 0) : statusOrder[a.status] - statusOrder[b.status]), [filter, monitors, query, sort])
+    .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'response' ? (b.responseTimeMs ?? 0) - (a.responseTimeMs ?? 0) : statusOrder[a.status] - statusOrder[b.status]), [filter, monitors, query, sort, tagFilter])
 
   const summary = useMemo(() => {
     const measured = monitors.filter((monitor) => monitor.uptime24h !== undefined)
@@ -114,6 +127,12 @@ export function MonitorsPage({
   const visibleIds = useMemo(() => filtered.map((monitor) => monitor.id), [filtered])
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
+  const selectedMonitors = useMemo(() => monitors.filter((monitor) => selectedIds.has(monitor.id)), [monitors, selectedIds])
+  const selectedTagUnion = useMemo(() => [...new Set(selectedMonitors.flatMap((monitor) => monitor.tags))].sort(), [selectedMonitors])
+  const bulkTagCandidates = bulkTagMode === 'remove' ? selectedTagUnion : availableTags
+  const filteredBulkTags = bulkTagCandidates.filter((tag) => tag.toLocaleLowerCase().includes(bulkTagQuery.trim().toLocaleLowerCase()))
+  const canCreateBulkTag = bulkTagMode === 'add' && bulkTagQuery.trim().length > 0
+    && !availableTags.some((tag) => tag.toLocaleLowerCase() === bulkTagQuery.trim().toLocaleLowerCase())
 
   useEffect(() => {
     setSelectedIds((current) => {
@@ -122,6 +141,10 @@ export function MonitorsPage({
       return next.size === current.size ? current : next
     })
   }, [monitors])
+
+  useEffect(() => {
+    if (tagFilter !== 'all' && !availableTags.includes(tagFilter)) setTagFilter('all')
+  }, [availableTags, tagFilter])
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someVisibleSelected
@@ -235,6 +258,68 @@ export function MonitorsPage({
     }
   }
 
+  const runBulkAction = async (action: MonitorRowAction) => {
+    if (!selectedMonitors.length) return
+    if (action === 'delete' && !window.confirm(`Delete ${selectedMonitors.length} selected monitors? This cannot be undone.`)) return
+    setBulkBusy(true)
+    setActionFeedback(null)
+    try {
+      if (onBulkAction) await onBulkAction(selectedMonitors, action)
+      else selectedMonitors.forEach((monitor) => applyDemoAction(monitor, action))
+      if (action === 'delete') setSelectedIds(new Set())
+      const verb = action === 'test' ? 'Tested' : action === 'pause' ? 'Paused' : action === 'resume' ? 'Resumed' : 'Deleted'
+      setActionFeedback({ tone: 'success', message: `${verb} ${selectedMonitors.length} selected monitors.` })
+    } catch (actionError) {
+      setActionFeedback({ tone: 'danger', message: actionError instanceof Error ? actionError.message : `Could not ${action} selected monitors.` })
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  const openBulkTags = () => {
+    setBulkTagMode('add')
+    setBulkTagSelection(new Set())
+    setBulkTagQuery('')
+    setBulkTagsOpen(true)
+  }
+
+  const toggleBulkTag = (tag: string) => {
+    setBulkTagSelection((current) => {
+      const next = new Set(current)
+      if (next.has(tag)) next.delete(tag)
+      else next.add(tag)
+      return next
+    })
+    setBulkTagQuery('')
+  }
+
+  const applyBulkTags = async () => {
+    const tags = [...bulkTagSelection]
+    if (!tags.length || !selectedMonitors.length) return
+    setBulkBusy(true)
+    setActionFeedback(null)
+    try {
+      if (onBulkTags) await onBulkTags(selectedMonitors, bulkTagMode, tags)
+      else {
+        const selected = new Set(selectedMonitors.map((monitor) => monitor.id))
+        const changes = new Set(tags.map((tag) => tag.toLocaleLowerCase()))
+        setDemoMonitorState((current) => current.map((monitor) => {
+          if (!selected.has(monitor.id)) return monitor
+          const nextTags = bulkTagMode === 'add'
+            ? [...monitor.tags, ...tags.filter((tag) => !monitor.tags.some((currentTag) => currentTag.toLocaleLowerCase() === tag.toLocaleLowerCase()))]
+            : monitor.tags.filter((tag) => !changes.has(tag.toLocaleLowerCase()))
+          return { ...monitor, tags: nextTags }
+        }))
+      }
+      setActionFeedback({ tone: 'success', message: `${bulkTagMode === 'add' ? 'Added' : 'Removed'} ${tags.length} tags ${bulkTagMode === 'add' ? 'to' : 'from'} ${selectedMonitors.length} monitors.` })
+      setBulkTagsOpen(false)
+    } catch (actionError) {
+      setActionFeedback({ tone: 'danger', message: actionError instanceof Error ? actionError.message : 'Could not update tags.' })
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   const renderRows = (rows: MonitorViewModel[]) => rows.map((monitor) => (
     <article className={`monitor-row ${selectedIds.has(monitor.id) ? 'monitor-row--selected' : ''}`} key={monitor.id}>
       <div className="monitor-row__lead">
@@ -311,8 +396,19 @@ export function MonitorsPage({
         <label className="monitor-toolbar__groups"><span>Show groups</span><Toggle checked={showGroups} onChange={setShowGroups} label="Show monitor groups" /></label>
         <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or URL" />
         <div className="filter-dropdown"><Filter size={17} /><select value={filter} onChange={(event) => setFilter(event.target.value as 'all' | MonitorStatus)}><option value="all">All statuses</option><option value="down">Down</option><option value="degraded">Degraded</option><option value="up">Up</option><option value="paused">Paused</option></select></div>
+        <div className="filter-dropdown"><Tags size={17} /><select aria-label="Filter by tag" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}><option value="all">All tags</option>{availableTags.map((tag) => <option value={tag} key={tag}>{tag}</option>)}</select></div>
         <div className="filter-dropdown"><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="status">Down first</option><option value="name">Name A–Z</option><option value="response">Slowest first</option></select></div>
       </div>
+
+      {selectedMonitors.length > 0 && <div className="monitor-bulk-toolbar" role="toolbar" aria-label="Bulk monitor actions">
+        <strong>{selectedMonitors.length} selected</strong>
+        <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('test')}><BellRing size={16} /> Test now</Button>
+        <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('pause')}><PauseCircle size={16} /> Pause</Button>
+        <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('resume')}><PlayCircle size={16} /> Resume</Button>
+        <Button variant="secondary" disabled={bulkBusy} onClick={openBulkTags}><Tags size={16} /> Manage tags</Button>
+        <Button variant="danger" disabled={bulkBusy} onClick={() => void runBulkAction('delete')}><Trash2 size={16} /> Delete</Button>
+        <button type="button" className="monitor-bulk-toolbar__clear" disabled={bulkBusy} onClick={() => setSelectedIds(new Set())}><X size={15} /> Clear</button>
+      </div>}
 
       {actionFeedback && <div className={`monitor-action-feedback monitor-action-feedback--${actionFeedback.tone}`} role={actionFeedback.tone === 'danger' ? 'alert' : 'status'}>{actionFeedback.message}</div>}
 
@@ -341,6 +437,23 @@ export function MonitorsPage({
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={<>Create <span className="success-text">monitor</span></>} icon={<Activity size={31} />} width="xl">
         <MonitorForm initialValue={{ ...defaultMonitorDraft }} availableTags={availableTags} onSubmit={createMonitor} onCancel={() => setCreateOpen(false)} />
+      </Modal>
+      <Modal open={bulkTagsOpen} onClose={() => !bulkBusy && setBulkTagsOpen(false)} title={<>Manage <span className="success-text">tags</span></>} icon={<Tags size={29} />} width="md">
+        <div className="bulk-tags-dialog">
+          <p>Update {selectedMonitors.length} selected monitors in one operation.</p>
+          <div className="bulk-tags-dialog__modes" role="group" aria-label="Tag operation">
+            <button type="button" className={bulkTagMode === 'add' ? 'is-active' : ''} onClick={() => { setBulkTagMode('add'); setBulkTagSelection(new Set()); setBulkTagQuery('') }}>Add tags</button>
+            <button type="button" className={bulkTagMode === 'remove' ? 'is-active' : ''} onClick={() => { setBulkTagMode('remove'); setBulkTagSelection(new Set()); setBulkTagQuery('') }}>Remove tags</button>
+          </div>
+          <input aria-label="Search bulk tags" value={bulkTagQuery} onChange={(event) => setBulkTagQuery(event.target.value)} placeholder={bulkTagMode === 'add' ? 'Search or create a tag…' : 'Search assigned tags…'} />
+          {bulkTagSelection.size > 0 && <div className="bulk-tags-dialog__selected">{[...bulkTagSelection].map((tag) => <span key={tag}>{tag}<button type="button" aria-label={`Unselect tag ${tag}`} onClick={() => toggleBulkTag(tag)}><X size={12} /></button></span>)}</div>}
+          <div className="bulk-tags-dialog__options" role="listbox" aria-label="Bulk tag choices">
+            {filteredBulkTags.map((tag) => <button type="button" role="option" aria-selected={bulkTagSelection.has(tag)} className={bulkTagSelection.has(tag) ? 'is-selected' : ''} key={tag} onClick={() => toggleBulkTag(tag)}>{tag}<small>{bulkTagSelection.has(tag) ? 'Selected' : bulkTagMode === 'add' ? 'Existing tag' : 'Assigned to selection'}</small></button>)}
+            {canCreateBulkTag && <button type="button" role="option" aria-selected="false" className="bulk-tags-dialog__create" onClick={() => toggleBulkTag(bulkTagQuery.trim())}><Plus size={14} /> Create “{bulkTagQuery.trim()}”</button>}
+            {filteredBulkTags.length === 0 && !canCreateBulkTag && <p>{bulkTagMode === 'remove' ? 'Selected monitors have no matching tags.' : 'No matching workspace tags.'}</p>}
+          </div>
+          <div className="form-actions"><Button variant="secondary" disabled={bulkBusy} onClick={() => setBulkTagsOpen(false)}>Cancel</Button><Button aria-label="Apply bulk tag changes" disabled={bulkBusy || bulkTagSelection.size === 0} onClick={() => void applyBulkTags()}>{bulkBusy ? 'Applying…' : bulkTagMode === 'add' ? 'Add tags' : 'Remove tags'}</Button></div>
+        </div>
       </Modal>
       {heartbeatCredential && (
         <HeartbeatCredentialModal

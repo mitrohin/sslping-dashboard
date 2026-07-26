@@ -38,6 +38,51 @@ describe('MonitorsPage selection', () => {
     expect(screen.getByRole('checkbox', { name: /select marketing website/i })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /select production api/i })).toBeChecked()
   })
+
+  it('filters monitors by known tags', () => {
+    const production = { ...demoMonitors[0], tags: ['production', 'website'] }
+    const staging = { ...demoMonitors[1], tags: ['staging', 'api'] }
+    renderPage({ data: [production, staging] })
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by tag' }), { target: { value: 'staging' } })
+    expect(screen.queryByRole('link', { name: production.name })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: staging.name })).toBeInTheDocument()
+  })
+
+  it('delegates bulk monitor and tag operations for the selected monitors', async () => {
+    const data = demoMonitors.slice(0, 2)
+    const onBulkAction = vi.fn().mockResolvedValue(undefined)
+    const onBulkTags = vi.fn().mockResolvedValue(undefined)
+    renderPage({ data, onBulkAction, onBulkTags })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all visible monitors' }))
+    const toolbar = screen.getByRole('toolbar', { name: 'Bulk monitor actions' })
+    fireEvent.click(within(toolbar).getByRole('button', { name: /test now/i }))
+    await waitFor(() => expect(onBulkAction).toHaveBeenCalledWith(data, 'test'))
+    fireEvent.click(within(toolbar).getByRole('button', { name: /pause/i }))
+    await waitFor(() => expect(onBulkAction).toHaveBeenCalledWith(data, 'pause'))
+    fireEvent.click(within(toolbar).getByRole('button', { name: /resume/i }))
+    await waitFor(() => expect(onBulkAction).toHaveBeenCalledWith(data, 'resume'))
+
+    fireEvent.click(within(toolbar).getByRole('button', { name: /manage tags/i }))
+    let dialog = screen.getByRole('dialog', { name: /manage tags/i })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Search bulk tags' }), { target: { value: 'release' } })
+    fireEvent.click(within(dialog).getByRole('option', { name: /create “release”/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply bulk tag changes' }))
+    await waitFor(() => expect(onBulkTags).toHaveBeenCalledWith(data, 'add', ['release']))
+
+    fireEvent.click(within(toolbar).getByRole('button', { name: /manage tags/i }))
+    dialog = screen.getByRole('dialog', { name: /manage tags/i })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove tags' }))
+    fireEvent.click(within(dialog).getByRole('option', { name: /production/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply bulk tag changes' }))
+    await waitFor(() => expect(onBulkTags).toHaveBeenLastCalledWith(data, 'remove', ['production']))
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(within(toolbar).getByRole('button', { name: /delete/i }))
+    await waitFor(() => expect(onBulkAction).toHaveBeenCalledWith(data, 'delete'))
+    expect(window.confirm).toHaveBeenCalledWith('Delete 2 selected monitors? This cannot be undone.')
+  })
 })
 
 describe('MonitorsPage health summary', () => {

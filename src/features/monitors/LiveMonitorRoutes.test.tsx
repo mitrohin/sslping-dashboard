@@ -90,6 +90,10 @@ function fakeApi() {
     }),
     testMonitor: vi.fn().mockResolvedValue(undefined),
     deleteMonitor: vi.fn().mockResolvedValue(undefined),
+    updateMonitor: vi.fn(async (_workspaceId: string, _monitorId: string, request: Record<string, unknown>) => {
+      stored = { ...stored, ...request, tags: request.tags as string[] ?? stored.tags }
+      return stored
+    }),
   }
   return api
 }
@@ -210,6 +214,26 @@ describe('LiveMonitorsPage controls', () => {
     expect(await screen.findByText('Paused Marketing website.')).toBeInTheDocument()
     expect(api.pauseMonitor).not.toHaveBeenCalled()
     expect(api.listMonitors).not.toHaveBeenCalled()
+  })
+
+  it('applies bulk tag updates through the monitor API', async () => {
+    const api = fakeApi()
+    mockAuth(api)
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+
+    expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Checkout API' }))
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Bulk monitor actions' })).getByRole('button', { name: /manage tags/i }))
+    const dialog = screen.getByRole('dialog', { name: /manage tags/i })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Search bulk tags' }), { target: { value: 'critical' } })
+    fireEvent.click(within(dialog).getByRole('option', { name: /create “critical”/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply bulk tag changes' }))
+
+    await waitFor(() => expect(api.updateMonitor).toHaveBeenCalledWith(
+      workspace.id,
+      'monitor-1',
+      expect.objectContaining({ tags: ['production', 'critical'] }),
+    ))
   })
 })
 

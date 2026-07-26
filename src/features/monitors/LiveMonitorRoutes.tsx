@@ -75,6 +75,7 @@ export function LiveMonitorsPage() {
   const navigate = useNavigate()
   const demo = isDemoSession()
   const [data, setData] = useState<readonly MonitorViewModel[]>([])
+  const [rawMonitors, setRawMonitors] = useState<readonly Monitor[]>([])
   const [loading, setLoading] = useState(!demo)
   const [error, setError] = useState<string | null>(null)
 
@@ -91,6 +92,7 @@ export function LiveMonitorsPage() {
         api.listIncidents(workspace.id, { from, to: now.toISOString(), limit: 100 }),
       ])
       const monitors = page.items ?? []
+      setRawMonitors(monitors)
       const metricItems = summary.items ?? []
       const incidents = incidentsPage.items ?? []
       const checkResults = await Promise.allSettled(monitors.map(async (monitor) => {
@@ -175,6 +177,34 @@ export function LiveMonitorsPage() {
     await reload()
   }
 
+  const bulkAction = async (monitors: readonly MonitorViewModel[], action: 'pause' | 'resume' | 'test' | 'delete') => {
+    if (!workspace) throw new Error('No active workspace is selected.')
+    await Promise.all(monitors.map((monitor) => action === 'pause'
+      ? api.pauseMonitor(workspace.id, monitor.id)
+      : action === 'resume'
+        ? api.resumeMonitor(workspace.id, monitor.id)
+        : action === 'test'
+          ? api.testMonitor(workspace.id, monitor.id)
+          : api.deleteMonitor(workspace.id, monitor.id)))
+    await reload()
+  }
+
+  const bulkTags = async (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => {
+    if (!workspace) throw new Error('No active workspace is selected.')
+    const rawById = new Map(rawMonitors.map((monitor) => [monitor.id, monitor]))
+    const changes = new Set(tags.map((tag) => tag.toLocaleLowerCase()))
+    await Promise.all(monitors.map(async (monitor) => {
+      const raw = rawById.get(monitor.id)
+      if (!raw) throw new Error(`Configuration for ${monitor.name} is unavailable.`)
+      const draft = monitorToDraft(raw)
+      draft.tags = mode === 'add'
+        ? [...draft.tags, ...tags.filter((tag) => !draft.tags.some((current) => current.toLocaleLowerCase() === tag.toLocaleLowerCase()))]
+        : draft.tags.filter((tag) => !changes.has(tag.toLocaleLowerCase()))
+      await api.updateMonitor(workspace.id, monitor.id, monitorDraftToUpdateRequest(draft))
+    }))
+    await reload()
+  }
+
   return (
     <MonitorsPage
       data={data}
@@ -187,6 +217,8 @@ export function LiveMonitorsPage() {
       onTogglePause={togglePause}
       onTest={test}
       onDelete={remove}
+      onBulkAction={bulkAction}
+      onBulkTags={bulkTags}
     />
   )
 }
