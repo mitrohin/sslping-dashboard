@@ -198,7 +198,7 @@ function maintenanceRequest(input: MaintenanceWindowInput): MaintenanceWindowWri
   }
 }
 
-function LiveMaintenanceContent({ api, workspaceId }: { api: ApiClient; workspaceId?: string }) {
+function LiveMaintenanceContent({ api, workspaceId, initialMonitorId }: { api: ApiClient; workspaceId?: string; initialMonitorId?: string }) {
   const load = useCallback(async (activeWorkspaceId: string): Promise<MaintenanceData> => {
     const [monitorPage, windowList] = await Promise.all([
       api.listMonitors(activeWorkspaceId, { limit: 100 }),
@@ -229,6 +229,7 @@ function LiveMaintenanceContent({ api, workspaceId }: { api: ApiClient; workspac
     <MaintenancePage
       windows={state.data.windows}
       monitors={state.data.monitors}
+      initialCreateMonitorId={initialMonitorId}
       onCreate={async (input) =>
         adapt(await api.createMaintenanceWindow(requireWorkspace(), maintenanceRequest(input)))}
       onUpdate={async (windowId, input) =>
@@ -240,8 +241,10 @@ function LiveMaintenanceContent({ api, workspaceId }: { api: ApiClient; workspac
 
 export function LiveMaintenancePage() {
   const { api, workspace } = useAuth()
-  if (isDemoSession()) return <MaintenancePage />
-  return <LiveMaintenanceContent api={api} workspaceId={workspace?.id} />
+  const searchParams = new URLSearchParams(window.location.search)
+  const initialMonitorId = searchParams.get('create') === '1' ? searchParams.get('monitor') ?? undefined : undefined
+  if (isDemoSession()) return <MaintenancePage initialCreateMonitorId={initialMonitorId} />
+  return <LiveMaintenanceContent api={api} workspaceId={workspace?.id} initialMonitorId={initialMonitorId} />
 }
 
 interface StatusPageData {
@@ -287,10 +290,12 @@ function LiveStatusPagesContent({
   api,
   workspaceId,
   onEdit,
+  initialMonitorId,
 }: {
   api: ApiClient
   workspaceId?: string
   onEdit: (pageId: string) => void
+  initialMonitorId?: string
 }) {
   const load = useCallback(async (activeWorkspaceId: string): Promise<StatusPageData> => {
     const [monitorPage, pageList] = await Promise.all([
@@ -332,6 +337,7 @@ function LiveStatusPagesContent({
     <StatusPagesPage
       pages={state.data.pages}
       monitors={state.data.monitors}
+      initialCreateMonitorId={initialMonitorId}
       onEdit={onEdit}
       onCreate={async (input) => {
         const page = await api.createStatusPage(requireWorkspace(), statusPageCreateRequest(input))
@@ -355,12 +361,14 @@ function LiveStatusPagesContent({
 export function LiveStatusPagesPage() {
   const { api, workspace } = useAuth()
   const navigate = useNavigate()
+  const searchParams = new URLSearchParams(window.location.search)
+  const initialMonitorId = searchParams.get('create') === '1' ? searchParams.get('monitor') ?? undefined : undefined
   const onEdit = useCallback(
     (pageId: string) => navigate(`/status-pages/${pageId}/edit`),
     [navigate],
   )
-  if (isDemoSession()) return <StatusPagesPage onEdit={onEdit} />
-  return <LiveStatusPagesContent api={api} workspaceId={workspace?.id} onEdit={onEdit} />
+  if (isDemoSession()) return <StatusPagesPage onEdit={onEdit} initialCreateMonitorId={initialMonitorId} />
+  return <LiveStatusPagesContent api={api} workspaceId={workspace?.id} onEdit={onEdit} initialMonitorId={initialMonitorId} />
 }
 
 interface StatusPageEditorData {

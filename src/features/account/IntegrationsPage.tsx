@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Activity,
   Bell,
@@ -82,6 +83,7 @@ export interface IntegrationsPageProps {
   initialIntegrations?: readonly IntegrationViewModel[]
   catalog?: readonly IntegrationCatalogItem[]
   monitors?: readonly MonitorViewModel[]
+  focusMonitorId?: string
   initialApiKeys?: readonly ApiKeyViewModel[]
   auditEntries?: readonly AuditEntry[]
   onSaveIntegration?: SaveIntegrationCallback
@@ -122,6 +124,7 @@ export function IntegrationsPage({
   initialIntegrations = demoIntegrations,
   catalog = demoIntegrationCatalog,
   monitors = demoMonitors,
+  focusMonitorId,
   initialApiKeys = demoApiKeys,
   auditEntries = demoAuditEntries,
   onSaveIntegration,
@@ -139,17 +142,23 @@ export function IntegrationsPage({
   const [deleting, setDeleting] = useState<IntegrationViewModel | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const focusedMonitor = monitors.find((monitor) => monitor.id === focusMonitorId)
+  const initialMonitorIds = useMemo(() => focusMonitorId ? [focusMonitorId] : [], [focusMonitorId])
 
   const filteredCatalog = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     return catalog.filter((item) => {
       if (category !== 'all' && item.category !== category) return false
-      const configured = integrations.filter((integration) => integration.type === item.type)
+      const configured = integrations.filter((integration) =>
+        integration.type === item.type && (
+          !focusMonitorId || integration.monitorIds.length === 0 || integration.monitorIds.includes(focusMonitorId)
+        ),
+      )
       if (!normalized) return true
       return [item.name, item.description, ...configured.flatMap((integration) => [integration.name, integration.destinationLabel])]
         .some((value) => value.toLowerCase().includes(normalized))
     })
-  }, [catalog, category, integrations, query])
+  }, [catalog, category, focusMonitorId, integrations, query])
 
   const switchTabWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -265,6 +274,7 @@ export function IntegrationsPage({
       </div>
 
       {error && <div className="account-error account-error--page" role="alert">{error}<button type="button" onClick={() => setError('')}>Dismiss</button></div>}
+      {focusedMonitor && <div className="integration-focus"><Bell size={18} /><span><strong>Notification routes for {focusedMonitor.name}</strong><small>New integrations will be assigned to this monitor automatically. Workspace-wide routes are also shown.</small></span><Link to={`/monitors/${focusedMonitor.id}`}>Back to monitor</Link></div>}
 
       <div id="account-panel-integrations" hidden={activeTab !== 'integrations'} role="tabpanel" aria-labelledby="account-tab-integrations">
         <div className="integration-layout">
@@ -281,7 +291,11 @@ export function IntegrationsPage({
             ) : (
               <div className="integration-catalog">
                 {filteredCatalog.map((item) => {
-                  const configured = integrations.filter((integration) => integration.type === item.type)
+                  const configured = integrations.filter((integration) =>
+                    integration.type === item.type && (
+                      !focusMonitorId || integration.monitorIds.length === 0 || integration.monitorIds.includes(focusMonitorId)
+                    ),
+                  )
                   const CategoryIcon = categoryIcons[item.category]
                   return (
                     <Panel key={item.type} className="integration-card">
@@ -330,6 +344,7 @@ export function IntegrationsPage({
         initialType={editor?.type}
         integration={editor?.integration}
         monitors={monitors}
+        initialMonitorIds={initialMonitorIds}
         saving={saving}
         error={error}
         onClose={() => setEditor(null)}

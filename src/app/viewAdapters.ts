@@ -330,6 +330,7 @@ export function toMonitorViewModel(
     tags: Array.isArray(monitor.tags) ? [...monitor.tags] : [],
     intervalSeconds: nonNegativeNumber(monitor.interval_seconds),
     timeoutSeconds: nonNegativeNumber(monitor.timeout_seconds),
+    slowThresholdMs: optionalNonNegativeNumber(monitor.slow_threshold_ms),
     lastCheckedAt: monitor.last_check_at ?? lastCheck?.finished_at ?? lastCheck?.started_at,
     statusChangedAt: monitor.last_status_change_at,
     responseTimeMs: optionalNonNegativeNumber(lastCheck?.latency_ms),

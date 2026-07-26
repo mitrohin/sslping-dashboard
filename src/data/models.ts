@@ -40,6 +40,7 @@ export interface MonitorViewModel {
   tags: readonly string[]
   intervalSeconds: number
   timeoutSeconds: number
+  slowThresholdMs?: number
   lastCheckedAt?: string
   statusChangedAt?: string
   responseTimeMs?: number

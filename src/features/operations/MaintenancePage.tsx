@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   CalendarClock,
   Edit3,
@@ -36,6 +36,7 @@ export interface MaintenanceWindowInput {
 export interface MaintenancePageProps {
   windows?: readonly MaintenanceWindowViewModel[]
   monitors?: readonly MonitorViewModel[]
+  initialCreateMonitorId?: string
   onCreate?: (input: MaintenanceWindowInput) => MaybePromise<MaintenanceWindowViewModel | void>
   onUpdate?: (windowId: string, input: MaintenanceWindowInput) => MaybePromise<MaintenanceWindowViewModel | void>
   onDelete?: (windowId: string) => MaybePromise<void>
@@ -85,6 +86,7 @@ const recurrenceLabel = (recurrence: MaintenanceRecurrence): string =>
 export function MaintenancePage({
   windows: initialWindows = demoMaintenanceWindows,
   monitors = demoMonitors,
+  initialCreateMonitorId,
   onCreate,
   onUpdate,
   onDelete,
@@ -104,6 +106,17 @@ export function MaintenancePage({
       window.monitorNames.some((name) => name.toLowerCase().includes(normalized)),
     )
   }, [query, windows])
+
+  useEffect(() => {
+    if (!initialCreateMonitorId || !monitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
+    const monitor = monitors.find((item) => item.id === initialCreateMonitorId)
+    setError('')
+    setDraft({
+      ...emptyDraft(),
+      name: monitor ? `Maintenance on ${monitor.name}` : '',
+      monitorIds: [initialCreateMonitorId],
+    })
+  }, [initialCreateMonitorId, monitors])
 
   const openCreate = () => {
     setError('')

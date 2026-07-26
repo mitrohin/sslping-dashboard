@@ -422,6 +422,7 @@ export function LiveTeamPage() {
 
 export function LiveIntegrationsPage() {
   const { api, user, workspace } = useAuth()
+  const focusMonitorId = new URLSearchParams(window.location.search).get('monitor') ?? undefined
   const demo = isDemoSession()
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<LoadState<IntegrationRouteData>>({ status: 'loading' })
@@ -528,6 +529,7 @@ export function LiveIntegrationsPage() {
         monitors={demoMonitors}
         initialApiKeys={demoApiKeys}
         auditEntries={demoAuditEntries}
+        focusMonitorId={focusMonitorId}
       />
     )
   }
@@ -551,6 +553,7 @@ export function LiveIntegrationsPage() {
       initialIntegrations={state.data.integrations}
       catalog={catalog}
       monitors={state.data.monitors}
+      focusMonitorId={focusMonitorId}
       initialApiKeys={state.data.apiKeys}
       auditEntries={state.data.auditEntries}
       onSaveIntegration={saveIntegration}

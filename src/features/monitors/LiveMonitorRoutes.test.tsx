@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiClient } from '../../api/client'
 import type { Monitor, User, Workspace } from '../../api/types'
@@ -20,7 +20,7 @@ vi.mock('../../app/DashboardGate', async (importOriginal) => {
   return { ...original, isDemoSession: authMocks.isDemoSession }
 })
 
-import { LiveMonitorsPage } from './LiveMonitorRoutes'
+import { LiveMonitorDetailPage, LiveMonitorsPage } from './LiveMonitorRoutes'
 
 const now = '2026-07-26T08:00:00.000Z'
 const workspace: Workspace = {
@@ -210,5 +210,38 @@ describe('LiveMonitorsPage controls', () => {
     expect(await screen.findByText('Paused Marketing website.')).toBeInTheDocument()
     expect(api.pauseMonitor).not.toHaveBeenCalled()
     expect(api.listMonitors).not.toHaveBeenCalled()
+  })
+})
+
+describe('LiveMonitorDetailPage refresh', () => {
+  it('reloads monitor data after the configured check interval has elapsed', async () => {
+    const api = fakeApi()
+    const monitor = {
+      ...baseMonitor(),
+      last_check_at: new Date(Date.now() - 61_000).toISOString(),
+    }
+    const getMonitor = vi.fn().mockResolvedValue(monitor)
+    Object.assign(api, {
+      getMonitor,
+      getMonitorMetrics: vi.fn().mockResolvedValue({ availability: 100, incidents: 0, downtime_seconds: 0 }),
+      listCertificateEvidence: vi.fn().mockResolvedValue({ items: [] }),
+      listDnsEvidence: vi.fn().mockResolvedValue({ items: [] }),
+      listDomainEvidence: vi.fn().mockResolvedValue({ items: [] }),
+      listMaintenanceWindows: vi.fn().mockResolvedValue({ items: [] }),
+      listIntegrations: vi.fn().mockResolvedValue({ items: [] }),
+      listStatusPages: vi.fn().mockResolvedValue({ items: [] }),
+      listStatusPageComponents: vi.fn().mockResolvedValue({ items: [] }),
+    })
+    mockAuth(api)
+
+    render(
+      <MemoryRouter initialEntries={['/monitors/monitor-1']}>
+        <Routes><Route path="/monitors/:monitorId" element={<LiveMonitorDetailPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    await waitFor(() => expect(getMonitor).toHaveBeenCalledTimes(2), { timeout: 2500 })
+    expect(screen.getByText(/refreshing from backend|checked every/i)).toBeInTheDocument()
   })
 })

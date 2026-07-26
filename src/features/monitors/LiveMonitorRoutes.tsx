@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { CheckResult, Monitor, UptimeStats } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
 import { isDemoSession } from '../../app/DashboardGate'
-import { toMonitorViewModel } from '../../app/viewAdapters'
-import type { MonitorViewModel, UptimePeriodSummary } from '../../data'
+import {
+  toIntegrationViewModel,
+  toMaintenanceWindowViewModel,
+  toMonitorViewModel,
+  toStatusPageViewModel,
+} from '../../app/viewAdapters'
+import type {
+  IntegrationViewModel,
+  MaintenanceWindowViewModel,
+  MonitorViewModel,
+  StatusPageViewModel,
+  UptimePeriodSummary,
+} from '../../data'
 import { MonitorDetailPage } from './MonitorDetailPage'
 import { MonitorEditPage } from './MonitorEditPage'
 import type { HeartbeatCredential } from './HeartbeatCredentialModal'
@@ -167,16 +178,24 @@ export function LiveMonitorDetailPage() {
   const navigate = useNavigate()
   const demo = isDemoSession()
   const [data, setData] = useState<MonitorDetailData | null>(null)
+  const [rawMonitor, setRawMonitor] = useState<Monitor | null>(null)
+  const [nextMaintenance, setNextMaintenance] = useState<MaintenanceWindowViewModel | undefined>()
+  const [notifications, setNotifications] = useState<readonly IntegrationViewModel[]>([])
+  const [statusPages, setStatusPages] = useState<readonly StatusPageViewModel[]>([])
   const [loading, setLoading] = useState(!demo)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [responseRange, setResponseRange] = useState('1h')
+  const autoRefresh = useRef({ inFlight: false, lastAttemptAt: 0 })
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (background = false) => {
     if (demo || !authenticated || !workspace || !monitorId) return
-    setLoading(true)
+    if (background) setRefreshing(true)
+    else setLoading(true)
     setError(null)
     try {
       const monitor = await api.getMonitor(workspace.id, monitorId)
+      setRawMonitor(monitor)
       const now = new Date()
       const to = now.toISOString()
       const responseFrom = fromForResponseRange(responseRange, now)
@@ -198,7 +217,18 @@ export function LiveMonitorDetailPage() {
         ? api.listDomainEvidence(workspace.id, monitor.id, { limit: 30 })
         : Promise.resolve(emptyCheckPage())
 
-      const [checksPage, responseChecksPage, metrics, incidentsPage, certificates, dns, domains] = await Promise.all([
+      const [
+        checksPage,
+        responseChecksPage,
+        metrics,
+        incidentsPage,
+        certificates,
+        dns,
+        domains,
+        maintenanceList,
+        integrationList,
+        statusPageList,
+      ] = await Promise.all([
         api.listMonitorChecks(workspace.id, monitor.id, { from: fromForPeriod('24h', now), to, limit: 100 }),
         api.listMonitorChecks(workspace.id, monitor.id, { from: responseFrom, to, limit: 100 }),
         metricsPromise,
@@ -206,6 +236,9 @@ export function LiveMonitorDetailPage() {
         certificatePromise,
         dnsPromise,
         domainPromise,
+        api.listMaintenanceWindows(workspace.id),
+        api.listIntegrations(workspace.id),
+        api.listStatusPages(workspace.id),
       ])
       const stats = Object.fromEntries(periods.map((period, index) => [period, metrics[index]])) as Record<UptimePeriodSummary['period'], UptimeStats>
       setData(toLiveMonitorDetail({
@@ -218,14 +251,52 @@ export function LiveMonitorDetailPage() {
         incidents: (incidentsPage.items ?? []).filter((incident) => incident.monitor_id === monitor.id),
         stats,
       }))
+      const monitorWindows = (maintenanceList.items ?? [])
+        .filter((window) => window.active && window.monitor_ids.includes(monitor.id))
+        .map((window) => toMaintenanceWindowViewModel(window, { monitors: [monitor] }))
+        .filter((window) => window.state === 'active' || window.state === 'upcoming')
+        .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime())
+      setNextMaintenance(monitorWindows[0])
+      setNotifications((integrationList.items ?? [])
+        .filter((integration) => !integration.monitor_ids?.length || integration.monitor_ids.includes(monitor.id))
+        .map(toIntegrationViewModel))
+
+      const rawStatusPages = statusPageList.items ?? []
+      const componentLists = await Promise.allSettled(
+        rawStatusPages.map((page) => api.listStatusPageComponents(workspace.id, page.id)),
+      )
+      setStatusPages(rawStatusPages.flatMap((page, index) => {
+        const components = componentLists[index].status === 'fulfilled'
+          ? componentLists[index].value.items ?? []
+          : []
+        return components.some((component) => component.monitor_id === monitor.id)
+          ? [toStatusPageViewModel(page, { componentCount: components.length })]
+          : []
+      }))
     } catch (loadError) {
       setError(monitorErrorMessage(loadError, 'The monitor details could not be loaded.'))
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [api, authenticated, demo, monitorId, responseRange, workspace])
 
   useEffect(() => { void reload() }, [reload])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const monitor = data?.monitor
+      if (!monitor?.lastCheckedAt || monitor.status === 'paused' || autoRefresh.current.inFlight) return
+      const checkedAt = new Date(monitor.lastCheckedAt).getTime()
+      const dueAt = checkedAt + Math.max(1, monitor.intervalSeconds) * 1000
+      const now = Date.now()
+      if (!Number.isFinite(checkedAt) || now < dueAt || now - autoRefresh.current.lastAttemptAt < 5000) return
+      autoRefresh.current.inFlight = true
+      autoRefresh.current.lastAttemptAt = now
+      void reload(true).finally(() => { autoRefresh.current.inFlight = false })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [data?.monitor, reload])
 
   if (demo) return <MonitorDetailPage />
 
@@ -261,6 +332,17 @@ export function LiveMonitorDetailPage() {
     return credential
   }
 
+  const updateResponseAlert = async (thresholdMs?: number) => {
+    const context = requireContext()
+    if (!rawMonitor) throw new Error('Monitor configuration is still loading.')
+    const request = monitorDraftToUpdateRequest(monitorToDraft(rawMonitor))
+    await api.updateMonitor(context.workspaceId, context.monitorId, {
+      ...request,
+      slow_threshold_ms: thresholdMs ?? 0,
+    })
+    await reload(true)
+  }
+
   return (
     <MonitorDetailPage
       monitor={data?.monitor}
@@ -268,7 +350,11 @@ export function LiveMonitorDetailPage() {
       uptimePeriods={data?.uptimePeriods}
       incidents={data?.incidents}
       mtbfSeconds={data?.mtbfSeconds}
+      nextMaintenance={nextMaintenance}
+      notifications={notifications}
+      statusPages={statusPages}
       loading={loading && !data}
+      refreshing={refreshing}
       error={error}
       onRetry={() => void reload()}
       onTogglePause={togglePause}
@@ -276,6 +362,7 @@ export function LiveMonitorDetailPage() {
       onDelete={remove}
       onRotateHeartbeat={data?.monitor.type === 'heartbeat' ? rotateHeartbeat : undefined}
       onRangeChange={setResponseRange}
+      onUpdateResponseAlert={updateResponseAlert}
     />
   )
 }

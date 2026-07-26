@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   ExternalLink,
   Globe2,
@@ -25,6 +25,7 @@ type MaybePromise<T> = T | Promise<T>
 export interface StatusPagesPageProps {
   pages?: readonly StatusPageViewModel[]
   monitors?: readonly MonitorViewModel[]
+  initialCreateMonitorId?: string
   onCreate?: (input: StatusPageCreateInput) => MaybePromise<StatusPageViewModel | void>
   onAnnouncement?: (pageId: string, input: StatusPageAnnouncementInput) => MaybePromise<void>
   onEdit?: (pageId: string) => void
@@ -77,6 +78,7 @@ const emptyAnnouncement: StatusPageAnnouncementInput = {
 export function StatusPagesPage({
   pages: initialPages = demoStatusPages,
   monitors = demoMonitors,
+  initialCreateMonitorId,
   onCreate,
   onAnnouncement,
   onEdit,
@@ -90,6 +92,20 @@ export function StatusPagesPage({
   const [announcementDraft, setAnnouncementDraft] = useState<StatusPageAnnouncementInput>(emptyAnnouncement)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!initialCreateMonitorId || !monitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
+    const monitor = monitors.find((item) => item.id === initialCreateMonitorId)
+    const suggestedName = monitor ? `${monitor.name} status` : ''
+    setError('')
+    setCreateDraft({
+      ...emptyCreate,
+      name: suggestedName,
+      slug: toSlug(suggestedName),
+      monitorIds: [initialCreateMonitorId],
+    })
+    setCreateOpen(true)
+  }, [initialCreateMonitorId, monitors])
 
   const filteredPages = useMemo(() => {
     const normalized = query.trim().toLowerCase()

@@ -78,6 +78,7 @@ export interface IntegrationFormModalProps {
   initialType?: IntegrationType
   integration?: IntegrationViewModel | null
   monitors?: readonly MonitorViewModel[]
+  initialMonitorIds?: readonly string[]
   saving?: boolean
   error?: string
   onClose: () => void
@@ -90,6 +91,7 @@ export function IntegrationFormModal({
   initialType = 'slack',
   integration = null,
   monitors = demoMonitors,
+  initialMonitorIds = [],
   saving = false,
   error,
   onClose,
@@ -109,10 +111,10 @@ export function IntegrationFormModal({
     setType(integration?.type ?? initialType)
     setActive(integration?.active ?? true)
     setEvents(integration?.events ?? ['monitor.down', 'monitor.up'])
-    setMonitorIds(integration?.monitorIds ?? [])
+    setMonitorIds(integration?.monitorIds ?? initialMonitorIds)
     setConfig({})
     setLocalError('')
-  }, [initialType, integration, open])
+  }, [initialMonitorIds, initialType, integration, open])
 
   const provider = useMemo(() => catalog.find((item) => item.type === type), [catalog, type])
   const fields = providerFields[type]

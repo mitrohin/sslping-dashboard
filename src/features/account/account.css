@@ -111,6 +111,11 @@
 .account-tabs { display: flex; gap: 6px; margin-bottom: 25px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-strong); }
 .account-tabs button { min-height: 41px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 17px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; font-weight: 600; }
 .account-tabs button.is-active { color: #fff; background: #2b3549; box-shadow: 0 4px 14px rgb(0 0 0 / 14%); }
+.integration-focus { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-bottom: 18px; padding: 13px 15px; border: 1px solid rgb(52 215 123 / 24%); border-radius: var(--radius-sm); color: var(--green); background: rgb(52 215 123 / 7%); }
+.integration-focus > span { min-width: 0; display: grid; gap: 3px; }
+.integration-focus strong { color: #e7f8ed; font-size: 13px; }
+.integration-focus small { color: #91ad9d; font-size: 11px; }
+.integration-focus a { color: var(--green); font-size: 12px; font-weight: 650; }
 .integration-layout { display: grid; grid-template-columns: 235px minmax(0, 1fr); gap: 28px; }
 .integration-content { min-width: 0; }
 .integration-content > .search-input { width: 100%; margin-bottom: 18px; }
