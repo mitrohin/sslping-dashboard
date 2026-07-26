@@ -45,9 +45,14 @@ export interface MonitorViewModel {
   statusChangedAt?: string
   responseTimeMs?: number
   uptime24h?: number
+  incidentCount24h?: number
+  downtimeSeconds24h?: number
+  mtbfSeconds24h?: number
   last24Hours: readonly UptimeBar[]
   regions: readonly string[]
   incidentId?: string
+  lastIncidentAt?: string
+  hasOpenIncident?: boolean
   sslCertificate?: ExpirySnapshot
   domainRegistration?: ExpirySnapshot
 }

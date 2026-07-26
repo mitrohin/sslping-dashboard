@@ -208,20 +208,43 @@ function uptimeBarStatus(status: unknown): UptimeBarStatus {
   }
 }
 
-function toUptimeBars(monitorId: string, checks: readonly CheckResult[]): readonly UptimeBar[] {
-  return [...checks]
-    .filter((check) => !check.monitor_id || check.monitor_id === monitorId)
-    .sort(
-      (left, right) =>
-        (toTimestamp(left.started_at) ?? 0) - (toTimestamp(right.started_at) ?? 0),
-    )
-    .slice(-30)
-    .map((check, index) => ({
-      id: nonEmpty(check.id, `${monitorId}-check-${index + 1}`),
-      startedAt: nonEmpty(check.started_at, check.finished_at || ''),
-      status: uptimeBarStatus(check.status),
-      responseTimeMs: optionalNonNegativeNumber(check.latency_ms),
-    }))
+function toUptimeBars(monitorId: string, checks: readonly CheckResult[], referenceTime: number): readonly UptimeBar[] {
+  const currentHour = new Date(referenceTime)
+  currentHour.setUTCMinutes(0, 0, 0)
+  const hourMs = 60 * 60 * 1000
+  const firstHour = currentHour.getTime() - 23 * hourMs
+  const buckets = Array.from({ length: 24 }, (_, index) => ({
+    id: `${monitorId}-hour-${index}`,
+    startedAt: new Date(firstHour + index * hourMs).toISOString(),
+    statuses: [] as UptimeBarStatus[],
+    responseTimes: [] as number[],
+  }))
+
+  for (const check of checks) {
+    if (check.monitor_id && check.monitor_id !== monitorId) continue
+    const timestamp = toTimestamp(check.started_at) ?? toTimestamp(check.finished_at)
+    if (timestamp === null) continue
+    const bucketIndex = Math.floor((timestamp - firstHour) / hourMs)
+    if (bucketIndex < 0 || bucketIndex >= buckets.length) continue
+    buckets[bucketIndex].statuses.push(uptimeBarStatus(check.status))
+    const responseTime = optionalNonNegativeNumber(check.latency_ms)
+    if (responseTime !== undefined) buckets[bucketIndex].responseTimes.push(responseTime)
+  }
+
+  return buckets.map((bucket) => ({
+    id: bucket.id,
+    startedAt: bucket.startedAt,
+    status: bucket.statuses.includes('down')
+      ? 'down'
+      : bucket.statuses.includes('degraded')
+        ? 'degraded'
+        : bucket.statuses.includes('up')
+          ? 'up'
+          : 'no-data',
+    responseTimeMs: bucket.responseTimes.length > 0
+      ? bucket.responseTimes.reduce((total, value) => total + value, 0) / bucket.responseTimes.length
+      : undefined,
+  }))
 }
 
 function latestCheck(monitorId: string, checks: readonly CheckResult[]): CheckResult | undefined {
@@ -299,6 +322,7 @@ export interface MonitorAdapterOptions {
   checks?: readonly CheckResult[]
   stats?: UptimeStats
   activeIncident?: Pick<Incident, 'id'>
+  latestIncident?: Pick<Incident, 'started_at' | 'resolved_at'>
   now?: DateInput
 }
 
@@ -335,9 +359,14 @@ export function toMonitorViewModel(
     statusChangedAt: monitor.last_status_change_at,
     responseTimeMs: optionalNonNegativeNumber(lastCheck?.latency_ms),
     uptime24h: clampPercentage(options.stats?.availability),
-    last24Hours: toUptimeBars(monitor.id, checks),
+    incidentCount24h: optionalNonNegativeNumber(options.stats?.incidents),
+    downtimeSeconds24h: optionalNonNegativeNumber(options.stats?.downtime_seconds),
+    mtbfSeconds24h: optionalNonNegativeNumber(options.stats?.mtbf_seconds),
+    last24Hours: toUptimeBars(monitor.id, checks, referenceTime),
     regions: Array.isArray(monitor.regions) ? [...monitor.regions] : [],
     incidentId: options.activeIncident?.id ?? lastCheck?.incident_id,
+    lastIncidentAt: options.latestIncident?.resolved_at ?? options.latestIncident?.started_at,
+    hasOpenIncident: Boolean(options.activeIncident),
     sslCertificate:
       tracksCertificateExpiry
         ? expirySnapshot(lastCheck, 'certificate', referenceTime)

@@ -35,7 +35,10 @@
 .status-summary { padding: 24px; }
 .status-summary h2 { margin: 0 0 26px; font-size: 17px; }
 .status-summary__visual { display: grid; place-items: center; margin-bottom: 21px; }
-.status-summary__visual > span { width: 51px; height: 51px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--red); font-size: 22px; font-weight: 700; box-shadow: 0 0 0 8px rgb(240 82 85 / 7%); }
+.status-summary__visual > span { width: 51px; height: 51px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--muted); font-size: 22px; font-weight: 700; box-shadow: 0 0 0 8px color-mix(in srgb, var(--muted) 12%, transparent); }
+.status-summary__visual--up > span { background: var(--green); box-shadow: 0 0 0 8px rgb(48 198 128 / 10%); }
+.status-summary__visual--degraded > span { background: var(--orange); box-shadow: 0 0 0 8px rgb(228 161 59 / 10%); }
+.status-summary__visual--down > span { background: var(--red); box-shadow: 0 0 0 8px rgb(240 82 85 / 10%); }
 .status-summary__counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
 .status-summary__counts div, .status-summary__metric-grid div { display: grid; gap: 4px; }
 .status-summary__counts strong { font-size: 21px; }

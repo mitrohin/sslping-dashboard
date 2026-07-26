@@ -74,13 +74,41 @@ export function MonitorsPage({
     .filter((monitor) => `${monitor.name} ${monitor.target} ${monitor.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'response' ? (b.responseTimeMs ?? 0) - (a.responseTimeMs ?? 0) : statusOrder[a.status] - statusOrder[b.status]), [filter, monitors, query, sort])
 
-  const summary = useMemo(() => ({
-    up: monitors.filter((monitor) => monitor.status === 'up').length,
-    down: monitors.filter((monitor) => monitor.status === 'down').length,
-    degraded: monitors.filter((monitor) => monitor.status === 'degraded').length,
-    paused: monitors.filter((monitor) => monitor.status === 'paused').length,
-    uptime: monitors.filter((monitor) => monitor.uptime24h !== undefined).reduce((total, monitor) => total + (monitor.uptime24h ?? 0), 0) / Math.max(1, monitors.filter((monitor) => monitor.uptime24h !== undefined).length),
-  }), [monitors])
+  const summary = useMemo(() => {
+    const measured = monitors.filter((monitor) => monitor.uptime24h !== undefined)
+    const incidentCount = monitors.reduce((total, monitor) => total + (monitor.incidentCount24h ?? 0), 0)
+    const stableTime = monitors.reduce(
+      (total, monitor) => total + (monitor.mtbfSeconds24h ?? 0) * (monitor.incidentCount24h ?? 0),
+      0,
+    )
+    const latestIncidentAt = monitors.reduce<number | undefined>((latest, monitor) => {
+      if (!monitor.lastIncidentAt) return latest
+      const timestamp = Date.parse(monitor.lastIncidentAt)
+      if (!Number.isFinite(timestamp)) return latest
+      return latest === undefined || timestamp > latest ? timestamp : latest
+    }, undefined)
+    const hasOpenIncident = monitors.some((monitor) => monitor.hasOpenIncident)
+    const secondsWithoutIncident = monitors.length === 0
+      ? undefined
+      : hasOpenIncident
+        ? 0
+        : latestIncidentAt === undefined
+          ? 86_400
+          : Math.max(0, Math.min(86_400, Math.floor((Date.now() - latestIncidentAt) / 1000)))
+
+    return {
+      up: monitors.filter((monitor) => monitor.status === 'up').length,
+      down: monitors.filter((monitor) => monitor.status === 'down').length,
+      degraded: monitors.filter((monitor) => monitor.status === 'degraded').length,
+      paused: monitors.filter((monitor) => monitor.status === 'paused').length,
+      uptime: measured.length > 0
+        ? measured.reduce((total, monitor) => total + (monitor.uptime24h ?? 0), 0) / measured.length
+        : undefined,
+      incidents: incidentCount,
+      mtbfSeconds: incidentCount > 0 ? stableTime / incidentCount : undefined,
+      secondsWithoutIncident,
+    }
+  }, [monitors])
 
   const visibleIds = useMemo(() => filtered.map((monitor) => monitor.id), [filtered])
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
@@ -228,7 +256,7 @@ export function MonitorsPage({
         {monitor.domainRegistration?.state === 'warning' && <Badge tone="warning">Domain exp. soon</Badge>}
       </div>
       <div className="monitor-row__interval"><RotateCw size={15} /> {formatDuration(monitor.intervalSeconds)}</div>
-      <div className="monitor-row__uptime"><UptimeBars compact values={monitor.last24Hours.map((bar) => bar.status === 'up' ? 100 : bar.status === 'down' ? 0 : 98)} /><span>{monitor.uptime24h === undefined ? '—' : formatUptime(monitor.uptime24h)}</span></div>
+      <div className="monitor-row__uptime"><UptimeBars compact label="Hourly checks for the last 24 hours" values={monitor.last24Hours.map((bar) => bar.status === 'up' ? 100 : bar.status === 'down' ? 0 : bar.status === 'degraded' ? 98 : null)} titles={monitor.last24Hours.map((bar) => `${new Date(bar.startedAt).toLocaleString([], { hour: '2-digit', minute: '2-digit' })} · ${bar.status === 'no-data' ? 'No checks' : bar.status}`)} /><span>{monitor.uptime24h === undefined ? '—' : formatUptime(monitor.uptime24h)}</span></div>
       <div className="monitor-row__actions" ref={openActionId === monitor.id ? actionMenuRef : undefined}>
         <IconButton
           label={`Actions for ${monitor.name}`}
@@ -299,13 +327,13 @@ export function MonitorsPage({
         <aside className="monitor-summary">
           <Panel className="status-summary">
             <h2>Current status<span className="title-dot">.</span></h2>
-            <div className="status-summary__visual"><span>{summary.down ? '!' : '✓'}</span></div>
+            <div className={`status-summary__visual status-summary__visual--${summary.down ? 'down' : summary.degraded ? 'degraded' : summary.up ? 'up' : 'idle'}`}><span>{summary.down ? '!' : summary.degraded ? '~' : summary.up ? '✓' : '–'}</span></div>
             <div className="status-summary__counts"><div><strong className="danger-text">{summary.down}</strong><span>Down</span></div><div><strong>{summary.up}</strong><span>Up</span></div><div><strong>{summary.paused}</strong><span>Paused</span></div></div>
             <p>Using {monitors.length} of 100 monitors.</p>
           </Panel>
           <Panel className="status-summary status-summary--stats">
             <h2>Last 24 hours<span className="title-dot">.</span></h2>
-            <div className="status-summary__metric-grid"><div><strong className={summary.uptime < 99 ? 'danger-text' : 'success-text'}>{formatUptime(summary.uptime)}</strong><span>Overall uptime</span></div><div><strong>21.85h</strong><span>MTBF</span></div><div><strong>45m</strong><span>Without incidents</span></div><div><strong>{summary.down + summary.degraded}</strong><span>Incidents</span></div></div>
+            <div className="status-summary__metric-grid"><div><strong className={summary.uptime !== undefined && summary.uptime < 99 ? 'danger-text' : 'success-text'}>{summary.uptime === undefined ? '—' : formatUptime(summary.uptime)}</strong><span>Overall uptime</span></div><div><strong>{summary.mtbfSeconds === undefined ? '—' : formatDuration(summary.mtbfSeconds)}</strong><span>MTBF</span></div><div><strong>{summary.secondsWithoutIncident === undefined ? '—' : formatDuration(summary.secondsWithoutIncident)}</strong><span>Without incidents</span></div><div><strong>{summary.incidents}</strong><span>Incidents</span></div></div>
           </Panel>
         </aside>
       </div>

@@ -1,9 +1,11 @@
 export function UptimeBars({
   values,
+  titles,
   compact = false,
   label = 'Uptime history',
 }: {
-  values: number[]
+  values: Array<number | null>
+  titles?: string[]
   compact?: boolean
   label?: string
 }) {
@@ -13,8 +15,8 @@ export function UptimeBars({
         <span
           // Time-series index is stable for this visual dataset.
           key={index}
-          className={value >= 99 ? 'is-up' : value <= 0 ? 'is-down' : 'is-warning'}
-          title={`${value.toFixed(value % 1 ? 1 : 0)}%`}
+          className={value === null ? 'is-no-data' : value >= 99 ? 'is-up' : value <= 0 ? 'is-down' : 'is-warning'}
+          title={titles?.[index] ?? (value === null ? 'No checks in this hour' : `${value.toFixed(value % 1 ? 1 : 0)}%`)}
         />
       ))}
     </div>

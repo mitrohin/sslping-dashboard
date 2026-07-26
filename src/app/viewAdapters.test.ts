@@ -174,9 +174,15 @@ describe('toMonitorViewModel', () => {
       status: 'up',
       responseTimeMs: 147,
       uptime24h: 99.975,
+      incidentCount24h: 1,
+      downtimeSeconds24h: 22,
+      mtbfSeconds24h: 86_400,
       incidentId: 'incident-current',
     })
-    expect(result.last24Hours.map((bar) => bar.status)).toEqual(['down', 'up'])
+    expect(result.last24Hours).toHaveLength(24)
+    expect(result.last24Hours.slice(0, -2).every((bar) => bar.status === 'no-data')).toBe(true)
+    expect(result.last24Hours.at(-2)?.status).toBe('down')
+    expect(result.last24Hours.at(-1)?.status).toBe('no-data')
     expect(result.sslCertificate).toMatchObject({
       expiresAt: '2026-09-01T00:00:00.000Z',
       issuer: 'Example Trust Services',

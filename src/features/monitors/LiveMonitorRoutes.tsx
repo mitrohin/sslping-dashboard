@@ -93,24 +93,43 @@ export function LiveMonitorsPage() {
       const monitors = page.items ?? []
       const metricItems = summary.items ?? []
       const incidents = incidentsPage.items ?? []
-      const checkResults = await Promise.allSettled(
-        monitors.map((monitor) =>
-          api.listMonitorChecks(workspace.id, monitor.id, { from, to: now.toISOString(), limit: 30 }),
-        ),
-      )
+      const checkResults = await Promise.allSettled(monitors.map(async (monitor) => {
+        const checks: CheckResult[] = []
+        let cursor: string | undefined
+        do {
+          const page = await api.listMonitorChecks(workspace.id, monitor.id, {
+            from,
+            to: now.toISOString(),
+            limit: 250,
+            cursor,
+          })
+          checks.push(...(page.items ?? []))
+          cursor = page.next_cursor
+        } while (cursor)
+        return checks
+      }))
       const metrics = new Map(metricItems.map((item) => [item.monitor_id, item.stats] as const))
       const activeIncidents = new Map(
         incidents
           .filter((incident) => incident.status !== 'resolved')
           .map((incident) => [incident.monitor_id, incident] as const),
       )
+      const latestIncidents = new Map<string, (typeof incidents)[number]>()
+      incidents.forEach((incident) => {
+        const current = latestIncidents.get(incident.monitor_id)
+        if (!current || Date.parse(incident.started_at) > Date.parse(current.started_at)) {
+          latestIncidents.set(incident.monitor_id, incident)
+        }
+      })
       setData(monitors.map((monitor, index) =>
         toMonitorViewModel(monitor, {
           checks: checkResults[index].status === 'fulfilled'
-            ? checkResults[index].value.items ?? []
+            ? checkResults[index].value
             : [],
           stats: metrics.get(monitor.id),
           activeIncident: activeIncidents.get(monitor.id),
+          latestIncident: latestIncidents.get(monitor.id),
+          now,
         }),
       ))
     } catch (loadError) {

@@ -337,6 +337,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-2); }
 .uptime-bars .is-up { background: var(--green); }
 .uptime-bars .is-down { background: var(--red); }
 .uptime-bars .is-warning { background: var(--orange); }
+.uptime-bars .is-no-data { background: var(--muted-2); }
 .uptime-bars--compact { height: 18px; gap: 2px; }
 .uptime-bars--compact span { min-width: 1px; }
 

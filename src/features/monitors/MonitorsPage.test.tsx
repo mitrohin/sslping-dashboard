@@ -40,6 +40,44 @@ describe('MonitorsPage selection', () => {
   })
 })
 
+describe('MonitorsPage health summary', () => {
+  it('uses monitor metrics and current health instead of placeholder values', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-26T12:00:00.000Z'))
+    const monitor: MonitorViewModel = {
+      ...demoMonitors[0],
+      status: 'up',
+      uptime24h: 99.87,
+      incidentCount24h: 1,
+      downtimeSeconds24h: 62,
+      mtbfSeconds24h: 46_800,
+      lastIncidentAt: '2026-07-26T06:15:00.000Z',
+      hasOpenIncident: false,
+      last24Hours: Array.from({ length: 24 }, (_, index) => ({
+        id: `hour-${index}`,
+        startedAt: new Date(Date.parse('2026-07-25T13:00:00.000Z') + index * 3_600_000).toISOString(),
+        status: index === 17 ? 'down' as const : index < 10 ? 'no-data' as const : 'up' as const,
+      })),
+    }
+
+    renderPage({ data: [monitor] })
+
+    const current = screen.getByRole('heading', { name: /current status/i }).closest('.panel') as HTMLElement
+    expect(within(current).getByText('✓')).toBeInTheDocument()
+    expect(within(current).getByText('✓').parentElement).toHaveClass('status-summary__visual--up')
+
+    const lastDay = screen.getByRole('heading', { name: /last 24 hours/i }).closest('.panel') as HTMLElement
+    expect(within(lastDay).getByText('99.87%')).toBeInTheDocument()
+    expect(within(lastDay).getByText('13h')).toBeInTheDocument()
+    expect(within(lastDay).getByText('5h 45m')).toBeInTheDocument()
+    expect(within(lastDay).getByText('1')).toBeInTheDocument()
+
+    const bars = screen.getByLabelText('Hourly checks for the last 24 hours').querySelectorAll('span')
+    expect(bars).toHaveLength(24)
+    expect(bars[17]).toHaveClass('is-down')
+    expect(bars[0]).toHaveClass('is-no-data')
+  })
+})
+
 describe('MonitorsPage monitor creation', () => {
   it('keeps certificate and domain expiry as supplemental checks instead of standalone monitor types', () => {
     renderPage({ data: [] })
