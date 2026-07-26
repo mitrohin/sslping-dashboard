@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   Activity,
   BellRing,
-  ChevronDown,
   Eye,
   Filter,
   Layers3,
@@ -21,7 +20,7 @@ import {
 import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
 import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
-import { Badge, Button, EmptyState, IconButton, Modal, PageHeader, Panel, SearchInput, StatusDot, Toggle } from '../../components/ui'
+import { Badge, Button, EmptyState, IconButton, Modal, PageHeader, Panel, SearchInput, Select, StatusDot, Toggle } from '../../components/ui'
 import { defaultMonitorDraft, MonitorForm, type MonitorDraft } from './MonitorForm'
 import { HeartbeatCredentialModal, type HeartbeatCredential } from './HeartbeatCredentialModal'
 import './monitors.css'
@@ -378,7 +377,7 @@ export function MonitorsPage({
 
   return (
     <div className="page page--wide monitors-page">
-      <PageHeader title="Monitors" actions={<Button onClick={() => setCreateOpen(true)}><Plus size={18} /> New monitor <ChevronDown size={16} /></Button>} />
+      <PageHeader title="Monitors" actions={<Button onClick={() => setCreateOpen(true)}><Plus size={18} /> New monitor</Button>} />
 
       <div className="monitor-toolbar">
         <label className="monitor-toolbar__count">
@@ -395,9 +394,9 @@ export function MonitorsPage({
         </label>
         <div className="monitor-toolbar__groups"><span>Show groups</span><Toggle checked={showGroups} onChange={setShowGroups} label="Show monitor groups" /></div>
         <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or URL" />
-        <div className="filter-dropdown"><Filter size={17} /><select value={filter} onChange={(event) => setFilter(event.target.value as 'all' | MonitorStatus)}><option value="all">All statuses</option><option value="down">Down</option><option value="degraded">Degraded</option><option value="up">Up</option><option value="paused">Paused</option></select></div>
-        <div className="filter-dropdown"><Tags size={17} /><select aria-label="Filter by tag" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}><option value="all">All tags</option>{availableTags.map((tag) => <option value={tag} key={tag}>{tag}</option>)}</select></div>
-        <div className="filter-dropdown"><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="status">Down first</option><option value="name">Name A–Z</option><option value="response">Slowest first</option></select></div>
+        <div className="filter-dropdown"><Filter size={17} /><Select aria-label="Filter by status" value={filter} onChange={(event) => setFilter(event.target.value as 'all' | MonitorStatus)}><option value="all">All statuses</option><option value="down">Down</option><option value="degraded">Degraded</option><option value="up">Up</option><option value="paused">Paused</option></Select></div>
+        <div className="filter-dropdown"><Tags size={17} /><Select aria-label="Filter by tag" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}><option value="all">All tags</option>{availableTags.map((tag) => <option value={tag} key={tag}>{tag}</option>)}</Select></div>
+        <div className="filter-dropdown"><Select aria-label="Sort monitors" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="status">Down first</option><option value="name">Name A–Z</option><option value="response">Slowest first</option></Select></div>
       </div>
 
       {selectedMonitors.length > 0 && <div className="monitor-bulk-toolbar" role="toolbar" aria-label="Bulk monitor actions">

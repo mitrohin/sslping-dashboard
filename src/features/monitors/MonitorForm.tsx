@@ -327,7 +327,7 @@ export function MonitorForm({
                   {selectedTagValues.map((tag) => <span className="tag-chip" key={tag}><strong>{tag}</strong><button type="button" aria-label={`Remove tag ${tag}`} onClick={(event) => { event.stopPropagation(); setSelectedTagValues((selected) => selected.filter((value) => value !== tag)) }}><X size={13} /></button></span>)}
                   <span className="tag-picker__placeholder">Add tag…</span>
                 </div>
-                <ChevronDown size={17} aria-hidden="true" />
+                <ChevronDown className="dropdown-chevron" size={18} aria-hidden="true" />
               </div>
               {tagPickerOpen && (
                 <div className="tag-picker__menu" role="listbox" aria-label="Workspace tags">
@@ -406,7 +406,7 @@ export function MonitorForm({
                           {draft.allowedStatusCodes.map((statusCode) => <span key={`code-${statusCode}`} className={`http-status-chip http-status-chip--${Math.floor(statusCode / 100)}`}><strong>{statusCode}</strong><button type="button" aria-label={`Remove ${statusCode}`} disabled={acceptedRuleCount === 1} onClick={(event) => { event.stopPropagation(); set('allowedStatusCodes', draft.allowedStatusCodes.filter((value) => value !== statusCode)) }}><X size={13} /></button></span>)}
                           <span className="http-status-editor__placeholder">Add status…</span>
                         </div>
-                        <ChevronDown size={17} aria-hidden="true" />
+                        <ChevronDown className="dropdown-chevron" size={18} aria-hidden="true" />
                       </div>
                       {statusPickerOpen && (
                         <div className="http-status-menu" role="listbox" aria-label="Known HTTP statuses">

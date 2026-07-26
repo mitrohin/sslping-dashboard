@@ -271,17 +271,37 @@ input::placeholder, textarea::placeholder { color: var(--muted-2); }
   background: var(--panel-strong);
   transition: border 150ms ease, box-shadow 150ms ease;
 }
+.select-control {
+  --select-chevron-right: 16px;
+  --select-chevron-size: 18px;
+  --select-chevron-space: 50px;
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
 .select {
+  -webkit-appearance: none;
   appearance: none;
-  padding-right: 44px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2396a7bc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 15px center;
-  background-size: 18px;
+  padding-right: var(--select-chevron-space);
   cursor: pointer;
 }
-.select:hover:not(:disabled) { border-color: #52637c; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23dce6f2' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+.select-control__chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--select-chevron-right);
+  width: var(--select-chevron-size);
+  height: var(--select-chevron-size);
+  color: #96a7bc;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: color 150ms ease;
+}
+.select:hover:not(:disabled) { border-color: #52637c; }
+.select:hover:not(:disabled) + .select-control__chevron,
+.select:focus + .select-control__chevron { color: #dce6f2; }
 .select:disabled { cursor: not-allowed; opacity: .62; }
+.select:disabled + .select-control__chevron { opacity: .45; }
 .field textarea { min-height: 110px; padding-block: 13px; resize: vertical; }
 .select:focus, .field input:focus, .field textarea:focus, .standalone-input:focus { border-color: #647895; box-shadow: 0 0 0 3px rgb(88 166 255 / 8%); }
 .field { display: grid; gap: 8px; }

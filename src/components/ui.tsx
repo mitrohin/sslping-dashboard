@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 import { useEffect } from 'react'
-import { Search, X } from 'lucide-react'
+import { ChevronDown, Search, X } from 'lucide-react'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
 
@@ -137,9 +137,12 @@ export function Select({
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={`select ${className}`} {...props}>
-      {children}
-    </select>
+    <span className="select-control">
+      <select className={`select ${className}`} {...props}>
+        {children}
+      </select>
+      <ChevronDown className="select-control__chevron" aria-hidden="true" />
+    </span>
   )
 }
 
