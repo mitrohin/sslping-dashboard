@@ -44,10 +44,13 @@
 .admin-ticket-row { min-height: 94px; padding: 16px 20px; border-top: 1px solid var(--line); }
 .admin-ticket-row:first-child { border-top: 0; }
 .admin-ticket-row:hover { background: rgb(255 255 255 / 1.5%); }
+.admin-ticket-row.is-unread { background: linear-gradient(90deg, rgb(52 215 123 / 9%), rgb(52 215 123 / 2.5%) 52%, transparent); box-shadow: inset 3px 0 var(--green); }
+.admin-ticket-row.is-unread:hover { background: linear-gradient(90deg, rgb(52 215 123 / 13%), rgb(52 215 123 / 4%) 58%, rgb(255 255 255 / 1.5%)); }
 .admin-ticket-identity { min-width: 0; display: grid; justify-items: start; gap: 4px; }
 .admin-ticket-identity strong,.admin-ticket-identity small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-ticket-identity small { color: #728098; font-size: 10px; }
 .admin-ticket-identity > span { color: var(--muted); font-size: 11px; }
+.admin-ticket-unread { min-height: 21px; display: inline-flex; align-items: center; margin-top: 4px; padding: 2px 8px; border-radius: 999px; color: #8ef0b8; background: rgb(52 215 123 / 13%); font-size: 10px; font-weight: 750; letter-spacing: .02em; }
 .admin-ticket-cell { min-width: 0; }
 .admin-ticket-state { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .admin-ticket-activity { display: grid; gap: 4px; }

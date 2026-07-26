@@ -731,12 +731,23 @@ export class ApiClient {
     return this.#request(withQuery('/v1/support/tickets', query))
   }
 
+  getSupportTicketSummary(): Promise<Api.SupportUnreadSummary> {
+    return this.#request('/v1/support/tickets/summary')
+  }
+
   createSupportTicket(input: { subject: string; priority: Api.SupportTicketPriority; message: string }): Promise<Api.SupportTicketDetail> {
     return this.#request('/v1/support/tickets', { method: 'POST', body: input })
   }
 
   getSupportTicket(ticketId: Api.UUID): Promise<Api.SupportTicketDetail> {
     return this.#request(`/v1/support/tickets/${encodePath(ticketId)}`)
+  }
+
+  markSupportTicketRead(ticketId: Api.UUID, throughMessageId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/support/tickets/${encodePath(ticketId)}/read-state`, {
+      method: 'PUT',
+      body: { through_message_id: throughMessageId },
+    })
   }
 
   replySupportTicket(ticketId: Api.UUID, message: string): Promise<{ ticket: Api.SupportTicket; message: Api.SupportMessage }> {
@@ -794,8 +805,19 @@ export class ApiClient {
     return this.#request(withQuery('/v1/admin/tickets', query))
   }
 
+  adminGetSupportTicketSummary(): Promise<Api.SupportUnreadSummary> {
+    return this.#request('/v1/admin/tickets/summary')
+  }
+
   adminGetTicket(ticketId: Api.UUID): Promise<Api.SupportTicketDetail> {
     return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}`)
+  }
+
+  adminMarkSupportTicketRead(ticketId: Api.UUID, throughMessageId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/admin/tickets/${encodePath(ticketId)}/read-state`, {
+      method: 'PUT',
+      body: { through_message_id: throughMessageId },
+    })
   }
 
   adminUpdateTicket(ticketId: Api.UUID, input: { assigned_to?: Api.UUID; status: Api.SupportTicketStatus; priority: Api.SupportTicketPriority }): Promise<Api.SupportTicket> {

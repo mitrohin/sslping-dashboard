@@ -3,15 +3,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AppShell } from './AppShell'
 
-const { mockLogout } = vi.hoisted(() => ({ mockLogout: vi.fn().mockResolvedValue(undefined) }))
+const mocks = vi.hoisted(() => {
+  const supportSummary = vi.fn().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
+  const adminSummary = vi.fn().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
+  return {
+    logout: vi.fn().mockResolvedValue(undefined),
+    supportSummary,
+    adminSummary,
+    auth: {
+      api: { getSupportTicketSummary: supportSummary, adminGetSupportTicketSummary: adminSummary },
+    user: { id: 'user-1', name: 'Jordan Lee', system_role: 'user' },
+    workspace: { id: 'workspace-1', name: 'Production workspace', plan: 'free' },
+    authenticated: true,
+    impersonation: null as null | { reason: string },
+    },
+  }
+})
 
 vi.mock('../app/AuthProvider', () => ({
-  useAuth: () => ({
-    user: { name: 'Jordan Lee' },
-    workspace: { name: 'Production workspace', plan: 'free' },
-    authenticated: true,
-    logout: mockLogout,
-  }),
+  useAuth: () => ({ ...mocks.auth, logout: mocks.logout }),
 }))
 
 vi.mock('../app/DashboardGate', () => ({
@@ -21,7 +31,11 @@ vi.mock('../app/DashboardGate', () => ({
 
 afterEach(() => {
   cleanup()
-  mockLogout.mockClear()
+  mocks.logout.mockClear()
+  mocks.supportSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
+  mocks.adminSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
+  mocks.auth.user = { id: 'user-1', name: 'Jordan Lee', system_role: 'user' }
+  mocks.auth.impersonation = null
 })
 
 function renderShell() {
@@ -79,7 +93,32 @@ describe('AppShell actions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }))
 
-    await waitFor(() => expect(mockLogout).toHaveBeenCalledOnce())
+    await waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce())
     expect(screen.getByText('Login destination')).toBeInTheDocument()
+  })
+
+  it('shows the customer unread count in expanded and collapsed navigation', async () => {
+    mocks.supportSummary.mockResolvedValue({ unread_tickets: 3, unread_messages: 5 })
+    renderShell()
+
+    const supportLink = await screen.findByRole('link', { name: 'Support tickets, 3 unread' })
+    expect(within(supportLink).getByText('3')).toHaveClass('nav-item__unread')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(screen.getByRole('link', { name: 'Support tickets, 3 unread' })).toHaveAttribute('title', 'Support tickets, 3 unread')
+  })
+
+  it('shows administrator unread tickets only outside an impersonation session', async () => {
+    mocks.auth.user = { id: 'admin-1', name: 'Jordan Lee', system_role: 'superadmin' }
+    mocks.adminSummary.mockResolvedValue({ unread_tickets: 2, unread_messages: 4 })
+    const view = renderShell()
+
+    expect(await screen.findByRole('link', { name: 'System administration, 2 unread' })).toBeInTheDocument()
+    expect(mocks.adminSummary).toHaveBeenCalled()
+
+    view.unmount()
+    mocks.auth.impersonation = { reason: 'Customer support' }
+    renderShell()
+    expect(screen.queryByRole('link', { name: /system administration/i })).not.toBeInTheDocument()
   })
 })

@@ -6,6 +6,7 @@ import { Badge, Button, Field, IconButton, Modal, PageHeader, Panel, Select, Tog
 import { formatDate } from '../../lib/format'
 import { saveAdministratorSession } from '../../app/impersonation'
 import { AttachmentList, AttachmentPicker, openAttachmentBlob } from '../support/SupportAttachments'
+import { requestSupportUnreadRefresh } from '../support/unread'
 import './admin.css'
 
 type Section = 'users' | 'plans' | 'tickets' | 'notifications'
@@ -115,7 +116,20 @@ export function AdminConsolePage() {
 
   const openTicket = async (ticket: SupportTicket) => {
     setBusy(true)
-    try { setTicketDetail(await api.adminGetTicket(ticket.id)); setTicketFiles([]); setError('') } catch (reason) { setError(asMessage(reason, 'Could not open the ticket.')) } finally { setBusy(false) }
+    try {
+      const next = await api.adminGetTicket(ticket.id)
+      setTicketDetail(next)
+      setTicketFiles([])
+      const latestCustomerMessage = [...next.messages].reverse().find((message) => message.author_role === 'user' && !message.internal)
+      if ((ticket.unread_count > 0 || next.ticket.unread_count > 0) && latestCustomerMessage) {
+        await api.adminMarkSupportTicketRead(ticket.id, latestCustomerMessage.id)
+        const readTicket = { ...next.ticket, unread_count: 0 }
+        setTicketDetail({ ...next, ticket: readTicket })
+        setTickets((items) => items.map((item) => item.id === ticket.id ? readTicket : item))
+        requestSupportUnreadRefresh()
+      }
+      setError('')
+    } catch (reason) { setError(asMessage(reason, 'Could not open the ticket.')) } finally { setBusy(false) }
   }
 
   const updateTicket = async (patch: Partial<Pick<SupportTicket, 'status' | 'priority'>>) => {
@@ -144,6 +158,7 @@ export function AdminConsolePage() {
       setTicketReply('')
       setInternalReply(false)
       setTicketFiles([])
+      requestSupportUnreadRefresh()
     } catch (reason) { setError(asMessage(reason, 'Could not send the reply.')) } finally { setBusy(false) }
   }
 
@@ -161,6 +176,7 @@ export function AdminConsolePage() {
   }
 
   const activeTickets = tickets.filter((ticket) => !['resolved', 'closed'].includes(ticket.status)).length
+  const unreadTickets = tickets.filter((ticket) => ticket.unread_count > 0).length
 
   return (
     <div className="page page--wide admin-page">
@@ -176,7 +192,7 @@ export function AdminConsolePage() {
       <nav className="admin-tabs" aria-label="System administration sections">
         <button className={section === 'users' ? 'is-active' : ''} onClick={() => setSection('users')}><Users size={17} /> Users & workspaces</button>
         <button className={section === 'plans' ? 'is-active' : ''} onClick={() => setSection('plans')}><CreditCard size={17} /> Plans & limits</button>
-        <button className={section === 'tickets' ? 'is-active' : ''} onClick={() => setSection('tickets')}><MessageSquare size={17} /> Tickets {activeTickets > 0 && <b>{activeTickets}</b>}</button>
+        <button className={section === 'tickets' ? 'is-active' : ''} onClick={() => setSection('tickets')}><MessageSquare size={17} /> Tickets {unreadTickets > 0 && <b aria-label={`${unreadTickets} unread tickets`}>{unreadTickets}</b>}</button>
         <button className={section === 'notifications' ? 'is-active' : ''} onClick={() => setSection('notifications')}><BellRing size={17} /> Notifications</button>
       </nav>
       {loading ? <div className="route-loading"><span className="spinner" /> Loading control center…</div> : section === 'users' ? (
@@ -267,11 +283,12 @@ function TicketsSection({ tickets, users, busy, onOpen }: { tickets: SupportTick
     </div>}
     {tickets.length === 0 ? <div className="admin-tickets-empty"><MessageSquare size={30} /><strong>No support tickets</strong><span>New customer conversations will appear here.</span></div> : (
       <div className="admin-ticket-list" role="list">
-        {tickets.map((ticket) => <article className="admin-ticket-row" role="listitem" key={ticket.id}>
+        {tickets.map((ticket) => <article className={`admin-ticket-row ${ticket.unread_count > 0 ? 'is-unread' : ''}`} role="listitem" key={ticket.id}>
           <div className="admin-ticket-identity">
             <strong>{ticket.subject}</strong>
             <small title={ticket.id}>{ticket.id}</small>
             <span>Customer · {userName(ticket.created_by)}</span>
+            {ticket.unread_count > 0 && <b className="admin-ticket-unread">{ticket.unread_count === 1 ? 'New activity' : `${ticket.unread_count} new activities`}</b>}
           </div>
           <div className="admin-ticket-state admin-ticket-cell" data-label="State">
             <Badge tone={ticket.priority === 'urgent' ? 'danger' : ticket.priority === 'high' ? 'warning' : 'neutral'}>{ticket.priority}</Badge>

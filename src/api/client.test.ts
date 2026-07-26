@@ -194,6 +194,36 @@ describe('ApiClient', () => {
     })
   })
 
+  it('reads support summaries and updates customer and administrator read state', async () => {
+    const summary = { unread_tickets: 2, unread_messages: 3 }
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(summary))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse(summary))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+
+    await expect(client.getSupportTicketSummary()).resolves.toEqual(summary)
+    await expect(client.markSupportTicketRead('ticket/customer', 'message/customer')).resolves.toBeUndefined()
+    await expect(client.adminGetSupportTicketSummary()).resolves.toEqual(summary)
+    await expect(client.adminMarkSupportTicketRead('ticket/admin', 'message/admin')).resolves.toBeUndefined()
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/support/tickets/summary',
+      '/api/v1/support/tickets/ticket%2Fcustomer/read-state',
+      '/api/v1/admin/tickets/summary',
+      '/api/v1/admin/tickets/ticket%2Fadmin/read-state',
+    ])
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ through_message_id: 'message/customer' }),
+    })
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ through_message_id: 'message/admin' }),
+    })
+  })
+
   it('uploads support attachments as multipart data and downloads their binary body', async () => {
     const attachment = {
       id: 'attachment-1',

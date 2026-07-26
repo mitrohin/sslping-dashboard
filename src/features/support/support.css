@@ -7,10 +7,14 @@
 .support-list > button { width: 100%; min-height: 82px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 15px; padding: 15px 20px; border: 0; border-top: 1px solid var(--line); color: var(--text); text-align: left; background: transparent; cursor: pointer; }
 .support-list > button:first-child { border-top: 0; }
 .support-list > button:hover { background: rgb(255 255 255 / 2.5%); }
-.support-list__icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: var(--green); background: var(--green-soft); }
+.support-list > button.is-unread { background: linear-gradient(90deg, rgb(52 215 123 / 10%), rgb(52 215 123 / 3%) 48%, transparent); box-shadow: inset 3px 0 var(--green); }
+.support-list > button.is-unread:hover { background: linear-gradient(90deg, rgb(52 215 123 / 14%), rgb(52 215 123 / 5%) 54%, rgb(255 255 255 / 2%)); }
+.support-list__icon { position: relative; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: var(--green); background: var(--green-soft); }
+.support-list > button.is-unread .support-list__icon::after { content: ""; position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border: 2px solid var(--panel); border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgb(52 215 123 / 38%); }
 .support-list > button > span:nth-child(2) { min-width: 0; display: grid; gap: 5px; }
 .support-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .support-list small { color: var(--muted); }
+.support-list__unread { width: max-content; min-height: 21px; display: inline-flex; align-items: center; margin-top: 2px; padding: 2px 8px; border-radius: 999px; color: #8ef0b8; background: rgb(52 215 123 / 13%); font-size: 10px; font-weight: 750; letter-spacing: .02em; }
 .support-thread { overflow: hidden; }
 .support-thread__meta { display: flex; gap: 28px; padding: 17px 24px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .support-thread__meta strong { margin-left: 5px; color: var(--text); text-transform: capitalize; }

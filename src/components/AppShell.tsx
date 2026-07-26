@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
@@ -22,6 +22,7 @@ import { Button, IconButton, Modal } from './ui'
 import { useAuth } from '../app/AuthProvider'
 import { endDemoSession, isDemoSession } from '../app/DashboardGate'
 import { clearAdministratorSessionBackup, restoreAdministratorSession } from '../app/impersonation'
+import { SUPPORT_UNREAD_REFRESH_EVENT } from '../features/support/unread'
 
 const navItems = [
   { to: '/monitors', label: 'Monitoring', icon: CircleGauge },
@@ -47,6 +48,8 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [supportUnread, setSupportUnread] = useState(0)
+  const [adminUnread, setAdminUnread] = useState(0)
   const { api, user, workspace, authenticated, logout, impersonation } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -61,9 +64,38 @@ export function AppShell() {
   const currentPlan = workspace?.plan || (demo ? 'demo' : 'free')
   const planLabel = currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1).replaceAll('_', ' ')
   const salesSubject = encodeURIComponent(`SSLPing plan enquiry — ${workspace?.name || 'workspace'}`)
-  const availableNavItems = user?.system_role === 'superadmin' && !impersonation
+  const isSystemAdministrator = user?.system_role === 'superadmin' && !impersonation
+  const availableNavItems = isSystemAdministrator
     ? [...navItems, { to: '/admin', label: 'System administration', icon: Shield }]
     : navItems
+
+  const refreshSupportUnread = useCallback(async () => {
+    if (!authenticated || demo) {
+      setSupportUnread(0)
+      setAdminUnread(0)
+      return
+    }
+
+    const [customerResult, adminResult] = await Promise.allSettled([
+      api.getSupportTicketSummary(),
+      isSystemAdministrator ? api.adminGetSupportTicketSummary() : Promise.resolve(null),
+    ])
+    if (customerResult.status === 'fulfilled') setSupportUnread(customerResult.value.unread_tickets)
+    if (adminResult.status === 'fulfilled') setAdminUnread(adminResult.value?.unread_tickets ?? 0)
+  }, [api, authenticated, demo, isSystemAdministrator, workspace?.id])
+
+  useEffect(() => {
+    void refreshSupportUnread()
+    const timer = window.setInterval(() => void refreshSupportUnread(), 30_000)
+    const refresh = () => void refreshSupportUnread()
+    window.addEventListener('focus', refresh)
+    window.addEventListener(SUPPORT_UNREAD_REFRESH_EVENT, refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(SUPPORT_UNREAD_REFRESH_EVENT, refresh)
+    }
+  }, [location.pathname, refreshSupportUnread])
 
   const openSupportRoute = (path: string) => {
     setSupportOpen(false)
@@ -100,18 +132,24 @@ export function AppShell() {
           </IconButton>
         </div>
         <nav className="sidebar__nav" aria-label="Primary">
-          {availableNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              title={collapsed ? label : undefined}
-            >
-              <Icon size={21} strokeWidth={1.8} />
-              {!collapsed && <span>{label}</span>}
-            </NavLink>
-          ))}
+          {availableNavItems.map(({ to, label, icon: Icon }) => {
+            const unread = to === '/support' ? supportUnread : to === '/admin' ? adminUnread : 0
+            const unreadLabel = unread > 0 ? `${label}, ${unread} unread` : label
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''} ${unread > 0 ? 'has-unread' : ''}`}
+                title={collapsed ? unreadLabel : undefined}
+                aria-label={unreadLabel}
+              >
+                <Icon size={21} strokeWidth={1.8} />
+                {!collapsed && <span className="nav-item__label">{label}</span>}
+                {unread > 0 && <b className="nav-item__unread" aria-hidden="true">{unread > 99 ? '99+' : unread}</b>}
+              </NavLink>
+            )
+          })}
         </nav>
 
         <div className="sidebar__footer">

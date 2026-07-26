@@ -5,6 +5,7 @@ import { useAuth } from '../../app/AuthProvider'
 import { Badge, Button, EmptyState, Field, PageHeader, Panel, Select } from '../../components/ui'
 import { formatDate } from '../../lib/format'
 import { AttachmentList, AttachmentPicker, openAttachmentBlob } from './SupportAttachments'
+import { requestSupportUnreadRefresh } from './unread'
 import './support.css'
 
 function ticketTone(status: SupportTicket['status']) {
@@ -45,7 +46,16 @@ export function SupportPage() {
   const openTicket = async (ticket: SupportTicket) => {
     setBusy(true)
     try {
-      setDetail(await api.getSupportTicket(ticket.id))
+      const next = await api.getSupportTicket(ticket.id)
+      setDetail(next)
+      const latestStaffMessage = [...next.messages].reverse().find((message) => message.author_role === 'superadmin' && !message.internal)
+      if ((ticket.unread_count > 0 || next.ticket.unread_count > 0) && latestStaffMessage) {
+        await api.markSupportTicketRead(ticket.id, latestStaffMessage.id)
+        const readTicket = { ...next.ticket, unread_count: 0 }
+        setDetail({ ...next, ticket: readTicket })
+        setTickets((current) => current.map((item) => item.id === ticket.id ? readTicket : item))
+        requestSupportUnreadRefresh()
+      }
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not open this ticket.')
@@ -73,6 +83,7 @@ export function SupportPage() {
       setPriority('normal')
       setTicketFiles([])
       setError('')
+      requestSupportUnreadRefresh()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not create the ticket.')
     } finally {
@@ -95,6 +106,7 @@ export function SupportPage() {
       setReply('')
       setReplyFiles([])
       setError('')
+      requestSupportUnreadRefresh()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not send the reply.')
     } finally {
@@ -173,9 +185,13 @@ export function SupportPage() {
       ) : (
         <Panel className="support-list">
           {loading ? <div className="route-loading"><span className="spinner" /> Loading tickets…</div> : tickets.map((ticket) => (
-            <button key={ticket.id} type="button" onClick={() => void openTicket(ticket)} disabled={busy}>
+            <button key={ticket.id} type="button" className={ticket.unread_count > 0 ? 'is-unread' : ''} onClick={() => void openTicket(ticket)} disabled={busy}>
               <span className="support-list__icon"><Ticket size={20} /></span>
-              <span><strong>{ticket.subject}</strong><small>Updated {formatDate(ticket.updated_at)}</small></span>
+              <span>
+                <strong>{ticket.subject}</strong>
+                <small>Updated {formatDate(ticket.updated_at)}</small>
+                {ticket.unread_count > 0 && <span className="support-list__unread">{ticket.unread_count === 1 ? 'New reply' : `${ticket.unread_count} new replies`}</span>}
+              </span>
               <Badge tone={ticket.priority === 'urgent' ? 'danger' : ticket.priority === 'high' ? 'warning' : 'neutral'}>{ticket.priority}</Badge>
               <Badge tone={ticketTone(ticket.status)}>{ticket.status.replace('_', ' ')}</Badge>
             </button>

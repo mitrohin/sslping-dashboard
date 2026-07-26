@@ -877,7 +877,13 @@ export interface SupportTicket {
   created_at: ISODateTime
   updated_at: ISODateTime
   last_reply_at: ISODateTime
+  unread_count: number
   closed_at?: ISODateTime
+}
+
+export interface SupportUnreadSummary {
+  unread_tickets: number
+  unread_messages: number
 }
 
 export interface SupportMessage {
