@@ -180,8 +180,56 @@ export function AdminConsolePage() {
   )
 }
 
+function userInitials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U'
+}
+
 function UsersSection({ users, plans, query, setQuery, busy, onPlan, onEdit, onImpersonate }: { users: AdminUser[]; plans: Plan[]; query: string; setQuery: (value: string) => void; busy: boolean; onPlan: (user: AdminUser, workspace: Workspace, code: string) => void; onEdit: (user: AdminUser) => void; onImpersonate: (user: AdminUser) => void }) {
-  return <><label className="admin-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by user, email or workspace" /></label><Panel className="admin-table-panel"><div className="account-table-wrap"><table className="account-table admin-users-table"><thead><tr><th>User</th><th>Registered</th><th>Workspace & plan</th><th>Security</th><th>Actions</th></tr></thead><tbody>{users.map((entry) => <tr key={entry.id}><td><strong>{entry.name}</strong><small>{entry.email}</small>{entry.system_role === 'superadmin' && <Badge tone="purple">Superadmin</Badge>}</td><td>{formatDate(entry.created_at)}</td><td><div className="admin-workspaces">{entry.workspaces.map((workspace) => <label key={workspace.id}><span>{workspace.name}</span><Select value={workspace.plan} disabled={busy} onChange={(event) => void onPlan(entry, workspace, event.target.value)}>{plans.filter((plan) => plan.active || plan.code === workspace.plan).map((plan) => <option key={plan.id} value={plan.code}>{plan.name}</option>)}</Select></label>)}</div></td><td><Badge tone={entry.email_verified_at ? 'success' : 'warning'}>{entry.email_verified_at ? 'Verified' : 'Unverified'}</Badge><small>{entry.two_factor_enabled ? '2FA enabled' : '2FA disabled'}</small></td><td><div className="admin-actions"><Button size="sm" variant="secondary" onClick={() => onEdit(entry)}><Pencil size={15} /> Manage</Button><Button size="sm" onClick={() => onImpersonate(entry)} disabled={entry.workspaces.length === 0}><LogIn size={15} /> Sign in as user</Button></div></td></tr>)}</tbody></table></div></Panel></>
+  return <>
+    <label className="admin-search">
+      <Search size={18} />
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by user, email or workspace" />
+    </label>
+    <Panel className="admin-users-panel">
+      <div className="admin-user-list-heading" aria-hidden="true">
+        <span>User</span>
+        <span>Workspace & plan</span>
+        <span>Security</span>
+        <span>Actions</span>
+      </div>
+      {users.length === 0 ? <div className="admin-users-empty"><Users size={28} /><strong>No users found</strong><span>Try another search query.</span></div> : (
+        <div className="admin-user-list" role="list">
+          {users.map((entry) => <article className="admin-user-row" role="listitem" key={entry.id}>
+            <div className="admin-user-identity">
+              <span className="admin-user-avatar" aria-hidden="true">{userInitials(entry.name)}</span>
+              <span>
+                <strong>{entry.name}</strong>
+                <small>{entry.email}</small>
+                <span className="admin-user-meta">Registered {formatDate(entry.created_at)}</span>
+                {entry.system_role === 'superadmin' && <Badge tone="purple">Superadmin</Badge>}
+              </span>
+            </div>
+            <div className="admin-user-cell" data-label="Workspace & plan">
+              <div className="admin-workspaces">{entry.workspaces.map((workspace) => <label key={workspace.id}>
+                <span title={workspace.name}>{workspace.name}</span>
+                <Select aria-label={`Plan for ${workspace.name}`} value={workspace.plan} disabled={busy} onChange={(event) => void onPlan(entry, workspace, event.target.value)}>
+                  {plans.filter((plan) => plan.active || plan.code === workspace.plan).map((plan) => <option key={plan.id} value={plan.code}>{plan.name}</option>)}
+                </Select>
+              </label>)}</div>
+            </div>
+            <div className="admin-user-security admin-user-cell" data-label="Security">
+              <Badge tone={entry.email_verified_at ? 'success' : 'warning'}>{entry.email_verified_at ? 'Verified' : 'Unverified'}</Badge>
+              <small>{entry.two_factor_enabled ? '2FA enabled' : '2FA disabled'}</small>
+            </div>
+            <div className="admin-actions admin-user-cell" data-label="Actions">
+              <Button size="sm" variant="secondary" onClick={() => onEdit(entry)}><Pencil size={15} /> Manage</Button>
+              <Button size="sm" onClick={() => onImpersonate(entry)} disabled={entry.workspaces.length === 0}><LogIn size={15} /> Sign in as user</Button>
+            </div>
+          </article>)}
+        </div>
+      )}
+    </Panel>
+  </>
 }
 
 function PlansSection({ plans, onCreate, onEdit, onDelete }: { plans: Plan[]; onCreate: () => void; onEdit: (plan: Plan) => void; onDelete: (plan: Plan) => void }) {
