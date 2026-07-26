@@ -46,6 +46,7 @@ describe('administrator ticket reply', () => {
     const onSubmit = vi.fn((event: FormEvent, _internal: boolean) => event.preventDefault())
     render(<ReplyHarness onSubmit={onSubmit} />)
 
+    expect(screen.getByRole('dialog')).toHaveClass('modal--xl', 'admin-ticket-modal')
     const toggle = screen.getByRole('switch', { name: 'Internal note' })
     expect(toggle.closest('label')).toBeNull()
     expect(toggle).toHaveAttribute('aria-checked', 'true')

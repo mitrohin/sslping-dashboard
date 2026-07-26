@@ -194,6 +194,7 @@ export function Modal({
   icon,
   children,
   width = 'md',
+  className = '',
 }: {
   open: boolean
   onClose: () => void
@@ -201,6 +202,7 @@ export function Modal({
   icon?: ReactNode
   children: ReactNode
   width?: 'sm' | 'md' | 'lg' | 'xl'
+  className?: string
 }) {
   useEffect(() => {
     if (!open) return
@@ -219,7 +221,7 @@ export function Modal({
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className={`modal modal--${width}`}
+        className={`modal modal--${width} ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

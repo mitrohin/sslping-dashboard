@@ -310,7 +310,64 @@ function PlanModal({ open, plan, busy, onClose, onSave }: { open: boolean; plan:
 
 export function TicketModal({ detail, users, busy, reply, internal, files, onClose, onReply, onInternal, onFiles, onOpenAttachment, onUpdate, onSubmit }: { detail: SupportTicketDetail | null; users: AdminUser[]; busy: boolean; reply: string; internal: boolean; files: File[]; onClose: () => void; onReply: (value: string) => void; onInternal: (value: boolean) => void; onFiles: (files: File[]) => void; onOpenAttachment: (attachment: SupportAttachment) => void; onUpdate: (patch: Partial<Pick<SupportTicket, 'status' | 'priority'>>) => void; onSubmit: (event: FormEvent, internal: boolean) => void }) {
   const author = (message: SupportMessage) => users.find((entry) => entry.id === message.author_id)?.name ?? (message.author_role === 'superadmin' ? 'SSLPing support' : 'Customer')
-  return <Modal open={Boolean(detail)} onClose={onClose} title={detail?.ticket.subject ?? 'Support ticket'} icon={<MessageSquare size={29} />} width="lg">{detail && <div className="admin-ticket-detail"><div className="form-grid"><Field label="Status"><Select value={detail.ticket.status} disabled={busy} onChange={(event) => void onUpdate({ status: event.target.value as SupportTicketStatus })}><option value="open">Open</option><option value="in_progress">In progress</option><option value="waiting">Waiting for customer</option><option value="resolved">Resolved</option><option value="closed">Closed</option></Select></Field><Field label="Priority"><Select value={detail.ticket.priority} disabled={busy} onChange={(event) => void onUpdate({ priority: event.target.value as SupportTicketPriority })}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></Select></Field></div><div className="admin-ticket-messages">{detail.messages.map((message) => <article key={message.id} className={message.internal ? 'is-internal' : ''}><div><strong>{author(message)}</strong>{message.internal && <Badge tone="warning">Internal note</Badge>}<time>{formatDate(message.created_at)}</time></div><p>{message.body}</p><AttachmentList attachments={message.attachments} onOpen={onOpenAttachment} busy={busy} /></article>)}</div><form onSubmit={(event) => onSubmit(event, internal)}><Field label={internal ? 'Internal note' : 'Reply to customer'}><textarea value={reply} onChange={(event) => onReply(event.target.value)} /></Field><AttachmentPicker files={files} onChange={onFiles} disabled={busy} /><div className="admin-ticket-compose"><div className="admin-toggle-row"><Toggle checked={internal} onChange={onInternal} label="Internal note" disabled={busy} /><span><strong>Internal note</strong><small>Hidden from the customer.</small></span></div><Button type="submit" disabled={busy || reply.trim().length < 1}><Send size={16} /> {internal ? 'Add note' : 'Send reply'}</Button></div></form></div>}</Modal>
+  return (
+    <Modal
+      open={Boolean(detail)}
+      onClose={onClose}
+      title={detail?.ticket.subject ?? 'Support ticket'}
+      icon={<MessageSquare size={29} />}
+      width="xl"
+      className="admin-ticket-modal"
+    >
+      {detail && (
+        <div className="admin-ticket-detail">
+          <div className="form-grid admin-ticket-controls">
+            <Field label="Status">
+              <Select value={detail.ticket.status} disabled={busy} onChange={(event) => void onUpdate({ status: event.target.value as SupportTicketStatus })}>
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="waiting">Waiting for customer</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+              </Select>
+            </Field>
+            <Field label="Priority">
+              <Select value={detail.ticket.priority} disabled={busy} onChange={(event) => void onUpdate({ priority: event.target.value as SupportTicketPriority })}>
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="admin-ticket-messages">
+            {detail.messages.map((message) => (
+              <article key={message.id} className={message.internal ? 'is-internal' : ''}>
+                <div><strong>{author(message)}</strong>{message.internal && <Badge tone="warning">Internal note</Badge>}<time>{formatDate(message.created_at)}</time></div>
+                <p>{message.body}</p>
+                <AttachmentList attachments={message.attachments} onOpen={onOpenAttachment} busy={busy} />
+              </article>
+            ))}
+          </div>
+
+          <form className="admin-ticket-reply-form" onSubmit={(event) => onSubmit(event, internal)}>
+            <Field label={internal ? 'Internal note' : 'Reply to customer'}>
+              <textarea value={reply} onChange={(event) => onReply(event.target.value)} />
+            </Field>
+            <AttachmentPicker files={files} onChange={onFiles} disabled={busy} />
+            <div className="admin-ticket-compose">
+              <div className="admin-toggle-row">
+                <Toggle checked={internal} onChange={onInternal} label="Internal note" disabled={busy} />
+                <span><strong>Internal note</strong><small>Hidden from the customer.</small></span>
+              </div>
+              <Button type="submit" disabled={busy || reply.trim().length < 1}><Send size={16} /> {internal ? 'Add note' : 'Send reply'}</Button>
+            </div>
+          </form>
+        </div>
+      )}
+    </Modal>
+  )
 }
 
 function ChannelModal({ open, busy, onClose, onSave }: { open: boolean; busy: boolean; onClose: () => void; onSave: (input: { name: string; type: SupportNotificationChannel['type']; config: JsonObject }) => void }) {
