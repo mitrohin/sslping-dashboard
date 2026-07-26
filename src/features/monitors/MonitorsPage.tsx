@@ -55,6 +55,7 @@ export function MonitorsPage({
 }: MonitorsPageProps = {}) {
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
+  const availableTags = useMemo(() => [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(), [monitors])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MonitorStatus>('all')
   const [sort, setSort] = useState<'status' | 'name' | 'response'>('status')
@@ -339,7 +340,7 @@ export function MonitorsPage({
       </div>
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={<>Create <span className="success-text">monitor</span></>} icon={<Activity size={31} />} width="xl">
-        <MonitorForm initialValue={{ ...defaultMonitorDraft }} onSubmit={createMonitor} onCancel={() => setCreateOpen(false)} />
+        <MonitorForm initialValue={{ ...defaultMonitorDraft }} availableTags={availableTags} onSubmit={createMonitor} onCancel={() => setCreateOpen(false)} />
       </Modal>
       {heartbeatCredential && (
         <HeartbeatCredentialModal

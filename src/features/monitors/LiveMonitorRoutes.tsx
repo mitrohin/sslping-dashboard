@@ -389,6 +389,7 @@ export function LiveMonitorDetailPage() {
 interface LiveEditState {
   monitor: Monitor
   view: MonitorViewModel
+  availableTags: string[]
 }
 
 export function LiveMonitorEditPage() {
@@ -404,8 +405,12 @@ export function LiveMonitorEditPage() {
     setLoading(true)
     setError(null)
     try {
-      const monitor = await api.getMonitor(workspace.id, monitorId)
-      setState({ monitor, view: toMonitorViewModel(monitor) })
+      const [monitor, page] = await Promise.all([
+        api.getMonitor(workspace.id, monitorId),
+        api.listMonitors(workspace.id, { limit: 250 }),
+      ])
+      const availableTags = [...new Set((page.items ?? []).flatMap((item) => item.tags))].sort()
+      setState({ monitor, view: toMonitorViewModel(monitor), availableTags })
     } catch (loadError) {
       setError(monitorErrorMessage(loadError, 'The monitor configuration could not be loaded.'))
     } finally {
@@ -426,6 +431,7 @@ export function LiveMonitorEditPage() {
     <MonitorEditPage
       monitor={state?.view}
       initialValue={state ? monitorToDraft(state.monitor) : undefined}
+      availableTags={state?.availableTags}
       loading={loading && !state}
       error={error}
       onRetry={() => void reload()}

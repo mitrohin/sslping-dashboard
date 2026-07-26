@@ -11,6 +11,7 @@ export interface MonitorEditPageProps {
   error?: string | null
   onRetry?: () => void
   onSubmit?: (draft: MonitorDraft) => Promise<void>
+  availableTags?: readonly string[]
 }
 
 export function MonitorEditPage({
@@ -20,6 +21,7 @@ export function MonitorEditPage({
   error = null,
   onRetry,
   onSubmit,
+  availableTags = [],
 }: MonitorEditPageProps = {}) {
   const { monitorId } = useParams()
   const navigate = useNavigate()
@@ -55,7 +57,7 @@ export function MonitorEditPage({
       <Link to={`/monitors/${monitor.id}`} className="back-link"><ArrowLeft size={17} /> Monitor detail</Link>
       <PageHeader title={<>Edit <span className="success-text">{monitor.name}</span></>} description="Monitor type cannot be changed after creation. Update the target, timing and alert behavior below." />
       <Panel className="monitor-edit-panel">
-        <MonitorForm initialValue={initialValue} lockType submitLabel="Save changes" onSubmit={save} onCancel={() => navigate(`/monitors/${monitor.id}`)} />
+        <MonitorForm initialValue={initialValue} availableTags={availableTags} lockType submitLabel="Save changes" onSubmit={save} onCancel={() => navigate(`/monitors/${monitor.id}`)} />
       </Panel>
     </div>
   )

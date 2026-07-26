@@ -98,6 +98,8 @@ function draftConfig(draft: MonitorDraft): MonitorCreateRequest['config'] {
           url,
           method: normaliseHttpMethod(draft.method),
           follow_redirects: draft.followRedirects,
+          allowed_status_classes: [...draft.allowedStatusClasses],
+          allowed_status_codes: [...draft.allowedStatusCodes],
           validate_tls: draft.checkSSLErrors,
           tls_expiry_warn_days: draft.sslReminders ? sslReminderDays : null,
           domain_expiry_warn_days: draft.domainReminders ? sslReminderDays : null,
@@ -243,6 +245,10 @@ export function monitorToDraft(monitor: Monitor): MonitorDraft {
     keywordMode: http?.keyword?.mode ?? 'present',
     method: http?.method ?? 'GET',
     followRedirects: http?.follow_redirects ?? true,
+    allowedStatusClasses: http?.allowed_status_classes?.length || http?.allowed_status_codes?.length
+      ? [...(http.allowed_status_classes ?? [])]
+      : [2],
+    allowedStatusCodes: [...(http?.allowed_status_codes ?? [])],
     checkSSLErrors: http?.validate_tls ?? true,
     sslReminders: http
       ? http.tls_expiry_warn_days !== null

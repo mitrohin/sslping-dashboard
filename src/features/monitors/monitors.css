@@ -55,6 +55,10 @@
 .monitor-type-grid button strong { color: var(--text); font-size: 13px; }
 .monitor-type-grid button small { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .monitor-form__conditional { margin-top: 20px; }
+.tag-editor { position: relative; display: grid; gap: 8px; }
+.tag-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-suggestions button { min-height: 27px; padding: 0 10px; border: 1px solid #41506a; border-radius: 999px; color: #c9d5e3; background: #172131; font: inherit; font-size: 11px; cursor: pointer; }
+.tag-suggestions button:hover, .tag-suggestions button:focus-visible { border-color: var(--green); color: var(--green); outline: 0; background: rgb(52 215 123 / 7%); }
 .monitor-toggle-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 25px; }
 .monitor-advanced { padding-bottom: 0; }
 .monitor-advanced__toggle { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: #dce3eb; background: var(--panel-strong); cursor: pointer; }
@@ -64,6 +68,17 @@
 .http-methods button { min-height: 42px; border: 0; border-right: 1px solid var(--line); color: var(--muted); background: var(--panel-strong); cursor: pointer; }
 .http-methods button:last-child { border-right: 0; }
 .http-methods button.is-active { color: var(--green); background: #2b3548; }
+.http-status-editor { display: grid; gap: 9px; }
+.http-status-editor__chips { min-height: 43px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-strong); }
+.http-status-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 27px; padding: 0 5px 0 9px; border-radius: 7px; color: #d8e3ee; background: #334056; font-size: 11px; }
+.http-status-chip--1 { color: #cfe8ff; background: rgb(67 183 232 / 18%); }
+.http-status-chip--2 { color: #bdf5d3; background: rgb(52 215 123 / 18%); }
+.http-status-chip--3 { color: #d8d2ff; background: rgb(101 88 245 / 20%); }
+.http-status-chip--4 { color: #ffe4ad; background: rgb(245 167 66 / 18%); }
+.http-status-chip--5 { color: #ffc7c9; background: rgb(240 82 85 / 18%); }
+.http-status-chip button { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }
+.http-status-chip button:hover:not(:disabled), .http-status-chip button:focus-visible:not(:disabled) { outline: 0; background: rgb(255 255 255 / 12%); }
+.http-status-chip button:disabled { opacity: .35; cursor: not-allowed; }
 
 .back-link { width: max-content; min-height: 39px; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 26px; padding: 0 13px; border-radius: var(--radius-sm); color: #a8b5c5; background: var(--panel); font-size: 13px; }
 .back-link:hover { color: #fff; }

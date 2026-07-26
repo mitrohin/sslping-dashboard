@@ -11,6 +11,7 @@ import {
   Network,
   Radio,
   ServerCog,
+  X,
 } from 'lucide-react'
 import { Button, Field, Select, Toggle } from '../../components/ui'
 import type { DNSConfig } from '../../api/types'
@@ -29,6 +30,8 @@ export interface MonitorDraft {
   keywordMode: 'present' | 'absent'
   method: string
   followRedirects: boolean
+  allowedStatusClasses: number[]
+  allowedStatusCodes: number[]
   checkSSLErrors: boolean
   sslReminders: boolean
   domainReminders: boolean
@@ -67,6 +70,8 @@ export const defaultMonitorDraft: MonitorDraft = {
   keywordMode: 'present',
   method: 'GET',
   followRedirects: true,
+  allowedStatusClasses: [2],
+  allowedStatusCodes: [],
   checkSSLErrors: true,
   sslReminders: true,
   domainReminders: true,
@@ -76,6 +81,37 @@ export const defaultMonitorDraft: MonitorDraft = {
   dnsRecordType: 'A',
   dnsExpected: '',
   heartbeatGraceSeconds: 0,
+}
+
+const httpStatusClasses = [
+  { value: 1, label: '1xx', description: 'Informational' },
+  { value: 2, label: '2xx', description: 'Success' },
+  { value: 3, label: '3xx', description: 'Redirect' },
+  { value: 4, label: '4xx', description: 'Client error' },
+  { value: 5, label: '5xx', description: 'Server error' },
+] as const
+
+const knownHttpStatusCodes = [
+  [100, 'Continue'], [101, 'Switching Protocols'], [102, 'Processing'], [103, 'Early Hints'],
+  [200, 'OK'], [201, 'Created'], [202, 'Accepted'], [203, 'Non-Authoritative Information'], [204, 'No Content'], [205, 'Reset Content'], [206, 'Partial Content'], [207, 'Multi-Status'], [208, 'Already Reported'], [226, 'IM Used'],
+  [300, 'Multiple Choices'], [301, 'Moved Permanently'], [302, 'Found'], [303, 'See Other'], [304, 'Not Modified'], [307, 'Temporary Redirect'], [308, 'Permanent Redirect'],
+  [400, 'Bad Request'], [401, 'Unauthorized'], [402, 'Payment Required'], [403, 'Forbidden'], [404, 'Not Found'], [405, 'Method Not Allowed'], [406, 'Not Acceptable'], [407, 'Proxy Authentication Required'], [408, 'Request Timeout'], [409, 'Conflict'], [410, 'Gone'], [411, 'Length Required'], [412, 'Precondition Failed'], [413, 'Content Too Large'], [414, 'URI Too Long'], [415, 'Unsupported Media Type'], [416, 'Range Not Satisfiable'], [417, 'Expectation Failed'], [418, "I'm a teapot"], [421, 'Misdirected Request'], [422, 'Unprocessable Content'], [423, 'Locked'], [424, 'Failed Dependency'], [425, 'Too Early'], [426, 'Upgrade Required'], [428, 'Precondition Required'], [429, 'Too Many Requests'], [431, 'Request Header Fields Too Large'], [451, 'Unavailable For Legal Reasons'],
+  [500, 'Internal Server Error'], [501, 'Not Implemented'], [502, 'Bad Gateway'], [503, 'Service Unavailable'], [504, 'Gateway Timeout'], [505, 'HTTP Version Not Supported'], [506, 'Variant Also Negotiates'], [507, 'Insufficient Storage'], [508, 'Loop Detected'], [510, 'Not Extended'], [511, 'Network Authentication Required'],
+] as const
+
+function tagMatchScore(tag: string, query: string): number {
+  if (!query) return 1
+  const candidate = tag.toLocaleLowerCase()
+  if (candidate === query) return 100
+  if (candidate.startsWith(query)) return 80
+  if (candidate.includes(query)) return 60
+  let position = 0
+  for (const character of query) {
+    position = candidate.indexOf(character, position)
+    if (position < 0) return 0
+    position += 1
+  }
+  return 30
 }
 
 function targetLabel(type: MonitorType) {
@@ -92,24 +128,56 @@ export function MonitorForm({
   onSubmit,
   onCancel,
   lockType = false,
+  availableTags = [],
 }: {
   initialValue?: MonitorDraft
   submitLabel?: string
   onSubmit: (draft: MonitorDraft) => Promise<void> | void
   onCancel?: () => void
   lockType?: boolean
+  availableTags?: readonly string[]
 }) {
   const [draft, setDraft] = useState<MonitorDraft>(initialValue)
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
   const [tagInput, setTagInput] = useState(draft.tags.join(', '))
+  const [statusPickerValue, setStatusPickerValue] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const selectedTags = useMemo(() => tagInput.split(',').map((tag) => tag.trim()).filter(Boolean), [tagInput])
+  const currentTagQuery = tagInput.split(',').at(-1)?.trim().toLocaleLowerCase() ?? ''
+  const tagSuggestions = useMemo(() => {
+    const selected = new Set(selectedTags.map((tag) => tag.toLocaleLowerCase()))
+    return [...new Set(availableTags.map((tag) => tag.trim()).filter(Boolean))]
+      .filter((tag) => !selected.has(tag.toLocaleLowerCase()))
+      .map((tag) => ({ tag, score: tagMatchScore(tag, currentTagQuery) }))
+      .filter(({ score }) => score > 0)
+      .sort((left, right) => right.score - left.score || left.tag.localeCompare(right.tag))
+      .slice(0, 8)
+  }, [availableTags, currentTagQuery, selectedTags])
 
   const selectedType = useMemo(() => monitorTypes.find((item) => item.value === draft.type)!, [draft.type])
   const visibleMonitorTypes = lockType
     ? monitorTypes.filter((item) => item.value === draft.type)
     : creatableMonitorTypes
   const set = <K extends keyof MonitorDraft>(key: K, value: MonitorDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
+
+  const addSuggestedTag = (tag: string) => {
+    const completed = tagInput.split(',').slice(0, -1).map((value) => value.trim()).filter(Boolean)
+    setTagInput(`${[...new Set([...completed, tag])].join(', ')}, `)
+  }
+
+  const acceptedRuleCount = draft.allowedStatusClasses.length + draft.allowedStatusCodes.length
+  const addAcceptedStatus = (value: string) => {
+    if (!value) return
+    const [kind, raw] = value.split(':')
+    const status = Number(raw)
+    if (kind === 'class' && status >= 1 && status <= 5 && !draft.allowedStatusClasses.includes(status)) {
+      set('allowedStatusClasses', [...draft.allowedStatusClasses, status].sort())
+    } else if (kind === 'code' && knownHttpStatusCodes.some(([code]) => code === status) && !draft.allowedStatusCodes.includes(status)) {
+      set('allowedStatusCodes', [...draft.allowedStatusCodes, status].sort())
+    }
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -201,7 +269,12 @@ export function MonitorForm({
 
         <div className="form-grid monitor-form__conditional">
           <Field label="Group"><Select value={draft.group} onChange={(event) => set('group', event.target.value)}><option>Monitors</option><option>Production</option><option>Core API</option><option>Infrastructure</option><option>Security</option></Select></Field>
-          <Field label="Tags" hint="Comma-separated labels for filtering and alert routing."><input value={tagInput} onChange={(event) => setTagInput(event.target.value)} placeholder="production, critical" /></Field>
+          <Field label="Tags" hint="Type a new tag or choose an existing workspace tag.">
+            <div className="tag-editor">
+              <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} placeholder="production, critical" autoComplete="off" />
+              {tagSuggestions.length > 0 && <div className="tag-suggestions" aria-label="Existing tag suggestions">{tagSuggestions.map(({ tag }) => <button type="button" key={tag} onMouseDown={(event) => event.preventDefault()} onClick={() => addSuggestedTag(tag)}>{tag}</button>)}</div>}
+            </div>
+          </Field>
         </div>
       </section>
 
@@ -244,7 +317,23 @@ export function MonitorForm({
                 </div>
                 <div className="form-grid">
                   <Field label="Authentication"><Select><option>None</option><option>Basic auth</option><option>Bearer token</option></Select></Field>
-                  <Field label="Accepted HTTP codes"><input defaultValue="2xx, 3xx" /></Field>
+                  <Field label="Accepted HTTP codes" hint="A response is up when it matches any selected class or exact code.">
+                    <div className="http-status-editor">
+                      <div className="http-status-editor__chips">
+                        {draft.allowedStatusClasses.map((statusClass) => <span key={`class-${statusClass}`} className={`http-status-chip http-status-chip--${statusClass}`}><strong>{statusClass}xx</strong><button type="button" aria-label={`Remove ${statusClass}xx`} disabled={acceptedRuleCount === 1} onClick={() => set('allowedStatusClasses', draft.allowedStatusClasses.filter((value) => value !== statusClass))}><X size={13} /></button></span>)}
+                        {draft.allowedStatusCodes.map((statusCode) => <span key={`code-${statusCode}`} className={`http-status-chip http-status-chip--${Math.floor(statusCode / 100)}`}><strong>{statusCode}</strong><button type="button" aria-label={`Remove ${statusCode}`} disabled={acceptedRuleCount === 1} onClick={() => set('allowedStatusCodes', draft.allowedStatusCodes.filter((value) => value !== statusCode))}><X size={13} /></button></span>)}
+                      </div>
+                      <Select aria-label="Add accepted HTTP status" value={statusPickerValue} onChange={(event) => {
+                        const value = event.target.value
+                        setStatusPickerValue(value)
+                        addAcceptedStatus(value)
+                      }}>
+                        <option value="">+ Add status class or exact code</option>
+                        <optgroup label="Status classes">{httpStatusClasses.map(({ value, label, description }) => <option key={value} value={`class:${value}`}>{label} — {description}{draft.allowedStatusClasses.includes(value) ? ' (selected)' : ''}</option>)}</optgroup>
+                        {[1, 2, 3, 4, 5].map((statusClass) => <optgroup key={statusClass} label={`${statusClass}xx exact codes`}>{knownHttpStatusCodes.filter(([code]) => Math.floor(code / 100) === statusClass).map(([code, label]) => <option key={code} value={`code:${code}`}>{code} — {label}{draft.allowedStatusCodes.includes(code) ? ' (selected)' : ''}</option>)}</optgroup>)}
+                      </Select>
+                    </div>
+                  </Field>
                 </div>
                 <Field label="Request body"><textarea placeholder={'{"key":"value"}'} /></Field>
                 <div className="form-grid"><Field label="Request header"><input placeholder="X-Header-Name" /></Field><Field label="Value"><input placeholder="Value" /></Field></div>

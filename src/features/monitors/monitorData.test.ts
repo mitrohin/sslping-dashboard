@@ -19,6 +19,8 @@ describe('monitor request conversion', () => {
       target: 'https://example.com/health',
       method: 'POST',
       followRedirects: false,
+      allowedStatusClasses: [2, 3],
+      allowedStatusCodes: [404, 429],
       checkSSLErrors: false,
       sslReminders: false,
       domainReminders: true,
@@ -30,6 +32,8 @@ describe('monitor request conversion', () => {
           url: 'https://example.com/health',
           method: 'POST',
           follow_redirects: false,
+          allowed_status_classes: [2, 3],
+          allowed_status_codes: [404, 429],
           validate_tls: false,
           tls_expiry_warn_days: null,
           domain_expiry_warn_days: [30, 14, 7, 0],
@@ -126,6 +130,8 @@ describe('monitor edit and chart adapters', () => {
       config: {
         http: {
           url: 'https://example.com',
+          allowed_status_classes: [2, 3],
+          allowed_status_codes: [404],
           validate_tls: false,
           tls_expiry_warn_days: null,
           domain_expiry_warn_days: [30, 14, 7, 0],
@@ -148,6 +154,8 @@ describe('monitor edit and chart adapters', () => {
       checkSSLErrors: false,
       sslReminders: false,
       domainReminders: true,
+      allowedStatusClasses: [2, 3],
+      allowedStatusCodes: [404],
     })
   })
 
@@ -172,7 +180,12 @@ describe('monitor edit and chart adapters', () => {
       updated_at: '2026-07-26T11:55:00.000Z',
     }
 
-    expect(monitorToDraft(monitor)).toMatchObject({ sslReminders: true, domainReminders: true })
+    expect(monitorToDraft(monitor)).toMatchObject({
+      sslReminders: true,
+      domainReminders: true,
+      allowedStatusClasses: [2],
+      allowedStatusCodes: [],
+    })
   })
 
   it('groups response samples by region and calculates statistics', () => {
