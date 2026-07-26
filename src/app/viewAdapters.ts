@@ -120,29 +120,13 @@ function recordString(record: JsonObject | undefined, key: string): string | und
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function findNestedString(
-  value: JsonValue | undefined,
-  keys: ReadonlySet<string>,
-  depth = 0,
-): string | undefined {
-  if (depth > 3 || value === undefined || value === null) return undefined
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const match = findNestedString(item, keys, depth + 1)
-      if (match) return match
-    }
-    return undefined
-  }
-  if (!isRecord(value)) return undefined
+function childRecord(record: JsonObject | undefined, key: string): JsonObject | undefined {
+  const value = record?.[key]
+  return isRecord(value) ? value : undefined
+}
 
-  for (const [key, item] of Object.entries(value)) {
-    if (keys.has(key) && typeof item === 'string' && item.trim()) return item.trim()
-  }
-  for (const item of Object.values(value)) {
-    const match = findNestedString(item, keys, depth + 1)
-    if (match) return match
-  }
-  return undefined
+function firstString(...values: Array<string | undefined>): string | undefined {
+  return values.find((value): value is string => Boolean(value))
 }
 
 function clampPercentage(value: unknown): number | undefined {
@@ -259,14 +243,28 @@ function expirySnapshot(
   const details = check?.details
   if (!details) return undefined
 
-  const expiresAt = findNestedString(
-    details,
-    new Set(
-      kind === 'certificate'
-        ? ['expires_at', 'not_after', 'certificate_expiry', 'valid_until']
-        : ['expires_at', 'expiration_date', 'domain_expires_at', 'valid_until'],
-    ),
-  )
+  const envelope = childRecord(details, kind === 'certificate' ? 'tls_certificate' : 'domain_registration')
+  const envelopeDetails = childRecord(envelope, 'details')
+  const legacy = childRecord(details, kind === 'certificate' ? 'tls' : 'domain')
+  const expiresAt = kind === 'certificate'
+    ? firstString(
+        recordString(details, 'certificate_expiry'),
+        recordString(envelopeDetails, 'expires_at'),
+        recordString(envelope, 'expires_at'),
+        recordString(legacy, 'expires_at'),
+        recordString(details, 'not_after'),
+        recordString(details, 'valid_until'),
+        recordString(details, 'expires_at'),
+      )
+    : firstString(
+        recordString(details, 'domain_expires_at'),
+        recordString(envelopeDetails, 'expires_at'),
+        recordString(envelope, 'expires_at'),
+        recordString(legacy, 'expires_at'),
+        recordString(details, 'expiration_date'),
+        recordString(details, 'valid_until'),
+        recordString(details, 'expires_at'),
+      )
   const expiresTimestamp = toTimestamp(expiresAt)
   if (!expiresAt || expiresTimestamp === null) return undefined
 
@@ -276,8 +274,24 @@ function expirySnapshot(
     daysRemaining,
     state: expiresTimestamp <= referenceTime ? 'expired' : daysRemaining <= 30 ? 'warning' : 'ok',
     ...(kind === 'certificate'
-      ? { issuer: findNestedString(details, new Set(['issuer'])) }
-      : { issuer: findNestedString(details, new Set(['registrar'])) }),
+      ? {
+          issuer: firstString(
+            recordString(envelopeDetails, 'issuer'),
+            recordString(envelope, 'issuer'),
+            recordString(legacy, 'issuer'),
+            recordString(details, 'certificate_issuer'),
+            recordString(details, 'issuer'),
+          ),
+        }
+      : {
+          issuer: firstString(
+            recordString(envelopeDetails, 'registrar'),
+            recordString(envelope, 'registrar'),
+            recordString(legacy, 'registrar'),
+            recordString(details, 'domain_registrar'),
+            recordString(details, 'registrar'),
+          ),
+        }),
   }
 }
 
@@ -303,9 +317,7 @@ export function toMonitorViewModel(
       httpConfig?.validate_tls === true || httpConfig?.tls_expiry_warn_days != null
     )
   )
-  const tracksDomainExpiry = type === 'domain' || (
-    (type === 'http' || type === 'keyword') && httpConfig?.domain_expiry_warn_days != null
-  )
+  const tracksDomainExpiry = type === 'domain' || type === 'http' || type === 'keyword'
 
   return {
     id: nonEmpty(monitor.id, 'unknown-monitor'),

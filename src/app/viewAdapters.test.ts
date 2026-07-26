@@ -211,7 +211,7 @@ describe('toMonitorViewModel', () => {
     })
   })
 
-  it('adapts supplemental domain evidence for an HTTP monitor when enabled', () => {
+  it('adapts supplemental domain evidence even when reminders are disabled', () => {
     const result = toMonitorViewModel({
       ...monitor,
       type: 'http',
@@ -219,7 +219,7 @@ describe('toMonitorViewModel', () => {
         http: {
           url: 'https://api.example.com/health',
           tls_expiry_warn_days: [30, 14, 7, 0],
-          domain_expiry_warn_days: [30, 14, 7, 0],
+          domain_expiry_warn_days: null,
         },
       },
     }, {
@@ -240,7 +240,7 @@ describe('toMonitorViewModel', () => {
     })
   })
 
-  it('does not expose disabled supplemental expiry evidence', () => {
+  it('does not invent supplemental expiry evidence when results do not contain it', () => {
     const disabled = {
       ...monitor,
       type: 'http' as const,

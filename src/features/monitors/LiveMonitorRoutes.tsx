@@ -194,10 +194,7 @@ export function LiveMonitorDetailPage() {
       const dnsPromise = monitor.type === 'dns'
         ? api.listDnsEvidence(workspace.id, monitor.id, { limit: 30 })
         : Promise.resolve(emptyCheckPage())
-      const domainPromise = monitor.type === 'domain' || (
-        (monitor.type === 'http' || monitor.type === 'keyword') &&
-        httpConfig?.domain_expiry_warn_days != null
-      )
+      const domainPromise = monitor.type === 'domain' || monitor.type === 'http' || monitor.type === 'keyword'
         ? api.listDomainEvidence(workspace.id, monitor.id, { limit: 30 })
         : Promise.resolve(emptyCheckPage())
 
