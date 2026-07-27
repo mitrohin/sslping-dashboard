@@ -1,7 +1,10 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import {
-  Check,
+  Copy,
   Clock3,
+  Download,
+  KeyRound,
+  LockKeyhole,
   Mail,
   Pencil,
   Phone,
@@ -11,9 +14,11 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import type { TwoFactorSetup } from '../../api/types'
 import { demoTeam, type TeamMemberViewModel, type TeamRole, type TeamSummary } from '../../data'
 import { formatDate, formatStatus, statusTone } from '../../lib/format'
-import { Badge, Button, Field, IconButton, Modal, PageHeader, Panel, Select } from '../../components/ui'
+import { Badge, Button, FeedbackBanner, Field, IconButton, Modal, PageHeader, Panel, Select } from '../../components/ui'
 import type { InviteMemberInput, TeamDetails, TeamMemberPatch } from './types'
 import './account.css'
 
@@ -24,6 +29,8 @@ const teamRoleLabels: Readonly<Record<TeamRole, string>> = {
   reader: 'Read only',
   'notify-only': 'Notify only',
 }
+
+type TeamFeedback = { tone: 'success' | 'error' | 'warning' | 'info'; message: string }
 
 const editableRoles: readonly Exclude<TeamRole, 'owner'>[] = [
   'admin',
@@ -49,6 +56,11 @@ export interface TeamPageProps {
     patch: TeamMemberPatch,
   ) => Promise<TeamMemberViewModel | void>
   onUpdateDetails?: (details: TeamDetails) => Promise<TeamDetails | void>
+  onSetupTwoFactor?: (password: string) => Promise<TwoFactorSetup>
+  onConfirmTwoFactor?: (code: string) => Promise<readonly string[]>
+  onDisableTwoFactor?: (password: string, code: string) => Promise<void>
+  onRegenerateRecoveryCodes?: (password: string, code: string) => Promise<readonly string[]>
+  onSecuritySessionEnd?: () => Promise<void>
 }
 
 function badgeToneForStatus(status: TeamMemberViewModel['status']) {
@@ -66,30 +78,178 @@ export function TeamPage({
   onInvite,
   onUpdateMember,
   onUpdateDetails,
+  onSetupTwoFactor,
+  onConfirmTwoFactor,
+  onDisableTwoFactor,
+  onRegenerateRecoveryCodes,
+  onSecuritySessionEnd,
 }: TeamPageProps) {
   const [members, setMembers] = useState<readonly TeamMemberViewModel[]>(initialMembers)
-  const [summary] = useState(initialSummary)
   const [details, setDetails] = useState(initialDetails)
   const [detailsDraft, setDetailsDraft] = useState(initialDetails)
-  const [section, setSection] = useState<'members' | 'details'>('members')
+  const [section, setSection] = useState<'members' | 'details' | 'security'>('members')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [seatsOpen, setSeatsOpen] = useState(false)
   const [editing, setEditing] = useState<TeamMemberViewModel | null>(null)
   const [invite, setInvite] = useState<InviteMemberInput>({ email: '', role: 'reader' })
   const [editRole, setEditRole] = useState<Exclude<TeamRole, 'owner'>>('reader')
   const [formError, setFormError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [feedback, setFeedback] = useState<TeamFeedback | null>(null)
   const [saving, setSaving] = useState(false)
+  const [securityMode, setSecurityMode] = useState<'setup' | 'verify' | 'proof' | 'recovery' | null>(null)
+  const [proofAction, setProofAction] = useState<'disable' | 'regenerate'>('regenerate')
+  const [securityPassword, setSecurityPassword] = useState('')
+  const [securityCode, setSecurityCode] = useState('')
+  const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetup | null>(null)
+  const [recoveryCodes, setRecoveryCodes] = useState<readonly string[]>([])
+  const [recoveryRequiresSignIn, setRecoveryRequiresSignIn] = useState(false)
+
+  const summary = useMemo(() => {
+    const seated = members.filter((member) => member.status !== 'suspended')
+    const notifySeatsUsed = seated.filter((member) => member.role === 'notify-only').length
+    return {
+      ...initialSummary,
+      seatsUsed: seated.length,
+      seatsTotal: Math.max(initialSummary.seatsTotal, seated.length),
+      loginSeatsUsed: seated.length - notifySeatsUsed,
+      notifySeatsUsed,
+    }
+  }, [initialSummary, members])
 
   const activeMembers = useMemo(
     () => members.filter((member) => member.status === 'active').length,
     [members],
   )
 
+  const currentMember = useMemo(
+    () => members.find((member) => member.isCurrentUser),
+    [members],
+  )
+
+  const seatsRemaining = Math.max(0, summary.seatsTotal - summary.seatsUsed)
+
   const openInvite = () => {
+    if (seatsRemaining === 0) {
+      setFeedback({ tone: 'warning', message: `${summary.planName} plan team limit reached. Upgrade the workspace before inviting another person.` })
+      return
+    }
     setInvite({ email: '', role: 'reader' })
     setFormError('')
     setInviteOpen(true)
+  }
+
+  const resetSecurityDialog = () => {
+    setSecurityMode(null)
+    setSecurityPassword('')
+    setSecurityCode('')
+    setTwoFactorSetup(null)
+    setRecoveryCodes([])
+    setFormError('')
+  }
+
+  const openTwoFactorSetup = () => {
+    resetSecurityDialog()
+    setSecurityMode('setup')
+  }
+
+  const openTwoFactorProof = (action: 'disable' | 'regenerate') => {
+    resetSecurityDialog()
+    setProofAction(action)
+    setSecurityMode('proof')
+  }
+
+  const submitTwoFactorSetup = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!securityPassword) return
+    setSaving(true)
+    setFormError('')
+    try {
+      const setup = await onSetupTwoFactor?.(securityPassword)
+      if (!setup) throw new Error('Two-factor setup is unavailable.')
+      setTwoFactorSetup(setup)
+      setSecurityPassword('')
+      setSecurityMode('verify')
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Could not start two-factor setup.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitTwoFactorVerification = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!/^\d{6}$/.test(securityCode.trim())) {
+      setFormError('Enter the current six-digit code from your authenticator app.')
+      return
+    }
+    setSaving(true)
+    setFormError('')
+    try {
+      const codes = await onConfirmTwoFactor?.(securityCode.trim())
+      if (!codes) throw new Error('Two-factor confirmation is unavailable.')
+      setMembers((current) => current.map((member) => (
+        member.isCurrentUser ? { ...member, twoFactorEnabled: true } : member
+      )))
+      setRecoveryCodes(codes)
+      setRecoveryRequiresSignIn(true)
+      setSecurityCode('')
+      setSecurityMode('recovery')
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'The authenticator code was not accepted.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitTwoFactorProof = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!securityPassword || !securityCode.trim()) {
+      setFormError('Enter your password and a current authenticator or recovery code.')
+      return
+    }
+    setSaving(true)
+    setFormError('')
+    try {
+      if (proofAction === 'disable') {
+        await onDisableTwoFactor?.(securityPassword, securityCode.trim())
+        return
+      }
+      const codes = await onRegenerateRecoveryCodes?.(securityPassword, securityCode.trim())
+      if (!codes) throw new Error('Recovery-code regeneration is unavailable.')
+      setRecoveryCodes(codes)
+      setRecoveryRequiresSignIn(false)
+      setSecurityPassword('')
+      setSecurityCode('')
+      setSecurityMode('recovery')
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'The security proof was not accepted.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const copyText = async (value: string) => {
+    await navigator.clipboard.writeText(value)
+    setFeedback({ tone: 'info', message: 'Copied to clipboard.' })
+  }
+
+  const downloadRecoveryCodes = () => {
+    const blob = new Blob([`${recoveryCodes.join('\n')}\n`], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'sslping-recovery-codes.txt'
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const finishRecoveryCodes = async () => {
+    if (recoveryRequiresSignIn) {
+      await onSecuritySessionEnd?.()
+      return
+    }
+    resetSecurityDialog()
+    setFeedback({ tone: 'success', message: 'New recovery codes are active. Previous recovery codes no longer work.' })
   }
 
   const submitInvite = async (event: FormEvent) => {
@@ -126,7 +286,7 @@ export function TeamPage({
         setMembers((current) => current.map((member) => (member.id === optimisticId ? saved : member)))
       }
       setInviteOpen(false)
-      setNotice(`Invitation sent to ${email}.`)
+      setFeedback({ tone: 'success', message: `Invitation sent to ${email}.` })
     } catch (error) {
       setMembers((current) => current.filter((member) => member.id !== optimisticId))
       setFormError(error instanceof Error ? error.message : 'Could not send the invitation.')
@@ -156,7 +316,7 @@ export function TeamPage({
         setMembers((current) => current.map((member) => (member.id === editing.id ? saved : member)))
       }
       setEditing(null)
-      setNotice(`${editing.name}'s access has been updated.`)
+      setFeedback({ tone: 'success', message: `${editing.name}'s access has been updated.` })
     } catch (error) {
       setMembers((current) => current.map((member) => (member.id === original.id ? original : member)))
       setFormError(error instanceof Error ? error.message : 'Could not update this member.')
@@ -184,11 +344,11 @@ export function TeamPage({
         setDetails(saved)
         setDetailsDraft(saved)
       }
-      setNotice('Team details saved.')
+      setFeedback({ tone: 'success', message: 'Team details saved.' })
     } catch (error) {
       setDetails(original)
       setDetailsDraft(original)
-      setNotice(error instanceof Error ? error.message : 'Could not save team details.')
+      setFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Could not save team details.' })
     } finally {
       setSaving(false)
     }
@@ -201,17 +361,12 @@ export function TeamPage({
         description={`${activeMembers} active teammates share this workspace.`}
         actions={
           section === 'members' ? (
-            <Button onClick={openInvite}><UserPlus size={18} /> Invite team member</Button>
+            <Button onClick={openInvite} disabled={seatsRemaining === 0}><UserPlus size={18} /> Invite team member</Button>
           ) : undefined
         }
       />
 
-      {notice && (
-        <div className="account-notice" role="status">
-          <Check size={17} /> <span>{notice}</span>
-          <button type="button" onClick={() => setNotice('')}>Dismiss</button>
-        </div>
-      )}
+      {feedback && <FeedbackBanner tone={feedback.tone} className="feedback-banner--page" onDismiss={() => setFeedback(null)}>{feedback.message}</FeedbackBanner>}
 
       <div className="account-layout">
         <nav className="account-subnav" aria-label="Team settings">
@@ -229,13 +384,20 @@ export function TeamPage({
           >
             <Settings size={18} /> Team details
           </button>
+          <button
+            type="button"
+            className={section === 'security' ? 'is-active' : ''}
+            onClick={() => setSection('security')}
+          >
+            <LockKeyhole size={18} /> My security
+          </button>
         </nav>
 
         {section === 'members' ? (
           <div className="account-content">
             <div className="account-stat-grid" aria-label="Seat usage">
-              <div><span>Login seats</span><strong>{summary.loginSeatsUsed} / {summary.loginSeatsTotal}</strong></div>
-              <div><span>Notify-only seats</span><strong>{summary.notifySeatsUsed} / {summary.notifySeatsTotal}</strong></div>
+              <div><span>Team seats · {summary.planName}</span><strong>{summary.seatsUsed} / {summary.seatsTotal}</strong></div>
+              <div><span>Access mix</span><strong>{summary.loginSeatsUsed} login · {summary.notifySeatsUsed} notify</strong></div>
               <div><span>Two-factor protected</span><strong>{members.filter((member) => member.twoFactorEnabled).length} / {activeMembers}</strong></div>
             </div>
 
@@ -283,12 +445,12 @@ export function TeamPage({
                 </table>
               </div>
               <footer className="account-table-footer">
-                Currently using {summary.notifySeatsUsed} of {summary.notifySeatsTotal} notify-only seats and {summary.loginSeatsUsed} of {summary.loginSeatsTotal} login seats.
+                Using {summary.seatsUsed} of {summary.seatsTotal} shared team seats on the {summary.planName} plan. {seatsRemaining} remaining.
                 <Button variant="secondary" size="sm" type="button" onClick={() => setSeatsOpen(true)}>Manage seats</Button>
               </footer>
             </Panel>
           </div>
-        ) : (
+        ) : section === 'details' ? (
           <div className="account-content">
             <Panel>
               <div className="panel__header"><h2>Workspace details<span className="title-dot">.</span></h2></div>
@@ -321,6 +483,56 @@ export function TeamPage({
               </form>
             </Panel>
           </div>
+        ) : (
+          <div className="account-content">
+            <Panel>
+              <div className="panel__header">
+                <div>
+                  <h2>Authenticator app<span className="title-dot">.</span></h2>
+                  <p>Protect your account with time-based one-time codes from any RFC 6238 authenticator.</p>
+                </div>
+                <Badge tone={currentMember?.twoFactorEnabled ? 'success' : 'warning'}>
+                  {currentMember?.twoFactorEnabled ? 'Enabled' : 'Not enabled'}
+                </Badge>
+              </div>
+              <div className="panel__body account-security-page">
+                <div className="account-security-hero">
+                  <span><ShieldCheck size={29} /></span>
+                  <div>
+                    <strong>{currentMember?.twoFactorEnabled ? 'Two-factor authentication is active' : 'Add a second step to sign-in'}</strong>
+                    <p>
+                      {currentMember?.twoFactorEnabled
+                        ? 'A password alone cannot access this account. Keep your recovery codes somewhere safe and separate.'
+                        : 'Use Google Authenticator, 1Password, Microsoft Authenticator, Authy or another compatible generator.'}
+                    </p>
+                  </div>
+                </div>
+                {currentMember?.twoFactorEnabled ? (
+                  <div className="account-security-actions">
+                    <Button type="button" onClick={() => openTwoFactorProof('regenerate')}>
+                      <KeyRound size={17} /> Generate new recovery codes
+                    </Button>
+                    <Button type="button" variant="danger" onClick={() => openTwoFactorProof('disable')}>
+                      Disable 2FA
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="account-security-actions">
+                    <Button type="button" onClick={openTwoFactorSetup}>
+                      <ShieldCheck size={17} /> Set up authenticator
+                    </Button>
+                  </div>
+                )}
+                <div className="account-security-summary">
+                  <LockKeyhole size={20} />
+                  <span>
+                    <strong>Security-sensitive change</strong>
+                    <small>Enabling or disabling 2FA signs out every active session. After saving the recovery codes, sign in again using the new security policy.</small>
+                  </span>
+                </div>
+              </div>
+            </Panel>
+          </div>
         )}
       </div>
 
@@ -330,6 +542,9 @@ export function TeamPage({
             <Field label="Email" hint="They will receive an invitation that must be confirmed." error={formError}>
               <input autoFocus type="email" placeholder="teammate@example.com" value={invite.email} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} required />
             </Field>
+          </div>
+          <div className="account-form-note">
+            <Users size={18} /> {seatsRemaining} of {summary.seatsTotal} seats remain on the {summary.planName} plan. Pending invitations reserve a seat in this view.
           </div>
           <div className="form-section">
             <Field label="Role" hint="Choose their access level. You can change it later.">
@@ -368,17 +583,83 @@ export function TeamPage({
         <div className="account-seat-dialog">
           <p>Review the access capacity currently available to this workspace.</p>
           <div className="account-seat-dialog__grid">
-            <div><span>Login seats</span><strong>{summary.loginSeatsUsed} / {summary.loginSeatsTotal}</strong></div>
-            <div><span>Notify-only seats</span><strong>{summary.notifySeatsUsed} / {summary.notifySeatsTotal}</strong></div>
+            <div><span>Shared team seats</span><strong>{summary.seatsUsed} / {summary.seatsTotal}</strong></div>
+            <div><span>Remaining</span><strong>{seatsRemaining}</strong></div>
+            <div><span>Login access</span><strong>{summary.loginSeatsUsed}</strong></div>
+            <div><span>Notify-only access</span><strong>{summary.notifySeatsUsed}</strong></div>
           </div>
           <div className="account-security-summary">
             <ShieldCheck size={20} />
-            <span><strong>Billing-safe workflow</strong><small>Seat purchases are intentionally unavailable until a billing provider is connected. No charge will be created from this dashboard.</small></span>
+            <span><strong>Plan-controlled capacity</strong><small>This shared limit comes directly from the active subscription snapshot. Change the workspace plan in Plans &amp; billing to increase it.</small></span>
           </div>
           <div className="form-actions">
             <Button type="button" onClick={() => setSeatsOpen(false)}>Done</Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={securityMode !== null}
+        onClose={() => {
+          if (!saving && securityMode !== 'recovery') resetSecurityDialog()
+        }}
+        title={securityMode === 'recovery' ? 'Save recovery codes' : 'Two-factor authentication'}
+        icon={<ShieldCheck size={36} />}
+        width="sm"
+      >
+        {securityMode === 'setup' && (
+          <form onSubmit={submitTwoFactorSetup}>
+            <div className="account-form-note"><LockKeyhole size={19} /> Confirm your current password before creating a new authenticator secret.</div>
+            <Field label="Current password" error={formError}>
+              <input autoFocus type="password" autoComplete="current-password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} required />
+            </Field>
+            <div className="form-actions"><Button variant="secondary" type="button" onClick={resetSecurityDialog}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Preparing…' : 'Continue'}</Button></div>
+          </form>
+        )}
+
+        {securityMode === 'verify' && twoFactorSetup && (
+          <form onSubmit={submitTwoFactorVerification} className="account-two-factor-setup">
+            <p>Scan this QR code with your authenticator app, then enter its current six-digit code.</p>
+            <div className="account-two-factor-qr"><QRCodeSVG value={twoFactorSetup.otpauth_url} size={184} level="M" /></div>
+            <div className="account-two-factor-secret">
+              <span><small>Manual setup key</small><code>{twoFactorSetup.secret}</code></span>
+              <IconButton type="button" label="Copy setup key" onClick={() => void copyText(twoFactorSetup.secret)}><Copy size={16} /></IconButton>
+            </div>
+            <Field label="Authenticator code" hint={`Account: ${twoFactorSetup.account_name}`} error={formError}>
+              <input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="000000" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 6))} required />
+            </Field>
+            <div className="form-actions"><Button variant="secondary" type="button" onClick={resetSecurityDialog}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Verifying…' : 'Enable 2FA'}</Button></div>
+          </form>
+        )}
+
+        {securityMode === 'proof' && (
+          <form onSubmit={submitTwoFactorProof}>
+            <div className="account-form-note"><KeyRound size={19} /> {proofAction === 'disable' ? 'Disabling 2FA signs out every active session.' : 'Generating a new set immediately invalidates all previous recovery codes.'}</div>
+            <div className="form-grid form-grid--single">
+              <Field label="Current password">
+                <input autoFocus type="password" autoComplete="current-password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} required />
+              </Field>
+              <Field label="Authenticator or recovery code" error={formError}>
+                <input autoComplete="one-time-code" value={securityCode} onChange={(event) => setSecurityCode(event.target.value)} required />
+              </Field>
+            </div>
+            <div className="form-actions"><Button variant="secondary" type="button" onClick={resetSecurityDialog}>Cancel</Button><Button type="submit" variant={proofAction === 'disable' ? 'danger' : 'primary'} disabled={saving}>{saving ? 'Confirming…' : proofAction === 'disable' ? 'Disable and sign out' : 'Generate new codes'}</Button></div>
+          </form>
+        )}
+
+        {securityMode === 'recovery' && (
+          <div className="account-recovery-codes">
+            <div className="account-warning"><KeyRound size={20} /><span><strong>Each code works only once</strong><small>This is the only time these codes are shown. Store them outside this device.</small></span></div>
+            <div className="account-recovery-codes__grid">
+              {recoveryCodes.map((code) => <code key={code}>{code}</code>)}
+            </div>
+            <div className="account-recovery-codes__tools">
+              <Button variant="secondary" type="button" onClick={() => void copyText(recoveryCodes.join('\n'))}><Copy size={16} /> Copy all</Button>
+              <Button variant="secondary" type="button" onClick={downloadRecoveryCodes}><Download size={16} /> Download</Button>
+            </div>
+            <div className="form-actions"><Button type="button" onClick={() => void finishRecoveryCodes()}>{recoveryRequiresSignIn ? 'I saved the codes — sign in again' : 'I saved the codes'}</Button></div>
+          </div>
+        )}
       </Modal>
     </div>
   )

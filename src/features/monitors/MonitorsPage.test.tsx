@@ -83,6 +83,26 @@ describe('MonitorsPage selection', () => {
     await waitFor(() => expect(onBulkAction).toHaveBeenCalledWith(data, 'delete'))
     expect(window.confirm).toHaveBeenCalledWith('Delete 2 selected monitors? This cannot be undone.')
   })
+
+  it('keeps the bulk tag search focused while typing and creates a tag with Enter', () => {
+    renderPage({ data: demoMonitors.slice(0, 2) })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all visible monitors' }))
+    fireEvent.click(screen.getByRole('button', { name: /manage tags/i }))
+    const dialog = screen.getByRole('dialog', { name: /manage tags/i })
+    const input = within(dialog).getByRole('textbox', { name: 'Search bulk tags' })
+
+    input.focus()
+    for (const value of ['r', 're', 'rel', 'rele', 'relea', 'release']) {
+      fireEvent.change(input, { target: { value } })
+      expect(input).toHaveFocus()
+    }
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(input).toHaveValue('')
+    expect(input).toHaveFocus()
+    expect(within(dialog).getByRole('button', { name: 'Unselect tag release' })).toBeInTheDocument()
+  })
 })
 
 describe('MonitorsPage health summary', () => {
@@ -139,6 +159,15 @@ describe('MonitorsPage monitor creation', () => {
 })
 
 describe('MonitorsPage row actions', () => {
+  it('hides row and bulk manual-test actions when disabled by the plan', () => {
+    const monitor = demoMonitors[0]
+    renderPage({ data: [monitor], manualTestEnabled: false })
+
+    expect(within(actionsFor(monitor.name)).queryByRole('menuitem', { name: /test now/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: `Select ${monitor.name}` }))
+    expect(within(screen.getByRole('toolbar', { name: 'Bulk monitor actions' })).queryByRole('button', { name: /test now/i })).not.toBeInTheDocument()
+  })
+
   it('exposes navigation and delegates pause, resume, test and delete actions', async () => {
     const up = demoMonitors[0]
     const paused = demoMonitors.find((monitor) => monitor.status === 'paused') as MonitorViewModel

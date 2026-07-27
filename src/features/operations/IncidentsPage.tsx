@@ -19,7 +19,7 @@ import {
   type TeamMemberViewModel,
 } from '../../data'
 import { formatDate, formatDuration, formatStatus } from '../../lib/format'
-import { Badge, Button, Field, Modal, PageHeader, Panel, SearchInput, Select } from '../../components/ui'
+import { Badge, Button, FeedbackBanner, Field, Modal, PageHeader, Panel, SearchInput, Select } from '../../components/ui'
 import './operations.css'
 
 type MaybePromise<T> = T | Promise<T>
@@ -348,7 +348,7 @@ export function IncidentsPage({
             {selectedAssignment && (
               <p className="ops-assignment-note">Assigned to {memberById.get(selectedAssignment)?.name ?? 'team member'}.</p>
             )}
-            {actionError && <div className="ops-error" role="alert">{actionError}</div>}
+            {actionError && <FeedbackBanner tone="error">{actionError}</FeedbackBanner>}
 
             <section className="ops-timeline">
               <h3>Timeline</h3>

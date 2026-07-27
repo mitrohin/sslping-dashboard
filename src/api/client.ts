@@ -329,6 +329,10 @@ export class ApiClient {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/members`)
   }
 
+  listInvitations(tenantId: Api.UUID): Promise<Api.ItemList<Api.Invitation>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/invitations`)
+  }
+
   updateMember(tenantId: Api.UUID, memberId: Api.UUID, input: Api.MembershipPatch): Promise<Api.Membership> {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/members/${encodePath(memberId)}`, {
       method: 'PATCH',
@@ -398,6 +402,10 @@ export class ApiClient {
       withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/actions/test`, { region }),
       { method: 'POST' },
     )
+  }
+
+  getWorkspaceEntitlements(tenantId: Api.UUID): Promise<Api.WorkspaceEntitlements> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/entitlements`)
   }
 
   rotateHeartbeatToken(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.HeartbeatTokenResponse> {
@@ -727,6 +735,38 @@ export class ApiClient {
     return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/audit-logs`, query))
   }
 
+  listBillingPlans(): Promise<Api.BillingPlanCatalog> {
+    return this.#request('/v1/billing/plans')
+  }
+
+  getBillingSubscription(): Promise<Api.BillingSubscription> {
+    return this.#request('/v1/billing/subscription')
+  }
+
+  listBillingInvoices(query?: Api.ListQuery): Promise<Api.Page<Api.Invoice>> {
+    return this.#request(withQuery('/v1/billing/invoices', query))
+  }
+
+  getBillingInvoice(invoiceId: Api.UUID): Promise<Api.Invoice> {
+    return this.#request(`/v1/billing/invoices/${encodePath(invoiceId)}`)
+  }
+
+  downloadBillingInvoicePdf(invoiceId: Api.UUID): Promise<Blob> {
+    return this.#request(`/v1/billing/invoices/${encodePath(invoiceId)}/pdf`, { responseType: 'blob' })
+  }
+
+  emailBillingInvoicePdf(invoiceId: Api.UUID): Promise<{ message: string; recipient: string }> {
+    return this.#request(`/v1/billing/invoices/${encodePath(invoiceId)}/actions/email`, { method: 'POST' })
+  }
+
+  previewPlanChange(input: { plan_code: string; billing_cycle: Api.BillingCycle }): Promise<Api.PlanChangeQuote> {
+    return this.#request('/v1/billing/plan-changes/preview', { method: 'POST', body: input })
+  }
+
+  changeBillingPlan(input: { plan_code: string; billing_cycle: Api.BillingCycle; payment_provider?: Api.PaymentProvider }): Promise<Api.PlanChangeResult> {
+    return this.#request('/v1/billing/plan-changes', { method: 'POST', body: input })
+  }
+
   listSupportTickets(query?: Api.ListQuery): Promise<Api.Page<Api.SupportTicket>> {
     return this.#request(withQuery('/v1/support/tickets', query))
   }
@@ -799,6 +839,50 @@ export class ApiClient {
 
   adminDeletePlan(planId: Api.UUID): Promise<void> {
     return this.#request(`/v1/admin/plans/${encodePath(planId)}`, { method: 'DELETE' })
+  }
+
+  adminGetBillingSettings(): Promise<Api.BillingSettings> {
+    return this.#request('/v1/admin/billing/settings')
+  }
+
+  adminUpdateBillingSettings(input: Partial<Pick<Api.BillingSettings, 'annual_discount_percent' | 'invoice_issuer'>>): Promise<Api.BillingSettings> {
+    return this.#request('/v1/admin/billing/settings', { method: 'PATCH', body: input })
+  }
+
+  adminListInvoices(query?: Api.ListQuery): Promise<Api.Page<Api.Invoice>> {
+    return this.#request(withQuery('/v1/admin/invoices', query))
+  }
+
+  adminListBillingWorkspaces(query?: Api.ListQuery): Promise<Api.Page<Api.AdminBillingWorkspace>> {
+    return this.#request(withQuery('/v1/admin/billing/workspaces', query))
+  }
+
+  adminGetInvoice(invoiceId: Api.UUID): Promise<Api.Invoice> {
+    return this.#request(`/v1/admin/invoices/${encodePath(invoiceId)}`)
+  }
+
+  adminDownloadInvoicePdf(invoiceId: Api.UUID): Promise<Blob> {
+    return this.#request(`/v1/admin/invoices/${encodePath(invoiceId)}/pdf`, { responseType: 'blob' })
+  }
+
+  adminEmailInvoicePdf(invoiceId: Api.UUID): Promise<{ message: string; recipient: string }> {
+    return this.#request(`/v1/admin/invoices/${encodePath(invoiceId)}/actions/email`, { method: 'POST' })
+  }
+
+  adminMarkInvoicePaid(invoiceId: Api.UUID, input: { paid_at?: Api.ISODateTime; note?: string } = {}): Promise<Api.Invoice> {
+    return this.#request(`/v1/admin/invoices/${encodePath(invoiceId)}/actions/paid`, { method: 'POST', body: input })
+  }
+
+  adminVoidInvoice(invoiceId: Api.UUID, input: { note?: string } = {}): Promise<Api.Invoice> {
+    return this.#request(`/v1/admin/invoices/${encodePath(invoiceId)}/actions/void`, { method: 'POST', body: input })
+  }
+
+  adminGetWorkspacePaymentSettings(workspaceId: Api.UUID): Promise<Api.WorkspacePaymentSettings> {
+    return this.#request(`/v1/admin/workspaces/${encodePath(workspaceId)}/payment-settings`)
+  }
+
+  adminUpdateWorkspacePaymentSettings(workspaceId: Api.UUID, input: Pick<Api.WorkspacePaymentSettings, 'keepz_allowed' | 'cloudpayments_allowed'>): Promise<Api.WorkspacePaymentSettings> {
+    return this.#request(`/v1/admin/workspaces/${encodePath(workspaceId)}/payment-settings`, { method: 'PATCH', body: input })
   }
 
   adminListTickets(query?: Api.ListQuery): Promise<Api.Page<Api.SupportTicket>> {

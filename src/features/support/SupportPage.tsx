@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { ArrowLeft, LifeBuoy, MessageSquarePlus, Send, Ticket } from 'lucide-react'
 import type { SupportAttachment, SupportMessage, SupportTicket, SupportTicketDetail, SupportTicketPriority } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
-import { Badge, Button, EmptyState, Field, PageHeader, Panel, Select } from '../../components/ui'
+import { Badge, Button, EmptyState, FeedbackBanner, Field, PageHeader, Panel, Select } from '../../components/ui'
 import { formatDate } from '../../lib/format'
 import { AttachmentList, AttachmentPicker, openAttachmentBlob } from './SupportAttachments'
 import { requestSupportUnreadRefresh } from './unread'
@@ -134,7 +134,7 @@ export function SupportPage() {
       <div className="page support-page">
         <button className="support-back" type="button" onClick={() => setDetail(null)}><ArrowLeft size={17} /> All tickets</button>
         <PageHeader title={detail.ticket.subject} description={`Ticket opened ${formatDate(detail.ticket.created_at)}`} actions={<Badge tone={ticketTone(detail.ticket.status)}>{detail.ticket.status.replace('_', ' ')}</Badge>} />
-        {error && <div className="account-error account-error--page" role="alert">{error}</div>}
+        {error && <FeedbackBanner tone="error" className="feedback-banner--page" onDismiss={() => setError('')}>{error}</FeedbackBanner>}
         <Panel className="support-thread">
           <div className="support-thread__meta">
             <span>Priority <strong>{detail.ticket.priority}</strong></span>
@@ -143,7 +143,7 @@ export function SupportPage() {
           <div className="support-messages">
             {messages.map((item: SupportMessage) => (
               <article key={item.id} className={`support-message ${item.author_role === 'superadmin' ? 'support-message--staff' : ''}`}>
-                <div><strong>{item.author_role === 'superadmin' ? 'SSLPing support' : item.author_id === user?.id ? 'You' : 'Workspace member'}</strong><time>{formatDate(item.created_at)}</time></div>
+                <div className="support-message__head"><strong>{item.author_role === 'superadmin' ? 'SSLPing support' : item.author_id === user?.id ? 'You' : 'Workspace member'}</strong><time>{formatDate(item.created_at)}</time></div>
                 <p>{item.body}</p>
                 <AttachmentList attachments={item.attachments} onOpen={(attachment) => void openAttachment(attachment)} busy={busy} />
               </article>
@@ -166,7 +166,7 @@ export function SupportPage() {
   return (
     <div className="page support-page">
       <PageHeader title="Support" description="Create a ticket and continue the conversation with the SSLPing support team." actions={<Button onClick={() => setCreating((value) => !value)}><MessageSquarePlus size={18} /> New ticket</Button>} />
-      {error && <div className="account-error account-error--page" role="alert">{error}<button type="button" onClick={() => void load()}>Retry</button></div>}
+      {error && <FeedbackBanner tone="error" className="feedback-banner--page" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>} onDismiss={() => setError('')}>{error}</FeedbackBanner>}
       {creating && (
         <Panel className="support-create">
           <form onSubmit={submitTicket}>

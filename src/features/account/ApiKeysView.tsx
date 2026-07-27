@@ -8,7 +8,7 @@ import {
   type MonitorViewModel,
 } from '../../data'
 import { formatDate, formatRelativeTime, formatStatus } from '../../lib/format'
-import { Badge, Button, EmptyState, Field, IconButton, Modal, Panel, Select } from '../../components/ui'
+import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, Panel, Select } from '../../components/ui'
 import type { ApiKeyCreateInput, ApiKeyCreateResult } from './types'
 
 const scopeLabels: Readonly<Record<ApiKeyScope, string>> = {
@@ -204,7 +204,7 @@ export function ApiKeysView({
         <Button onClick={openCreate}><Plus size={17} /> Create API key</Button>
       </div>
 
-      {error && <div className="account-error" role="alert">{error}</div>}
+      {error && <FeedbackBanner tone="error" onDismiss={() => setError('')}>{error}</FeedbackBanner>}
 
       {keys.length === 0 ? (
         <Panel><EmptyState icon={<KeyRound size={34} />} title="No API keys" description="Create a key to access the SSLPing API from your own tools." action={<Button onClick={openCreate}>Create API key</Button>} /></Panel>

@@ -1,6 +1,35 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
-import { useEffect } from 'react'
-import { ChevronDown, Search, X } from 'lucide-react'
+import { useEffect, useId, useRef } from 'react'
+import { CheckCircle2, ChevronDown, CircleAlert, Info, Search, TriangleAlert, X } from 'lucide-react'
+
+let openModalCount = 0
+let originalBodyPaddingRight = ''
+
+function lockPageScroll() {
+  if (openModalCount === 0) {
+    const body = document.body
+    const viewportWidth = document.documentElement.clientWidth
+    const scrollbarWidth = viewportWidth > 0 ? Math.max(0, window.innerWidth - viewportWidth) : 0
+    originalBodyPaddingRight = body.style.paddingRight
+
+    if (scrollbarWidth > 0) {
+      const currentPadding = Number.parseFloat(window.getComputedStyle(body).paddingRight) || 0
+      body.style.paddingRight = `${currentPadding + scrollbarWidth}px`
+    }
+    body.classList.add('modal-open')
+  }
+
+  openModalCount += 1
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    openModalCount = Math.max(0, openModalCount - 1)
+    if (openModalCount > 0) return
+    document.body.classList.remove('modal-open')
+    document.body.style.paddingRight = originalBodyPaddingRight
+  }
+}
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
 
@@ -42,6 +71,54 @@ export function Panel({
   children: ReactNode
 }) {
   return <section className={`panel ${className}`}>{children}</section>
+}
+
+export type FeedbackTone = 'success' | 'error' | 'warning' | 'info'
+
+const feedbackMeta = {
+  success: { title: 'Changes saved', icon: CheckCircle2 },
+  error: { title: 'Something went wrong', icon: CircleAlert },
+  warning: { title: 'Attention required', icon: TriangleAlert },
+  info: { title: 'Information', icon: Info },
+} satisfies Record<FeedbackTone, { title: string; icon: typeof CheckCircle2 }>
+
+export function FeedbackBanner({
+  tone,
+  title,
+  children,
+  action,
+  onDismiss,
+  className = '',
+}: {
+  tone: FeedbackTone
+  title?: string
+  children: ReactNode
+  action?: ReactNode
+  onDismiss?: () => void
+  className?: string
+}) {
+  const meta = feedbackMeta[tone]
+  const Icon = meta.icon
+
+  return (
+    <div
+      className={`feedback-banner feedback-banner--${tone} ${className}`}
+      role={tone === 'error' ? 'alert' : 'status'}
+      aria-live={tone === 'error' ? 'assertive' : 'polite'}
+    >
+      <span className="feedback-banner__icon" aria-hidden="true"><Icon size={20} /></span>
+      <div className="feedback-banner__copy">
+        <strong>{title ?? meta.title}</strong>
+        <span>{children}</span>
+      </div>
+      {action && <div className="feedback-banner__action">{action}</div>}
+      {onDismiss && (
+        <IconButton className="feedback-banner__dismiss" label="Dismiss notification" onClick={onDismiss}>
+          <X size={18} />
+        </IconButton>
+      )}
+    </div>
+  )
 }
 
 export function Badge({
@@ -207,32 +284,79 @@ export function Modal({
   width?: 'sm' | 'md' | 'lg' | 'xl'
   className?: string
 }) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!open) return
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusableSelector = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',')
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0)
+      if (focusable.length === 0) {
+        event.preventDefault()
+        dialogRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKeyDown)
-    document.body.classList.add('modal-open')
+    const unlockPageScroll = lockPageScroll()
+    const focusFrame = window.requestAnimationFrame(() => {
+      // Do not steal focus when the user (or an immediately rendered child)
+      // has already moved it inside the dialog before this frame runs.
+      if (dialogRef.current?.contains(document.activeElement)) return
+      const first = dialogRef.current?.querySelector<HTMLElement>(focusableSelector)
+      ;(first ?? dialogRef.current)?.focus()
+    })
     return () => {
+      window.cancelAnimationFrame(focusFrame)
       document.removeEventListener('keydown', onKeyDown)
-      document.body.classList.remove('modal-open')
+      unlockPageScroll()
+      returnFocusRef.current?.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className={`modal modal--${width} ${className}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal__header">
           {icon && <div className="modal__icon">{icon}</div>}
-          <h2 id="modal-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <IconButton label="Close" className="modal__close" onClick={onClose}>
             <X size={24} />
           </IconButton>

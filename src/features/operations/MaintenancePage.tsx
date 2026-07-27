@@ -16,7 +16,7 @@ import {
   type MonitorViewModel,
 } from '../../data'
 import { formatDate, formatDuration, formatStatus } from '../../lib/format'
-import { Badge, Button, EmptyState, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
+import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
 import './operations.css'
 
 type MaybePromise<T> = T | Promise<T>
@@ -233,7 +233,7 @@ export function MaintenancePage({
             <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by maintenance name or monitor" aria-label="Search maintenance windows" />
             <span className="ops-result-count">{filteredWindows.length} windows</span>
           </div>
-          {error && <div className="ops-error" role="alert">{error}</div>}
+          {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <Panel className="ops-table-panel">
             <div className="ops-table-scroll ops-desktop-only">
               <table className="ops-data-table">
@@ -295,7 +295,7 @@ export function MaintenancePage({
             </div>
             {draft.recurrence !== 'once' && <Field label="Repeat until" hint="Optional end for this recurring schedule."><input type="datetime-local" value={draft.endsAt} onChange={(event) => updateDraft('endsAt', event.target.value)} /></Field>}
             {draft.id && <div className="toggle-row"><Toggle checked={draft.active} onChange={(value) => updateDraft('active', value)} label="Maintenance active" /><div className="toggle-row__copy"><strong>Active schedule</strong><span>Disabled windows remain in history but do not suppress alerts.</span></div></div>}
-            {error && <div className="ops-error" role="alert">{error}</div>}
+            {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
             <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setDraft(null)}>Close</Button><Button type="submit" disabled={busy}><CalendarClock size={17} /> {busy ? 'Saving…' : draft.id ? 'Save changes' : 'Create window'}</Button></div>
           </form>
         )}

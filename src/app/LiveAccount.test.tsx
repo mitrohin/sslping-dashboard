@@ -152,6 +152,43 @@ function fakeApi() {
     listMembers: vi.fn().mockResolvedValue({
       items: [ownerMembership, viewerMembership, notifierMembership],
     }),
+    listInvitations: vi.fn().mockResolvedValue({ items: [] }),
+    getBillingSubscription: vi.fn().mockResolvedValue({
+      id: 'subscription-1',
+      workspace_id: workspace.id,
+      plan_code: 'starter',
+      plan_snapshot: {
+        plan_id: 'plan-1',
+        code: 'starter',
+        name: 'Starter',
+        price_monthly_cents: 1900,
+        currency: 'USD',
+        limits: {
+          max_monitors: 100,
+          min_interval_seconds: 60,
+          max_team_members: 5,
+          max_status_pages: 5,
+          max_integrations: 10,
+          max_locations: 3,
+          data_retention_days: 90,
+          allow_manual_tests: false,
+        },
+        revision_at: now,
+      },
+      billing_cycle: 'monthly',
+      status: 'active',
+      payment_provider: 'manual',
+      current_period_amount_cents: 1900,
+      currency: 'USD',
+      current_period_start: now,
+      current_period_end: '2026-08-26T08:00:00.000Z',
+      created_at: now,
+      updated_at: now,
+    }),
+    setupTwoFactor: vi.fn(),
+    confirmTwoFactor: vi.fn(),
+    disableTwoFactor: vi.fn(),
+    regenerateRecoveryCodes: vi.fn(),
     inviteMember: vi.fn(),
     updateMember: vi.fn(),
     updateTenant: vi.fn(),
@@ -234,6 +271,8 @@ describe('LiveTeamPage', () => {
     expect(screen.getByText('Notify only')).toBeInTheDocument()
     expect(api.getTenant).toHaveBeenCalledWith(workspace.id)
     expect(api.listMembers).toHaveBeenCalledWith(workspace.id)
+    expect(api.listInvitations).toHaveBeenCalledWith(workspace.id)
+    expect(screen.getByText('3 / 5')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /invite team member/i }))
     fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: 'NEW.READER@example.com' } })

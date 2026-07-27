@@ -12,6 +12,8 @@ export type ProblemCode =
   | 'forbidden'
   | 'not_found'
   | 'conflict'
+  | 'invoice_expired'
+  | 'payment_required'
   | 'rate_limited'
   | 'payload_too_large'
   | 'internal_error'
@@ -42,7 +44,7 @@ export interface User {
   timezone: string
   email_verified_at?: ISODateTime
   two_factor_enabled: boolean
-  system_role: 'user' | 'superadmin'
+  system_role: 'user' | 'accountant' | 'superadmin'
   created_at: ISODateTime
   updated_at: ISODateTime
 }
@@ -165,6 +167,7 @@ export interface MeResponse {
   user: User
   tenants: Workspace[]
   active_tenant_id: UUID
+  workspace_role: Role
   impersonation?: {
     administrator_id: UUID
     reason: string
@@ -843,6 +846,13 @@ export interface PlanLimits {
   max_integrations: number
   max_locations: number
   data_retention_days: number
+  allow_manual_tests: boolean
+}
+
+export interface WorkspaceEntitlements {
+  plan_code: string
+  plan_name: string
+  limits: PlanLimits
 }
 
 export interface Plan {
@@ -856,6 +866,155 @@ export interface Plan {
   active: boolean
   limits: PlanLimits
   created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+export type BillingCycle = 'monthly' | 'yearly'
+export type PaymentProvider = 'manual' | 'keepz' | 'cloudpayments'
+export type InvoiceStatus = 'open' | 'paid' | 'void'
+export type PlanChangeKind = 'upgrade' | 'downgrade' | 'no_change'
+
+export interface BillingPlan extends Plan {
+  price_yearly_cents: number
+  annual_discount_percent: number
+}
+
+export interface BillingPlanCatalog {
+  items: BillingPlan[]
+  annual_discount_percent: number
+}
+
+export interface BillingPlanSnapshot {
+  plan_id: UUID
+  code: string
+  name: string
+  description?: string
+  price_monthly_cents: number
+  currency: string
+  limits: PlanLimits
+  revision_at: ISODateTime
+}
+
+export interface BillingSubscription {
+  id: UUID
+  workspace_id: UUID
+  plan_code: string
+  plan_snapshot?: BillingPlanSnapshot
+  billing_cycle: BillingCycle
+  status: 'active' | 'past_due' | 'suspended'
+  payment_provider: PaymentProvider
+  current_period_amount_cents: number
+  currency: string
+  current_period_start: ISODateTime
+  current_period_end: ISODateTime
+  grace_ends_at?: ISODateTime
+  pending_plan_code?: string
+  pending_billing_cycle?: BillingCycle
+  pending_effective_at?: ISODateTime
+  pending_payment_provider?: PaymentProvider
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+export interface AvailablePaymentProvider {
+  code: PaymentProvider
+  allowed: boolean
+  configured: boolean
+}
+
+export interface PlanChangeQuote {
+  change_kind: PlanChangeKind
+  source_plan_code: string
+  target_plan_code: string
+  billing_cycle: BillingCycle
+  currency: string
+  subtotal_cents: number
+  annual_discount_cents: number
+  unused_credit_cents: number
+  total_cents: number
+  effective_at: ISODateTime
+  warning?: string
+  available_payment_providers: AvailablePaymentProvider[]
+}
+
+export interface Invoice {
+  id: UUID
+  number: string
+  workspace_id: UUID
+  workspace_name?: string
+  customer_email?: string
+  source_plan_code: string
+  source_billing_cycle: BillingCycle
+  target_plan_code: string
+  target_plan_snapshot?: BillingPlanSnapshot
+  issuer_snapshot?: InvoiceIssuerProfile
+  billing_cycle: BillingCycle
+  change_kind: PlanChangeKind
+  currency: string
+  subtotal_cents: number
+  annual_discount_cents: number
+  unused_credit_cents: number
+  total_cents: number
+  status: InvoiceStatus
+  payment_provider: PaymentProvider
+  payment_url?: string
+  external_id?: string
+  period_start: ISODateTime
+  period_end: ISODateTime
+  due_at: ISODateTime
+  paid_at?: ISODateTime
+  voided_at?: ISODateTime
+  settled_by?: UUID
+  settlement_note?: string
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+export interface InvoiceIssuerProfile {
+  legal_name: string
+  brand_name?: string
+  registration_number?: string
+  tax_id?: string
+  address: string
+  email: string
+  phone?: string
+  bank_name: string
+  bank_address?: string
+  account_name?: string
+  account_number: string
+  swift?: string
+  correspondent_bank?: string
+  payment_instructions?: string
+}
+
+export interface PlanChangeResult {
+  change_kind: PlanChangeKind
+  quote: PlanChangeQuote
+  subscription: BillingSubscription
+  invoice?: Invoice
+}
+
+export interface WorkspacePaymentSettings {
+  workspace_id: UUID
+  keepz_allowed: boolean
+  cloudpayments_allowed: boolean
+  updated_at: ISODateTime
+}
+
+export interface AdminBillingWorkspace {
+  id: UUID
+  name: string
+  slug: string
+  plan: string
+  currency: string
+  payment_settings: WorkspacePaymentSettings
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+export interface BillingSettings {
+  annual_discount_percent: number
+  invoice_issuer: InvoiceIssuerProfile
   updated_at: ISODateTime
 }
 

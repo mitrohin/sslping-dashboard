@@ -9,7 +9,7 @@ import {
   TwoFactorController,
 } from '../features/auth/AuthFlows'
 import { DashboardGate, DemoEntry } from './DashboardGate'
-import { GuestOnly, RequireSystemAdmin } from './AuthProvider'
+import { GuestOnly, RequireSystemAdmin, RequireWorkspaceAccess } from './AuthProvider'
 import { demoPublicStatusApi } from './demoPublicStatus'
 
 const LiveMonitorsPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorsPage })))
@@ -48,8 +48,7 @@ function PublicStatusRoute() {
   return <RouteSuspense><PublicStatusPageRoute api={import.meta.env.DEV ? demoPublicStatusApi : undefined} /></RouteSuspense>
 }
 
-const dashboardChildren = [
-  { index: true, element: <Navigate to="/monitors" replace /> },
+const workspaceChildren = [
   { path: 'monitors', element: <RouteSuspense><LiveMonitorsPage /></RouteSuspense> },
   { path: 'monitors/:monitorId', element: <RouteSuspense><LiveMonitorDetailPage /></RouteSuspense> },
   { path: 'monitors/:monitorId/edit', element: <RouteSuspense><LiveMonitorEditPage /></RouteSuspense> },
@@ -60,6 +59,11 @@ const dashboardChildren = [
   { path: 'team', element: <RouteSuspense><LiveTeamPage /></RouteSuspense> },
   { path: 'integrations', element: <RouteSuspense><LiveIntegrationsPage /></RouteSuspense> },
   { path: 'support', element: <RouteSuspense><SupportPage /></RouteSuspense> },
+]
+
+const dashboardChildren = [
+  { index: true, element: <Navigate to="/monitors" replace /> },
+  { element: <RequireWorkspaceAccess />, children: workspaceChildren },
   { element: <RequireSystemAdmin />, children: [{ path: 'admin', element: <RouteSuspense><AdminConsolePage /></RouteSuspense> }] },
 ]
 

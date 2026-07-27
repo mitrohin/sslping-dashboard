@@ -45,7 +45,7 @@ const tokens: Tokens = {
   expires_at: '2030-01-01T00:00:00Z',
 }
 
-const me: MeResponse = { user, tenants: [workspace], active_tenant_id: workspace.id }
+const me: MeResponse = { user, tenants: [workspace], active_tenant_id: workspace.id, workspace_role: 'owner' }
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

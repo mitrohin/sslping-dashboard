@@ -22,7 +22,7 @@ import {
   type StatusPageViewModel,
 } from '../../data'
 import { formatDate, formatStatus } from '../../lib/format'
-import { Badge, Button, Field, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
+import { Badge, Button, FeedbackBanner, Field, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
 import type {
   RobotsPolicy,
   StatusPageAnnouncementInput,
@@ -409,7 +409,7 @@ export function StatusPageEditorPage({
             </EditorSection>
           )}
 
-          {(message || error) && <div className={error ? 'ops-error' : 'ops-success'} role="status">{error || message}</div>}
+          {(message || error) && <FeedbackBanner tone={error ? 'error' : 'success'} onDismiss={() => { setError(''); setMessage('') }}>{error || message}</FeedbackBanner>}
           <div className="ops-sticky-save"><Button size="lg" type="button" disabled={busy !== null} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save changes'}</Button></div>
         </main>
 
@@ -423,7 +423,7 @@ export function StatusPageEditorPage({
           <Field label="Title"><input value={announcementDraft.title} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, title: event.target.value }))} required maxLength={200} /></Field>
           <Field label="Message"><textarea value={announcementDraft.body} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, body: event.target.value }))} required maxLength={10_000} /></Field>
           <Field label="Status"><Select value={announcementDraft.status} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, status: event.target.value as StatusPageAnnouncementInput['status'] }))}><option value="investigating">Investigating</option><option value="identified">Identified</option><option value="monitoring">Monitoring</option><option value="resolved">Resolved</option></Select></Field>
-          {error && <div className="ops-error" role="alert">{error}</div>}
+          {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setAnnouncementOpen(false)}>Cancel</Button><Button type="submit" disabled={busy !== null}><Megaphone size={17} /> Publish announcement</Button></div>
         </form>
       </Modal>

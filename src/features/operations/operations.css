@@ -100,9 +100,7 @@ button.ops-incident-card:hover { border-color: #46536a; background: #202b3e; }
 .ops-filter-empty strong { color: var(--text); font-size: 17px; }
 .ops-filter-empty span { font-size: 13px; }
 
-.ops-error,
 .ops-success { padding: 12px 14px; border-radius: var(--radius-sm); font-size: 13px; line-height: 1.45; }
-.ops-error { color: #ff9b9d; border: 1px solid rgb(240 82 85 / 25%); background: var(--red-soft); }
 .ops-success { display: flex; align-items: center; gap: 8px; color: #8df0b8; border: 1px solid rgb(52 215 123 / 24%); background: var(--green-soft); }
 
 .ops-incident-detail { display: grid; gap: 25px; }

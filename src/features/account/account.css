@@ -7,26 +7,6 @@
   outline-offset: 2px;
 }
 
-.account-notice,
-.account-error {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: -7px 0 22px;
-  padding: 11px 14px;
-  border: 1px solid rgb(52 215 123 / 20%);
-  border-radius: var(--radius-sm);
-  color: #9aefbd;
-  background: rgb(52 215 123 / 8%);
-  font-size: 13px;
-}
-.account-notice span { flex: 1; }
-.account-notice button,
-.account-error button { padding: 3px 5px; border: 0; color: inherit; background: transparent; cursor: pointer; text-decoration: underline; }
-.account-error { color: #ff9b9d; border-color: rgb(240 82 85 / 22%); background: var(--red-soft); }
-.account-error--page { margin: 0 0 22px; }
-.account-error--page button { margin-left: auto; }
-
 .account-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 34px; }
 .account-subnav,
 .integration-categories { align-self: start; display: grid; gap: 6px; position: sticky; top: 24px; }
@@ -106,6 +86,27 @@
 .account-warning { color: #ddbe7e; border-color: rgb(244 165 43 / 22%); background: rgb(244 165 43 / 7%); }
 .account-warning svg { color: var(--orange); }
 .account-form-note { margin: 0 0 18px; font-size: 12px; line-height: 1.5; }
+
+.account-security-page { display: grid; gap: 22px; padding: 28px; }
+.account-security-hero { display: flex; align-items: flex-start; gap: 17px; }
+.account-security-hero > span { width: 54px; height: 54px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 15px; color: var(--green); background: var(--green-soft); }
+.account-security-hero > div { min-width: 0; }
+.account-security-hero strong { display: block; margin: 2px 0 7px; font-size: 17px; }
+.account-security-hero p,
+.account-two-factor-setup > p { margin: 0; color: var(--muted); line-height: 1.55; }
+.account-security-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.account-two-factor-setup { display: grid; gap: 18px; }
+.account-two-factor-qr { width: fit-content; margin: 0 auto; padding: 13px; border-radius: 16px; background: #fff; box-shadow: 0 14px 30px rgb(0 0 0 / 22%); }
+.account-two-factor-qr svg { display: block; }
+.account-two-factor-secret { display: flex; align-items: center; gap: 10px; padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-strong); }
+.account-two-factor-secret > span { min-width: 0; flex: 1; display: grid; gap: 5px; }
+.account-two-factor-secret small { color: var(--muted); }
+.account-two-factor-secret code { overflow: hidden; color: #b9f4d2; font-size: 12px; letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
+.account-recovery-codes { display: grid; gap: 18px; }
+.account-recovery-codes__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #111a28; }
+.account-recovery-codes__grid code { padding: 8px; border-radius: 6px; color: #d9f8e6; background: rgb(52 215 123 / 7%); text-align: center; font-size: 11px; }
+.account-recovery-codes__tools { display: flex; gap: 9px; }
+.form-grid--single { grid-template-columns: 1fr; }
 
 /* Integrations navigation */
 .account-tabs { display: flex; gap: 6px; margin-bottom: 25px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-strong); }
@@ -234,6 +235,11 @@
   .account-table-footer { align-items: flex-start; flex-direction: column; }
   .account-table-footer .button { margin-left: 0; }
   .account-details-form { padding: 20px 17px; }
+  .account-security-page { padding: 20px 17px; }
+  .account-security-hero { flex-direction: column; }
+  .account-security-actions .button,
+  .account-recovery-codes__tools .button { width: 100%; }
+  .account-recovery-codes__tools { flex-direction: column; }
   .account-section-heading { align-items: stretch; flex-direction: column; }
   .account-section-heading .button { width: 100%; }
   .integration-card__header { grid-template-columns: auto minmax(0, 1fr); padding: 18px; }

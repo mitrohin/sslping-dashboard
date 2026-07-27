@@ -11,7 +11,7 @@ import type {
   StatusPageCreateRequest,
   StatusPageUpdateRequest,
 } from '../api/types'
-import { Button, Panel } from '../components/ui'
+import { Button, FeedbackBanner, Panel } from '../components/ui'
 import { formatStatus } from '../lib/format'
 import {
   demoStatusPages,
@@ -101,8 +101,9 @@ function FailedOperations({ error, retry }: { error: Error; retry: () => void })
   return (
     <main className="page page--wide ops-page">
       <Panel>
-        <div className="ops-error" role="alert">{error.message}</div>
-        <Button type="button" onClick={retry}>Try again</Button>
+        <FeedbackBanner tone="error" action={<Button size="sm" variant="secondary" type="button" onClick={retry}>Try again</Button>}>
+          {error.message}
+        </FeedbackBanner>
       </Panel>
     </main>
   )

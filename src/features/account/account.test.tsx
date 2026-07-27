@@ -32,9 +32,52 @@ describe('TeamPage', () => {
     render(<TeamPage />)
     fireEvent.click(screen.getByRole('button', { name: /manage seats/i }))
     expect(screen.getByRole('heading', { name: /workspace seats/i })).toBeInTheDocument()
-    expect(screen.getByText(/no charge will be created/i)).toBeInTheDocument()
+    expect(screen.getByText(/comes directly from the active subscription snapshot/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByRole('heading', { name: /workspace seats/i })).not.toBeInTheDocument()
+  })
+
+  it('enrolls the current user in authenticator 2FA and exposes one-time recovery codes', async () => {
+    const onSetupTwoFactor = vi.fn().mockResolvedValue({
+      secret: 'JBSWY3DPEHPK3PXP',
+      otpauth_url: 'otpauth://totp/SSLPing:test@example.com?secret=JBSWY3DPEHPK3PXP&issuer=SSLPing',
+      account_name: 'test@example.com',
+    })
+    const onConfirmTwoFactor = vi.fn().mockResolvedValue(['AAAAA-BBBBB', 'CCCCC-DDDDD'])
+    const onSecuritySessionEnd = vi.fn().mockResolvedValue(undefined)
+    render(
+      <TeamPage
+        initialMembers={[{
+          id: 'member-1',
+          name: 'Test User',
+          email: 'test@example.com',
+          initials: 'TU',
+          role: 'owner',
+          twoFactorEnabled: false,
+          status: 'active',
+          isCurrentUser: true,
+        }]}
+        initialSummary={{ seatsUsed: 1, seatsTotal: 3, loginSeatsUsed: 1, notifySeatsUsed: 0, planName: 'Starter' }}
+        onSetupTwoFactor={onSetupTwoFactor}
+        onConfirmTwoFactor={onConfirmTwoFactor}
+        onSecuritySessionEnd={onSecuritySessionEnd}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /my security/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set up authenticator/i }))
+    fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: 'correct horse' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(onSetupTwoFactor).toHaveBeenCalledWith('correct horse'))
+
+    expect(await screen.findByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/authenticator code/i), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: /enable 2fa/i }))
+    await waitFor(() => expect(onConfirmTwoFactor).toHaveBeenCalledWith('123456'))
+    expect(await screen.findByText('AAAAA-BBBBB')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /i saved the codes/i }))
+    await waitFor(() => expect(onSecuritySessionEnd).toHaveBeenCalledTimes(1))
   })
 })
 

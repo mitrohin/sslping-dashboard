@@ -19,6 +19,7 @@ import type {
   UUID,
   Workspace,
   MeResponse,
+  Role,
 } from '../api/types'
 
 export interface TwoFactorChallenge {
@@ -43,6 +44,7 @@ export interface AuthContextValue {
   workspace: Workspace | null
   tenant: Workspace | null
   tenants: Workspace[]
+  workspaceRole: Role | null
   authenticated: boolean
   loading: boolean
   twoFactorChallenge: TwoFactorChallenge | null
@@ -81,6 +83,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
   const [user, setUser] = useState<User | null>(null)
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [tenants, setTenants] = useState<Workspace[]>([])
+  const [workspaceRole, setWorkspaceRole] = useState<Role | null>(null)
   const [authenticated, setAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallenge | null>(null)
@@ -92,6 +95,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
     setUser(null)
     setWorkspace(null)
     setTenants([])
+    setWorkspaceRole(null)
     setAuthenticated(false)
     setTwoFactorChallenge(null)
     setImpersonation(null)
@@ -102,6 +106,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
     const activeWorkspace = identity.tenants.find((item) => item.id === identity.active_tenant_id) ?? null
     setUser(identity.user)
     setTenants(identity.tenants)
+    setWorkspaceRole(identity.workspace_role)
     setWorkspace(activeWorkspace)
     setAuthenticated(true)
     setTwoFactorChallenge(null)
@@ -126,6 +131,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
         const activeWorkspace = identity.tenants.find((item) => item.id === identity.active_tenant_id) ?? null
         setUser(identity.user)
         setTenants(identity.tenants)
+        setWorkspaceRole(identity.workspace_role)
         setWorkspace(activeWorkspace)
         setAuthenticated(true)
         setRestorationError(null)
@@ -286,6 +292,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
       workspace,
       tenant: workspace,
       tenants,
+      workspaceRole,
       authenticated,
       loading,
       twoFactorChallenge,
@@ -320,6 +327,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
       restorationError,
       impersonation,
       tenants,
+      workspaceRole,
       twoFactorChallenge,
       user,
       workspace,
@@ -353,5 +361,14 @@ export function RequireSystemAdmin() {
   const location = useLocation()
   if (loading) return null
   if (!authenticated) return <Navigate to="/login" replace state={{ from: location }} />
-  return user?.system_role === 'superadmin' && !impersonation ? <Outlet /> : <Navigate to="/monitors" replace />
+  return (user?.system_role === 'superadmin' || user?.system_role === 'accountant') && !impersonation ? <Outlet /> : <Navigate to="/monitors" replace />
+}
+
+export function RequireWorkspaceAccess() {
+  const { authenticated, loading, user, impersonation } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!authenticated) return <Outlet />
+  if (user?.system_role === 'accountant' && !impersonation) return <Navigate to="/admin" replace state={{ from: location }} />
+  return <Outlet />
 }

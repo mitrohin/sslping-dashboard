@@ -125,15 +125,20 @@ function teamDetails(workspace: Workspace, notificationEmail: string): TeamDetai
   }
 }
 
-function summarizeTeam(members: readonly TeamMemberViewModel[]): TeamSummary {
+function summarizeTeam(
+  members: readonly TeamMemberViewModel[],
+  seatsTotal: number,
+  planName: string,
+): TeamSummary {
   const seated = members.filter((member) => member.status !== 'suspended')
   const notifySeatsUsed = seated.filter((member) => member.role === 'notify-only').length
   const loginSeatsUsed = seated.length - notifySeatsUsed
   return {
+    seatsUsed: seated.length,
+    seatsTotal: Math.max(seatsTotal, seated.length),
     loginSeatsUsed,
-    loginSeatsTotal: Math.max(5, loginSeatsUsed),
     notifySeatsUsed,
-    notifySeatsTotal: Math.max(5, notifySeatsUsed),
+    planName,
   }
 }
 
@@ -334,7 +339,7 @@ function RouteState({ label, error, onRetry }: RouteStateProps) {
 }
 
 export function LiveTeamPage() {
-  const { api, user, workspace } = useAuth()
+  const { api, logout, user, workspace } = useAuth()
   const demo = isDemoSession()
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<LoadState<TeamRouteData>>({ status: 'loading' })
@@ -344,8 +349,13 @@ export function LiveTeamPage() {
     let cancelled = false
     setState({ status: 'loading' })
 
-    void Promise.all([api.getTenant(workspace.id), api.listMembers(workspace.id)])
-      .then(([freshWorkspace, response]) => {
+    void Promise.all([
+      api.getTenant(workspace.id),
+      api.listMembers(workspace.id),
+      api.listInvitations(workspace.id),
+      api.getBillingSubscription(),
+    ])
+      .then(([freshWorkspace, response, invitationResponse, subscription]) => {
         if (cancelled) return
         const members = (response.items ?? []).map((membership) =>
           toTeamMemberViewModel(membership, {
@@ -353,12 +363,18 @@ export function LiveTeamPage() {
             ...(user && membership.user_id === user.id ? { user } : {}),
           }),
         )
+        const pendingInvitations = (invitationResponse.items ?? []).map(invitedMember)
+        const team = [...members, ...pendingInvitations]
         setState({
           status: 'ready',
           data: {
             workspace: freshWorkspace,
-            members,
-            summary: summarizeTeam(members),
+            members: team,
+            summary: summarizeTeam(
+              team,
+              subscription.plan_snapshot?.limits.max_team_members ?? team.length,
+              subscription.plan_snapshot?.name ?? subscription.plan_code,
+            ),
           },
         })
       })
@@ -400,6 +416,28 @@ export function LiveTeamPage() {
     return teamDetails(updated, details.notificationEmail.trim())
   }, [api, workspace])
 
+  const setupTwoFactor = useCallback(
+    (password: string) => api.setupTwoFactor({ password }),
+    [api],
+  )
+
+  const confirmTwoFactor = useCallback(
+    async (code: string) => (await api.confirmTwoFactor({ code })).recovery_codes,
+    [api],
+  )
+
+  const disableTwoFactor = useCallback(async (password: string, code: string) => {
+    await api.disableTwoFactor({ password, code })
+    await logout()
+  }, [api, logout])
+
+  const regenerateRecoveryCodes = useCallback(
+    async (password: string, code: string) => (
+      await api.regenerateRecoveryCodes({ password, code })
+    ).recovery_codes,
+    [api],
+  )
+
   if (demo) return <TeamPage />
   if (!workspace) return <RouteState label="team" error={new Error('No active workspace is available.')} />
   if (state.status === 'loading') return <RouteState label="team" />
@@ -416,6 +454,11 @@ export function LiveTeamPage() {
       onInvite={invite}
       onUpdateMember={updateMember}
       onUpdateDetails={updateDetails}
+      onSetupTwoFactor={setupTwoFactor}
+      onConfirmTwoFactor={confirmTwoFactor}
+      onDisableTwoFactor={disableTwoFactor}
+      onRegenerateRecoveryCodes={regenerateRecoveryCodes}
+      onSecuritySessionEnd={logout}
     />
   )
 }

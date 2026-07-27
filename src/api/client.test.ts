@@ -194,6 +194,67 @@ describe('ApiClient', () => {
     })
   })
 
+  it('uses the billing and invoice administration contract', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/actions/paid') || url.endsWith('/actions/void')) return jsonResponse({ id: 'invoice-1' })
+      if (url.endsWith('/plan-changes/preview')) return jsonResponse({ change_kind: 'upgrade' })
+      if (url.endsWith('/plan-changes')) return jsonResponse({ change_kind: 'upgrade' })
+      return jsonResponse({ items: [] })
+    })
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+
+    await client.listBillingPlans()
+    await client.getBillingSubscription()
+    await client.listBillingInvoices({ limit: 20 })
+    await client.previewPlanChange({ plan_code: 'business', billing_cycle: 'yearly' })
+    await client.changeBillingPlan({ plan_code: 'business', billing_cycle: 'yearly', payment_provider: 'manual' })
+    await client.adminListInvoices({ limit: 200 })
+    await client.adminMarkInvoicePaid('invoice/1', { note: 'Bank transfer', paid_at: '2026-07-26T15:30:00.000Z' })
+    await client.adminVoidInvoice('invoice/2')
+    await client.adminUpdateWorkspacePaymentSettings('workspace/1', { keepz_allowed: true, cloudpayments_allowed: true })
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/billing/plans',
+      '/api/v1/billing/subscription',
+      '/api/v1/billing/invoices?limit=20',
+      '/api/v1/billing/plan-changes/preview',
+      '/api/v1/billing/plan-changes',
+      '/api/v1/admin/invoices?limit=200',
+      '/api/v1/admin/invoices/invoice%2F1/actions/paid',
+      '/api/v1/admin/invoices/invoice%2F2/actions/void',
+      '/api/v1/admin/workspaces/workspace%2F1/payment-settings',
+    ])
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ plan_code: 'business', billing_cycle: 'yearly' }) })
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ plan_code: 'business', billing_cycle: 'yearly', payment_provider: 'manual' }) })
+    expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ note: 'Bank transfer', paid_at: '2026-07-26T15:30:00.000Z' }) })
+  })
+
+  it('downloads and emails customer and administrator invoice PDFs', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/pdf')) {
+        return new Response('%PDF-1.7', { status: 200, headers: { 'Content-Type': 'application/pdf' } })
+      }
+      return jsonResponse({ message: 'Invoice sent.', recipient: 'billing@example.com' })
+    })
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+
+    await expect(client.downloadBillingInvoicePdf('invoice/customer')).resolves.toMatchObject({ type: 'application/pdf' })
+    await expect(client.emailBillingInvoicePdf('invoice/customer')).resolves.toMatchObject({ recipient: 'billing@example.com' })
+    await expect(client.adminDownloadInvoicePdf('invoice/admin')).resolves.toMatchObject({ type: 'application/pdf' })
+    await expect(client.adminEmailInvoicePdf('invoice/admin')).resolves.toMatchObject({ recipient: 'billing@example.com' })
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/billing/invoices/invoice%2Fcustomer/pdf',
+      '/api/v1/billing/invoices/invoice%2Fcustomer/actions/email',
+      '/api/v1/admin/invoices/invoice%2Fadmin/pdf',
+      '/api/v1/admin/invoices/invoice%2Fadmin/actions/email',
+    ])
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' })
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ method: 'POST' })
+  })
+
   it('reads support summaries and updates customer and administrator read state', async () => {
     const summary = { unread_tickets: 2, unread_messages: 3 }
     const fetchMock = vi.fn<typeof fetch>()

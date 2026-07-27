@@ -76,6 +76,7 @@ export function LiveMonitorsPage() {
   const demo = isDemoSession()
   const [data, setData] = useState<readonly MonitorViewModel[]>([])
   const [rawMonitors, setRawMonitors] = useState<readonly Monitor[]>([])
+  const [manualTestEnabled, setManualTestEnabled] = useState(false)
   const [loading, setLoading] = useState(!demo)
   const [error, setError] = useState<string | null>(null)
 
@@ -86,11 +87,13 @@ export function LiveMonitorsPage() {
     try {
       const now = new Date()
       const from = fromForPeriod('24h', now)
-      const [page, summary, incidentsPage] = await Promise.all([
+      const [page, summary, incidentsPage, entitlements] = await Promise.all([
         api.listMonitors(workspace.id, { limit: 100 }),
         api.getMetricsSummary(workspace.id, { from, to: now.toISOString() }),
         api.listIncidents(workspace.id, { from, to: now.toISOString(), limit: 100 }),
+        api.getWorkspaceEntitlements(workspace.id),
       ])
+      setManualTestEnabled(entitlements.limits.allow_manual_tests)
       const monitors = page.items ?? []
       setRawMonitors(monitors)
       const metricItems = summary.items ?? []
@@ -219,6 +222,7 @@ export function LiveMonitorsPage() {
       onDelete={remove}
       onBulkAction={bulkAction}
       onBulkTags={bulkTags}
+      manualTestEnabled={manualTestEnabled}
     />
   )
 }
@@ -233,6 +237,7 @@ export function LiveMonitorDetailPage() {
   const [nextMaintenance, setNextMaintenance] = useState<MaintenanceWindowViewModel | undefined>()
   const [notifications, setNotifications] = useState<readonly IntegrationViewModel[]>([])
   const [statusPages, setStatusPages] = useState<readonly StatusPageViewModel[]>([])
+  const [manualTestEnabled, setManualTestEnabled] = useState(false)
   const [loading, setLoading] = useState(!demo)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -279,6 +284,7 @@ export function LiveMonitorDetailPage() {
         maintenanceList,
         integrationList,
         statusPageList,
+        entitlements,
       ] = await Promise.all([
         api.listMonitorChecks(workspace.id, monitor.id, { from: fromForPeriod('24h', now), to, limit: 100 }),
         api.listMonitorChecks(workspace.id, monitor.id, { from: responseFrom, to, limit: 100 }),
@@ -290,7 +296,9 @@ export function LiveMonitorDetailPage() {
         api.listMaintenanceWindows(workspace.id),
         api.listIntegrations(workspace.id),
         api.listStatusPages(workspace.id),
+        api.getWorkspaceEntitlements(workspace.id),
       ])
+      setManualTestEnabled(entitlements.limits.allow_manual_tests)
       const stats = Object.fromEntries(periods.map((period, index) => [period, metrics[index]])) as Record<UptimePeriodSummary['period'], UptimeStats>
       setData(toLiveMonitorDetail({
         monitor,
@@ -414,6 +422,7 @@ export function LiveMonitorDetailPage() {
       onRotateHeartbeat={data?.monitor.type === 'heartbeat' ? rotateHeartbeat : undefined}
       onRangeChange={setResponseRange}
       onUpdateResponseAlert={updateResponseAlert}
+      manualTestEnabled={manualTestEnabled}
     />
   )
 }

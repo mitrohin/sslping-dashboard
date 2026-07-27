@@ -79,6 +79,11 @@ function fakeApi() {
     getMetricsSummary: vi.fn().mockResolvedValue({ from: now, to: now, items: [] }),
     listIncidents: vi.fn().mockResolvedValue({ items: [] }),
     listMonitorChecks: vi.fn().mockResolvedValue({ items: [] }),
+    getWorkspaceEntitlements: vi.fn().mockResolvedValue({
+      plan_code: 'business',
+      plan_name: 'Business',
+      limits: { max_monitors: 500, min_interval_seconds: 30, max_team_members: 15, max_status_pages: 20, max_integrations: 50, max_locations: 10, data_retention_days: 365, allow_manual_tests: true },
+    }),
     createMonitor: vi.fn(),
     rotateHeartbeatToken: vi.fn(),
     pauseMonitor: vi.fn(async () => {
@@ -165,6 +170,21 @@ describe('LiveMonitorsPage controls', () => {
     await waitFor(() => expect(api.deleteMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
     expect(window.confirm).toHaveBeenCalledWith('Delete “Checkout API”? This cannot be undone.')
     expect(api.listMonitors.mock.calls.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('hides manual test actions when the active plan does not include them', async () => {
+    const api = fakeApi()
+    api.getWorkspaceEntitlements.mockResolvedValue({
+      plan_code: 'starter',
+      plan_name: 'Starter',
+      limits: { max_monitors: 100, min_interval_seconds: 60, max_team_members: 3, max_status_pages: 3, max_integrations: 10, max_locations: 3, data_retention_days: 90, allow_manual_tests: false },
+    })
+    mockAuth(api)
+
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+    expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    expect(within(openMenu()).queryByRole('menuitem', { name: /test now/i })).not.toBeInTheDocument()
+    expect(api.testMonitor).not.toHaveBeenCalled()
   })
 
   it('shows the full one-time URL returned when a heartbeat monitor is created', async () => {

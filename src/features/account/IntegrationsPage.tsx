@@ -31,6 +31,7 @@ import {
   Badge,
   Button,
   EmptyState,
+  FeedbackBanner,
   IconButton,
   Modal,
   PageHeader,
@@ -273,7 +274,7 @@ export function IntegrationsPage({
         ))}
       </div>
 
-      {error && <div className="account-error account-error--page" role="alert">{error}<button type="button" onClick={() => setError('')}>Dismiss</button></div>}
+      {error && <FeedbackBanner tone="error" className="feedback-banner--page" onDismiss={() => setError('')}>{error}</FeedbackBanner>}
       {focusedMonitor && <div className="integration-focus"><Bell size={18} /><span><strong>Notification routes for {focusedMonitor.name}</strong><small>New integrations will be assigned to this monitor automatically. Workspace-wide routes are also shown.</small></span><Link to={`/monitors/${focusedMonitor.id}`}>Back to monitor</Link></div>}
 
       <div id="account-panel-integrations" hidden={activeTab !== 'integrations'} role="tabpanel" aria-labelledby="account-tab-integrations">

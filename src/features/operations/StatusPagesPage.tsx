@@ -16,7 +16,7 @@ import {
   type StatusPageViewModel,
 } from '../../data'
 import { formatDate } from '../../lib/format'
-import { Badge, Button, EmptyState, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
+import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
 import type { StatusPageAnnouncementInput, StatusPageCreateInput, StatusPageLanguageCode } from './types'
 import './operations.css'
 
@@ -236,7 +236,7 @@ export function StatusPagesPage({
             <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search status pages" aria-label="Search status pages" />
             <span className="ops-result-count">{filteredPages.length} of {pages.length} pages</span>
           </div>
-          {error && <div className="ops-error" role="alert">{error}</div>}
+          {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <Panel className="ops-table-panel">
             <div className="ops-table-scroll ops-desktop-only">
               <table className="ops-data-table">
@@ -336,7 +336,7 @@ export function StatusPagesPage({
             <Toggle checked={createDraft.published} onChange={(value) => updateCreate('published', value)} label="Publish immediately" />
             <div className="toggle-row__copy"><strong>Publish immediately</strong><span>The page can be changed back to a draft later.</span></div>
           </div>
-          {error && <div className="ops-error" role="alert">{error}</div>}
+          {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" disabled={busy}><Plus size={17} /> {busy ? 'Creating…' : 'Create status page'}</Button></div>
         </form>
       </Modal>
@@ -350,7 +350,7 @@ export function StatusPagesPage({
               <option value="investigating">Investigating</option><option value="identified">Identified</option><option value="monitoring">Monitoring</option><option value="resolved">Resolved</option>
             </Select>
           </Field>
-          {error && <div className="ops-error" role="alert">{error}</div>}
+          {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setAnnouncementPageId(null)}>Cancel</Button><Button type="submit" disabled={busy}><Megaphone size={17} /> {busy ? 'Publishing…' : 'Publish announcement'}</Button></div>
         </form>
       </Modal>

@@ -63,6 +63,7 @@ export interface MonitorDetailPageProps {
   onRangeChange?: (range: string) => void
   onUpdateResponseAlert?: (thresholdMs?: number) => Promise<void>
   onExportLogs?: () => void
+  manualTestEnabled?: boolean
 }
 
 const quoteCsv = (value: string | number): string => `"${String(value).replaceAll('"', '""')}"`
@@ -100,6 +101,7 @@ export function MonitorDetailPage({
   onRangeChange,
   onUpdateResponseAlert,
   onExportLogs,
+  manualTestEnabled = true,
 }: MonitorDetailPageProps = {}) {
   const { monitorId } = useParams()
   const navigate = useNavigate()
@@ -276,14 +278,14 @@ export function MonitorDetailPage({
         </div>
         <div className="monitor-detail-header__actions">
           {monitor.type === 'heartbeat' && onRotateHeartbeat && <Button variant="secondary" disabled={actionBusy} onClick={rotateHeartbeat}><KeyRound size={17} /> Rotate URL</Button>}
-          <Button variant="secondary" disabled={actionBusy} onClick={testNotification}><BellRing size={17} /> {notificationSent ? 'Test completed' : 'Test monitor'}</Button>
+          {manualTestEnabled && <Button variant="secondary" disabled={actionBusy} onClick={testNotification}><BellRing size={17} /> {notificationSent ? 'Test completed' : 'Test monitor'}</Button>}
           <Button variant="secondary" disabled={actionBusy} onClick={togglePause}>{paused ? <PlayCircle size={17} /> : <PauseCircle size={17} />}{paused ? 'Resume' : 'Pause'}</Button>
           <Link className="button button--secondary button--md" to={`/monitors/${monitor.id}/edit`}><Pencil size={17} /> Edit</Link>
           <div className="monitor-detail-actions-menu" ref={actionMenuRef}>
             <IconButton label={`More actions for ${monitor.name}`} aria-expanded={actionsOpen} onClick={() => setActionsOpen((open) => !open)}><MoreVertical size={19} /></IconButton>
             {actionsOpen && <div className="monitor-action-menu" role="menu">
               <Link to={`/monitors/${monitor.id}/edit`} role="menuitem"><Pencil size={15} /> Edit monitor</Link>
-              <button type="button" role="menuitem" onClick={testNotification}><BellRing size={15} /> Run test now</button>
+              {manualTestEnabled && <button type="button" role="menuitem" onClick={testNotification}><BellRing size={15} /> Run test now</button>}
               <button type="button" role="menuitem" onClick={togglePause}>{paused ? <PlayCircle size={15} /> : <PauseCircle size={15} />}{paused ? 'Resume monitor' : 'Pause monitor'}</button>
               <button type="button" role="menuitem" onClick={() => void copyTarget()}><Copy size={15} /> Copy target</button>
               <button type="button" role="menuitem" onClick={exportLogs}><Download size={15} /> Export incident log</button>

@@ -613,10 +613,11 @@ export const demoTeamMembers: readonly TeamMemberViewModel[] = [
 export const demoTeam: TeamViewModel = {
   members: demoTeamMembers,
   summary: {
+    seatsUsed: 4,
+    seatsTotal: 5,
     loginSeatsUsed: 3,
-    loginSeatsTotal: 5,
     notifySeatsUsed: 1,
-    notifySeatsTotal: 5,
+    planName: 'Team',
   },
 }
 
@@ -898,7 +899,7 @@ export const demoMaintenanceStates = stateSet<MaintenanceListViewModel>(
 export const demoTeamStates = stateSet<TeamViewModel>(
   {
     members: [],
-    summary: { loginSeatsUsed: 0, loginSeatsTotal: 5, notifySeatsUsed: 0, notifySeatsTotal: 5 },
+    summary: { seatsUsed: 0, seatsTotal: 5, loginSeatsUsed: 0, notifySeatsUsed: 0, planName: 'Team' },
   },
   demoTeam,
   4,

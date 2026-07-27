@@ -8,7 +8,7 @@ import {
   type IntegrationViewModel,
   type MonitorViewModel,
 } from '../../data'
-import { Button, Field, Modal, Select, Toggle } from '../../components/ui'
+import { Button, FeedbackBanner, Field, Modal, Select, Toggle } from '../../components/ui'
 import type { IntegrationInput } from './types'
 
 interface ProviderField {
@@ -219,7 +219,7 @@ export function IntegrationFormModal({
         </fieldset>
 
         <div className="form-section integration-active-row"><span><BellRing size={20} /><span><strong>Integration active</strong><small>Allow this destination to receive selected events.</small></span></span><Toggle checked={active} onChange={setActive} label="Integration active" /></div>
-        {(localError || error) && <div className="account-error" role="alert">{localError || error}</div>}
+        {(localError || error) && <FeedbackBanner tone="error">{localError || error}</FeedbackBanner>}
         <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</Button><Button type="submit" disabled={saving}><Plus size={17} />{saving ? 'Saving…' : integration ? 'Update integration' : 'Create integration'}</Button></div>
       </form>
     </Modal>

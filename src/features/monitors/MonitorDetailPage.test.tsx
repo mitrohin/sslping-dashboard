@@ -105,6 +105,14 @@ describe('MonitorDetailPage live controls', () => {
     expect(confirm).toHaveBeenCalledTimes(1)
   })
 
+  it('removes every manual-test control when the plan does not include it', () => {
+    render(<MemoryRouter><MonitorDetailPage monitor={demoMonitors[0]} responseTime={[]} uptimePeriods={[]} incidents={[]} manualTestEnabled={false} /></MemoryRouter>)
+
+    expect(screen.queryByRole('button', { name: /test monitor/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /more actions for/i }))
+    expect(within(screen.getByRole('menu')).queryByRole('menuitem', { name: /run test now/i })).not.toBeInTheDocument()
+  })
+
   it('exports incident logs through the connected action', () => {
     const onExportLogs = vi.fn()
     render(<MemoryRouter><MonitorDetailPage monitor={demoMonitors[0]} responseTime={[]} uptimePeriods={[]} incidents={[]} onExportLogs={onExportLogs} /></MemoryRouter>)

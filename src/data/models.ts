@@ -183,10 +183,11 @@ export interface TeamMemberViewModel {
 }
 
 export interface TeamSummary {
+  seatsUsed: number
+  seatsTotal: number
   loginSeatsUsed: number
-  loginSeatsTotal: number
   notifySeatsUsed: number
-  notifySeatsTotal: number
+  planName: string
 }
 
 export interface TeamViewModel {

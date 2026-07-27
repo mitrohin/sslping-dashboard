@@ -58,7 +58,7 @@ const newTokens: Tokens = {
 }
 
 function identity(active_tenant_id = firstWorkspace.id): MeResponse {
-  return { user, tenants: [firstWorkspace, secondWorkspace], active_tenant_id }
+  return { user, tenants: [firstWorkspace, secondWorkspace], active_tenant_id, workspace_role: 'owner' }
 }
 
 function response(body: unknown, status = 200): Response {

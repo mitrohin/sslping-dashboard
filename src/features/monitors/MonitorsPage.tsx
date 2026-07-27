@@ -12,6 +12,7 @@ import {
   PlayCircle,
   Plus,
   RotateCw,
+  Search,
   SearchX,
   Tags,
   Trash2,
@@ -20,7 +21,7 @@ import {
 import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
 import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
-import { Badge, Button, EmptyState, IconButton, Modal, PageHeader, Panel, SearchInput, Select, StatusDot, Toggle } from '../../components/ui'
+import { Badge, Button, EmptyState, FeedbackBanner, IconButton, Modal, PageHeader, Panel, SearchInput, Select, StatusDot, Toggle } from '../../components/ui'
 import { defaultMonitorDraft, MonitorForm, type MonitorDraft } from './MonitorForm'
 import { HeartbeatCredentialModal, type HeartbeatCredential } from './HeartbeatCredentialModal'
 import './monitors.css'
@@ -40,6 +41,7 @@ export interface MonitorsPageProps {
   onDelete?: (monitor: MonitorViewModel) => Promise<void>
   onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void>
   onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void>
+  manualTestEnabled?: boolean
 }
 
 type MonitorRowAction = 'pause' | 'resume' | 'test' | 'delete'
@@ -57,6 +59,7 @@ export function MonitorsPage({
   onDelete,
   onBulkAction,
   onBulkTags,
+  manualTestEnabled = true,
 }: MonitorsPageProps = {}) {
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
@@ -358,7 +361,7 @@ export function MonitorsPage({
               {monitor.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
               {monitor.status === 'paused' ? 'Resume' : 'Pause'}
             </button>
-            <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}><BellRing size={16} /> Test now</button>
+            {manualTestEnabled && <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}><BellRing size={16} /> Test now</button>}
             <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'delete')}><Trash2 size={16} /> Delete</button>
           </div>
         )}
@@ -401,7 +404,7 @@ export function MonitorsPage({
 
       {selectedMonitors.length > 0 && <div className="monitor-bulk-toolbar" role="toolbar" aria-label="Bulk monitor actions">
         <strong>{selectedMonitors.length} selected</strong>
-        <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('test')}><BellRing size={16} /> Test now</Button>
+        {manualTestEnabled && <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('test')}><BellRing size={16} /> Test now</Button>}
         <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('pause')}><PauseCircle size={16} /> Pause</Button>
         <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('resume')}><PlayCircle size={16} /> Resume</Button>
         <Button variant="secondary" disabled={bulkBusy} onClick={openBulkTags}><Tags size={16} /> Manage tags</Button>
@@ -409,7 +412,7 @@ export function MonitorsPage({
         <button type="button" className="monitor-bulk-toolbar__clear" disabled={bulkBusy} onClick={() => setSelectedIds(new Set())}><X size={15} /> Clear</button>
       </div>}
 
-      {actionFeedback && <div className={`monitor-action-feedback monitor-action-feedback--${actionFeedback.tone}`} role={actionFeedback.tone === 'danger' ? 'alert' : 'status'}>{actionFeedback.message}</div>}
+      {actionFeedback && <FeedbackBanner tone={actionFeedback.tone === 'danger' ? 'error' : 'success'} className="feedback-banner--page" onDismiss={() => setActionFeedback(null)}>{actionFeedback.message}</FeedbackBanner>}
 
       <div className="monitor-layout">
         <Panel className="monitor-list">
@@ -444,7 +447,31 @@ export function MonitorsPage({
             <button type="button" className={bulkTagMode === 'add' ? 'is-active' : ''} onClick={() => { setBulkTagMode('add'); setBulkTagSelection(new Set()); setBulkTagQuery('') }}>Add tags</button>
             <button type="button" className={bulkTagMode === 'remove' ? 'is-active' : ''} onClick={() => { setBulkTagMode('remove'); setBulkTagSelection(new Set()); setBulkTagQuery('') }}>Remove tags</button>
           </div>
-          <input aria-label="Search bulk tags" value={bulkTagQuery} onChange={(event) => setBulkTagQuery(event.target.value)} placeholder={bulkTagMode === 'add' ? 'Search or create a tag…' : 'Search assigned tags…'} />
+          <div className="bulk-tags-dialog__search">
+            <Search size={18} aria-hidden="true" />
+            <input
+              aria-label="Search bulk tags"
+              value={bulkTagQuery}
+              onChange={(event) => setBulkTagQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && canCreateBulkTag) {
+                  event.preventDefault()
+                  toggleBulkTag(bulkTagQuery.trim())
+                } else if (event.key === 'Escape' && bulkTagQuery) {
+                  event.preventDefault()
+                  setBulkTagQuery('')
+                }
+              }}
+              placeholder={bulkTagMode === 'add' ? 'Search or create a tag…' : 'Search assigned tags…'}
+              autoComplete="off"
+              autoFocus
+            />
+            {bulkTagQuery && (
+              <button type="button" aria-label="Clear tag search" onClick={() => setBulkTagQuery('')}>
+                <X size={16} />
+              </button>
+            )}
+          </div>
           {bulkTagSelection.size > 0 && <div className="bulk-tags-dialog__selected">{[...bulkTagSelection].map((tag) => <span key={tag}>{tag}<button type="button" aria-label={`Unselect tag ${tag}`} onClick={() => toggleBulkTag(tag)}><X size={12} /></button></span>)}</div>}
           <div className="bulk-tags-dialog__options" role="listbox" aria-label="Bulk tag choices">
             {filteredBulkTags.map((tag) => <button type="button" role="option" aria-selected={bulkTagSelection.has(tag)} className={bulkTagSelection.has(tag) ? 'is-selected' : ''} key={tag} onClick={() => toggleBulkTag(tag)}>{tag}<small>{bulkTagSelection.has(tag) ? 'Selected' : bulkTagMode === 'add' ? 'Existing tag' : 'Assigned to selection'}</small></button>)}

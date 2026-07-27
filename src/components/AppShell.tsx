@@ -5,15 +5,12 @@ import {
   BookOpenCheck,
   ChevronLeft,
   CircleGauge,
-  CreditCard,
   LifeBuoy,
   LogOut,
-  Mail,
   Menu,
   RadioTower,
   Shield,
   ShieldAlert,
-  Sparkles,
   Users,
   Wrench,
   X,
@@ -23,6 +20,7 @@ import { useAuth } from '../app/AuthProvider'
 import { endDemoSession, isDemoSession } from '../app/DashboardGate'
 import { clearAdministratorSessionBackup, restoreAdministratorSession } from '../app/impersonation'
 import { SUPPORT_UNREAD_REFRESH_EVENT } from '../features/support/unread'
+import { WorkspaceBillingModal } from '../features/billing/WorkspaceBillingModal'
 
 const navItems = [
   { to: '/monitors', label: 'Monitoring', icon: CircleGauge },
@@ -34,9 +32,9 @@ const navItems = [
   { to: '/support', label: 'Support tickets', icon: LifeBuoy },
 ]
 
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({ compact = false, to = '/monitors' }: { compact?: boolean; to?: string }) {
   return (
-    <NavLink to="/monitors" className={`brand ${compact ? 'brand--compact' : ''}`}>
+    <NavLink to={to} className={`brand ${compact ? 'brand--compact' : ''}`}>
       <span className="brand__pulse"><span /></span>
       {!compact && <span>SSLPing</span>}
     </NavLink>
@@ -50,7 +48,7 @@ export function AppShell() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [supportUnread, setSupportUnread] = useState(0)
   const [adminUnread, setAdminUnread] = useState(0)
-  const { api, user, workspace, authenticated, logout, impersonation } = useAuth()
+  const { api, user, workspace, workspaceRole, authenticated, logout, impersonation } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const demo = !authenticated && isDemoSession()
@@ -63,11 +61,11 @@ export function AppShell() {
     .toUpperCase()
   const currentPlan = workspace?.plan || (demo ? 'demo' : 'free')
   const planLabel = currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1).replaceAll('_', ' ')
-  const salesSubject = encodeURIComponent(`SSLPing plan enquiry — ${workspace?.name || 'workspace'}`)
   const isSystemAdministrator = user?.system_role === 'superadmin' && !impersonation
-  const availableNavItems = isSystemAdministrator
-    ? [...navItems, { to: '/admin', label: 'System administration', icon: Shield }]
-    : navItems
+  const isAccountant = user?.system_role === 'accountant' && !impersonation
+  const canManageBilling = authenticated && !demo && !impersonation && !isAccountant && (workspaceRole === 'owner' || workspaceRole === 'admin')
+  const adminNavigation = { to: '/admin', label: isAccountant ? 'Billing administration' : 'System administration', icon: Shield }
+  const availableNavItems = isAccountant ? [adminNavigation] : isSystemAdministrator ? [...navItems, adminNavigation] : navItems
 
   const refreshSupportUnread = useCallback(async () => {
     if (!authenticated || demo) {
@@ -77,12 +75,12 @@ export function AppShell() {
     }
 
     const [customerResult, adminResult] = await Promise.allSettled([
-      api.getSupportTicketSummary(),
+      isAccountant ? Promise.resolve(null) : api.getSupportTicketSummary(),
       isSystemAdministrator ? api.adminGetSupportTicketSummary() : Promise.resolve(null),
     ])
-    if (customerResult.status === 'fulfilled') setSupportUnread(customerResult.value.unread_tickets)
+    if (customerResult.status === 'fulfilled') setSupportUnread(customerResult.value?.unread_tickets ?? 0)
     if (adminResult.status === 'fulfilled') setAdminUnread(adminResult.value?.unread_tickets ?? 0)
-  }, [api, authenticated, demo, isSystemAdministrator, workspace?.id])
+  }, [api, authenticated, demo, isAccountant, isSystemAdministrator, workspace?.id])
 
   useEffect(() => {
     void refreshSupportUnread()
@@ -117,7 +115,7 @@ export function AppShell() {
   return (
     <div className={`app-shell ${collapsed ? 'app-shell--collapsed' : ''}`}>
       <header className="mobile-header">
-        <Brand />
+        <Brand to={isAccountant ? '/admin' : '/monitors'} />
         <IconButton label="Open navigation" onClick={() => setMobileOpen(true)}>
           <Menu size={22} />
         </IconButton>
@@ -126,7 +124,7 @@ export function AppShell() {
       {mobileOpen && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
       <aside className={`sidebar ${mobileOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar__top">
-          <Brand compact={collapsed} />
+          <Brand compact={collapsed} to={isAccountant ? '/admin' : '/monitors'} />
           <IconButton className="sidebar__mobile-close" label="Close navigation" onClick={() => setMobileOpen(false)}>
             <X size={20} />
           </IconButton>
@@ -167,7 +165,7 @@ export function AppShell() {
               </button>
             )}
           </div>
-          {!collapsed && <button className="upgrade-button" type="button" onClick={() => setUpgradeOpen(true)}>Upgrade workspace</button>}
+          {!collapsed && canManageBilling && <button className="upgrade-button" type="button" onClick={() => setUpgradeOpen(true)}>Plans & billing</button>}
           <button
             className="collapse-button"
             type="button"
@@ -193,9 +191,9 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <button className="support-button" type="button" aria-label="Open help and diagnostics" onClick={() => setSupportOpen(true)}>
+      {!isAccountant && <button className="support-button" type="button" aria-label="Open help and diagnostics" onClick={() => setSupportOpen(true)}>
         <LifeBuoy size={23} />
-      </button>
+      </button>}
 
       <Modal
         open={supportOpen}
@@ -242,45 +240,7 @@ export function AppShell() {
         </div>
       </Modal>
 
-      <Modal
-        open={upgradeOpen}
-        onClose={() => setUpgradeOpen(false)}
-        title="Workspace plans"
-        icon={<Sparkles size={31} />}
-        width="lg"
-      >
-        <section className="current-plan" aria-label="Current plan">
-          <span><CreditCard size={20} /> Current plan</span>
-          <strong>{planLabel}</strong>
-        </section>
-        <div className="plan-options">
-          <article>
-            <span>For independent projects</span>
-            <h3>Starter</h3>
-            <ul>
-              <li>1-minute monitoring intervals</li>
-              <li>Multiple alert integrations</li>
-              <li>Public status pages</li>
-            </ul>
-          </article>
-          <article className="plan-options__featured">
-            <span>For production teams</span>
-            <h3>Business</h3>
-            <ul>
-              <li>30-second monitoring intervals</li>
-              <li>Advanced roles and audit history</li>
-              <li>Priority incident workflows</li>
-            </ul>
-          </article>
-        </div>
-        <p className="shell-dialog-notice">Online billing is not connected yet. Contacting sales opens your email client; no plan change or charge is made from this dashboard.</p>
-        <div className="shell-dialog-actions">
-          <Button variant="secondary" onClick={() => setUpgradeOpen(false)}>Keep current plan</Button>
-          <a className="button button--primary button--md" href={`mailto:?subject=${salesSubject}`}>
-            <Mail size={18} /> Prepare enquiry
-          </a>
-        </div>
-      </Modal>
+      {canManageBilling && <WorkspaceBillingModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />}
     </div>
   )
 }
