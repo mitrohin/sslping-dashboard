@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 export LC_ALL=C
 
-PROBE_VERSION="1.0.0"
+PROBE_VERSION="1.0.1"
 CONTROL_URL="https://units.sslping.io"
 PROBE_PORT="${SSLPING_PROBE_PORT:-}"
 PROBE_CONCURRENCY="${SSLPING_PROBE_CONCURRENCY:-}"
@@ -251,8 +251,6 @@ if command -v sshd >/dev/null 2>&1; then
 fi
 while IFS= read -r detected_port; do add_ssh_port "${detected_port}"; done \
   < <(ss -H -ltnp 2>/dev/null | awk '$0 ~ /(sshd|dropbear)/ {address=$4; sub(/^.*:/, "", address); if (address ~ /^[0-9]+$/) print address}')
-while IFS= read -r detected_port; do add_ssh_port "${detected_port}"; done \
-  < <(ss -H -tnp state established 2>/dev/null | awk '$0 ~ /(sshd|dropbear)/ {address=$4; sub(/^.*:/, "", address); if (address ~ /^[0-9]+$/) print address}')
 if (( ${#SSH_PORTS[@]} == 0 )); then
   add_ssh_port 22
   warn "Could not detect an SSH listener; preserving access by allowing the conventional port 22."
@@ -641,7 +639,7 @@ ufw_has_managed_marker() {
 for detected_port in "${SSH_PORTS[@]}"; do
   ssh_marker="SSLPing SSH rate limit ${detected_port}"
   if ! ufw_has_managed_marker "${ssh_marker}"; then
-    ufw insert 1 limit "${detected_port}/tcp" comment "${ssh_marker}" >/dev/null
+    ufw limit "${detected_port}/tcp" comment "${ssh_marker}" >/dev/null
   fi
 done
 ufw default deny incoming >/dev/null
