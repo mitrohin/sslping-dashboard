@@ -218,6 +218,23 @@ describe('toMonitorViewModel', () => {
     expect(confirmedFailure.last24Hours.at(-2)?.status).toBe('down')
   })
 
+  it('treats a lone Frankfurt network failure as location evidence rather than an outage', () => {
+    const localMonitor: Monitor = { ...monitor, regions: ['local'] }
+    const localFailure: CheckResult = {
+      id: 'local-failed',
+      workspace_id: monitor.workspace_id,
+      monitor_id: monitor.id,
+      region: 'local',
+      status: 'failed',
+      latency_ms: 100,
+      started_at: '2026-07-25T11:40:00.000Z',
+      finished_at: '2026-07-25T11:40:01.000Z',
+    }
+
+    const result = toMonitorViewModel(localMonitor, { checks: [localFailure], now })
+    expect(result.last24Hours.at(-2)?.status).toBe('up')
+  })
+
   it('uses safe defaults for incomplete runtime payloads', () => {
     const incomplete = {
       ...monitor,

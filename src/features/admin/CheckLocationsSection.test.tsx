@@ -21,6 +21,23 @@ const location: CheckLocation = {
   updated_at: '2026-07-29T09:00:00Z',
 }
 
+const systemLocation: CheckLocation = {
+  id: '00000000-0000-4000-8000-000000000001',
+  code: 'local',
+  name: 'Frankfurt',
+  ip_address: '',
+  port: 0,
+  key_fingerprint: 'managed by cluster',
+  state: 'active',
+  active: true,
+  enforce_ip: false,
+  concurrency: 16,
+  agent_version: 'cluster worker',
+  system: true,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
 function makeApi(items: CheckLocation[] = [location]) {
   return {
     adminListCheckLocations: vi.fn().mockResolvedValue({ items }),
@@ -42,6 +59,7 @@ describe('check location helpers', () => {
     expect(checkLocationStatus({ active: true, last_seen_at: '2026-07-29T08:58:00Z' }, now)).toBe('offline')
     expect(checkLocationStatus({ active: true }, now)).toBe('connecting')
     expect(checkLocationStatus({ active: false, last_seen_at: location.last_seen_at }, now)).toBe('inactive')
+    expect(checkLocationStatus({ active: false, system: true }, now)).toBe('online')
   })
 
   it('keeps a provisioning location enabled while editing metadata', async () => {
@@ -65,6 +83,17 @@ describe('check location helpers', () => {
 })
 
 describe('check location administration', () => {
+  it('shows Frankfurt as a permanent cluster-managed location without edit controls', async () => {
+    render(<CheckLocationsSection api={makeApi([systemLocation, location])} />)
+
+    expect(await screen.findByText('Frankfurt')).toBeInTheDocument()
+    expect(screen.getByText('In-cluster worker')).toBeInTheDocument()
+    expect(screen.getByText('Always enabled for every monitor')).toBeInTheDocument()
+    expect(screen.getByText('System location')).toBeInTheDocument()
+    expect(screen.getByText('Permanent')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Frankfurt' })).not.toBeInTheDocument()
+  })
+
   it('shows operational metadata and only the stored key fingerprint', async () => {
     const api = makeApi()
     render(<CheckLocationsSection api={api} />)

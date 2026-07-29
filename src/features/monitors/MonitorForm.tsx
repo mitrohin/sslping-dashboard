@@ -194,14 +194,22 @@ export function MonitorForm({
     return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
   }, [statusPickerOpen])
 
+  const locationLimit = Math.max(1, Math.min(20, Math.floor(maxLocations) || 1))
+
   useEffect(() => {
     if ((draft.type === 'heartbeat' || draft.type === 'compliance') && (draft.regions.length !== 1 || draft.regions[0] !== 'local')) {
       setDraft((current) => ({ ...current, regions: ['local'] }))
+      return
     }
-  }, [draft.regions, draft.type])
+    if (draft.type !== 'heartbeat' && draft.type !== 'compliance' && draft.type !== 'leakcheck') {
+      const regions = ['local', ...draft.regions.filter((region, index, all) => region !== 'local' && all.indexOf(region) === index)].slice(0, locationLimit)
+      if (regions.length !== draft.regions.length || regions.some((region, index) => region !== draft.regions[index])) {
+        setDraft((current) => ({ ...current, regions }))
+      }
+    }
+  }, [draft.regions, draft.type, locationLimit])
 
   const selectedType = useMemo(() => monitorTypes.find((item) => item.value === draft.type)!, [draft.type])
-  const locationLimit = Math.max(1, Math.min(20, Math.floor(maxLocations) || 1))
   const locationOptions = useMemo(() => {
     const selected = new Set(draft.regions)
     const items = availableLocations
@@ -212,15 +220,16 @@ export function MonitorForm({
       if (!known.has(region)) {
         items.push({
           id: region as Region['id'],
-          name: region === 'local' ? t('monitorForm.locationAuto') : region,
+          name: region === 'local' ? 'Frankfurt' : region,
           capabilities: [],
-          status: 'connecting',
+          status: region === 'local' ? 'available' : 'connecting',
+          system: region === 'local',
           legacy: true,
         })
       }
     }
     if (items.length === 0) {
-      items.push({ id: 'local', name: t('monitorForm.locationAuto'), capabilities: [], status: 'available', legacy: true })
+      items.push({ id: 'local', name: 'Frankfurt', capabilities: [], status: 'available', system: true, legacy: true })
     }
     return items
   }, [availableLocations, draft.regions, draft.type, t])
@@ -230,6 +239,7 @@ export function MonitorForm({
   const set = <K extends keyof MonitorDraft>(key: K, value: MonitorDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
 
   const toggleLocation = (location: string) => {
+    if (location === 'local') return
     setDraft((current) => {
       const selected = current.regions.includes(location)
       if (selected) {
@@ -427,8 +437,8 @@ export function MonitorForm({
                   const checked = draft.regions.includes(location.id)
                   const atLimit = !checked && draft.regions.length >= locationLimit
                   return <label className={checked ? 'is-selected' : ''} key={location.id}>
-                    <input type="checkbox" checked={checked} disabled={atLimit} onChange={() => toggleLocation(location.id)} />
-                    <span><strong>{location.name}</strong><small>{location.id} · {t(`monitorForm.locationStatus.${location.status}`)}</small></span>
+                    <input type="checkbox" checked={checked} disabled={location.id === 'local' || atLimit} onChange={() => toggleLocation(location.id)} />
+                    <span><strong>{location.name}</strong><small>{location.id} · {location.id === 'local' ? t('monitorForm.locationPermanent') : t(`monitorForm.locationStatus.${location.status}`)}</small></span>
                   </label>
                 })}
               </div>

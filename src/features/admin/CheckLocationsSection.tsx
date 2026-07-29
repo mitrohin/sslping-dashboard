@@ -62,7 +62,8 @@ export function formatCheckLocationEndpoint(location: Pick<CheckLocation, 'ip_ad
   return address.includes(':') ? `[${address}]:${location.port}` : `${address}:${location.port}`
 }
 
-export function checkLocationStatus(location: { active: boolean; state?: CheckLocation['state']; last_seen_at?: string }, now = Date.now()): ConnectionStatus {
+export function checkLocationStatus(location: { active: boolean; state?: CheckLocation['state']; last_seen_at?: string; system?: boolean }, now = Date.now()): ConnectionStatus {
+  if (location.system) return 'online'
   const state = location.state ?? (location.active ? 'active' : 'inactive')
   if (state === 'provisioning') return 'provisioning'
   if (state === 'draining') return 'draining'
@@ -186,23 +187,22 @@ export function CheckLocationsSection({ api }: { api: CheckLocationsApi }) {
                   <span><strong>{location.name}</strong><code>{location.code}</code></span>
                 </div>
                 <div className="admin-location-cell admin-location-endpoint" data-label={t('admin.location.endpoint')}>
-                  <code>{formatCheckLocationEndpoint(location)}</code>
+                  {location.system ? <strong>{t('admin.location.clusterManaged')}</strong> : <code>{formatCheckLocationEndpoint(location)}</code>}
                   {location.last_observed_ip && <small className={observedMismatch ? 'warning-text' : ''}>{t('admin.location.observedIP', { ip: location.last_observed_ip })}</small>}
                 </div>
                 <div className="admin-location-cell admin-location-connection" data-label={t('admin.location.connection')}>
                   <Badge tone={statusTone(status)} className="admin-location-status"><StatusIcon status={status} />{t(`admin.location.status.${status}`)}</Badge>
                   {location.state === 'draining' && location.drain_until && <small>{t('admin.location.drainUntil', { date: formatDate(location.drain_until, { includeYear: true, includeSeconds: true }) })}</small>}
-                  <small>{location.last_seen_at ? t('admin.location.lastSeen', { date: formatDate(location.last_seen_at, { includeYear: true, includeSeconds: true }) }) : t('admin.location.neverSeen')}</small>
+                  <small>{location.system ? t('admin.location.alwaysEnabled') : location.last_seen_at ? t('admin.location.lastSeen', { date: formatDate(location.last_seen_at, { includeYear: true, includeSeconds: true }) }) : t('admin.location.neverSeen')}</small>
                   {location.agent_version && <small>{t('admin.location.agentVersion', { version: location.agent_version })}</small>}
                 </div>
                 <div className="admin-location-cell admin-location-security" data-label={t('admin.location.security')}>
-                  <span><KeyRound size={14} /><code>{location.key_fingerprint}</code></span>
-                  <small>{t(location.enforce_ip ? 'admin.location.ipEnforced' : 'admin.location.ipNotEnforced')}</small>
+                  {location.system ? <><span><ShieldCheck size={14} /><strong>{t('admin.location.system')}</strong></span><small>{t('admin.location.systemSecurity')}</small></> : <><span><KeyRound size={14} /><code>{location.key_fingerprint}</code></span><small>{t(location.enforce_ip ? 'admin.location.ipEnforced' : 'admin.location.ipNotEnforced')}</small></>}
                 </div>
                 <div className="admin-location-cell admin-location-capacity" data-label={t('admin.location.capacity')}>
                   <strong>{location.concurrency}</strong><small>{t('admin.location.concurrentChecks')}</small>
                 </div>
-                <IconButton className="admin-location-edit" label={t('admin.location.editNamed', { name: location.name })} onClick={() => setEditing(location)}><Pencil size={17} /></IconButton>
+                {location.system ? <Badge tone="info">{t('admin.location.locked')}</Badge> : <IconButton className="admin-location-edit" label={t('admin.location.editNamed', { name: location.name })} onClick={() => setEditing(location)}><Pencil size={17} /></IconButton>}
               </article>
             })}
           </div>

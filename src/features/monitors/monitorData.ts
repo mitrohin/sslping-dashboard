@@ -302,7 +302,7 @@ export function toResponseTimeSeries(checks: readonly CheckResult[], locations: 
     const latencies = sorted.map((check) => Math.max(0, check.latency_ms))
     return {
       regionId: region,
-      regionLabel: locationNames.get(region) ?? region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase()),
+      regionLabel: locationNames.get(region) ?? (region === 'local' ? 'Frankfurt' : region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())),
       color: seriesColors[index % seriesColors.length],
       points: sorted.map((check) => ({
         timestamp: check.started_at,

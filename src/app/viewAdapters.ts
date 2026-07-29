@@ -221,7 +221,7 @@ function uptimeBarStatus(status: unknown): UptimeBarStatus {
   }
 }
 
-function toUptimeBars(monitor: Pick<Monitor, 'id' | 'regions'>, checks: readonly CheckResult[], referenceTime: number): readonly UptimeBar[] {
+function toUptimeBars(monitor: Pick<Monitor, 'id' | 'type' | 'regions'>, checks: readonly CheckResult[], referenceTime: number): readonly UptimeBar[] {
   const currentHour = new Date(referenceTime)
   currentHour.setUTCMinutes(0, 0, 0)
   const hourMs = 60 * 60 * 1000
@@ -248,7 +248,8 @@ function toUptimeBars(monitor: Pick<Monitor, 'id' | 'regions'>, checks: readonly
     if (responseTime !== undefined) buckets[bucketIndex].responseTimes.push(responseTime)
   }
 
-  const requiredFailures = (monitor.regions?.length ?? 0) > 1 ? 2 : 1
+  const requiresLocationConsensus = ['http', 'keyword', 'tcp', 'udp', 'tls', 'dns', 'domain', 'reachability'].includes(monitor.type)
+  const requiredFailures = requiresLocationConsensus ? 2 : 1
   return buckets.map((bucket) => {
     const statuses = [...bucket.latestByRegion.values()].map(({ status }) => status)
     const failures = statuses.filter((status) => status === 'down').length

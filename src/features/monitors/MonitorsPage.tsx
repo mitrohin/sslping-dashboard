@@ -79,8 +79,8 @@ export function MonitorsPage({
   const availableTags = useMemo(() => [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(), [monitors])
   const createInitialDraft = useMemo<MonitorDraft>(() => {
     const limit = Math.max(1, Math.min(20, Math.floor(maxLocations) || 1))
-    const regions = availableLocations.slice(0, limit).map((location) => location.id)
-    return { ...defaultMonitorDraft, regions: regions.length > 0 ? regions : ['local'] }
+    const remote = availableLocations.filter((location) => location.id !== 'local').map((location) => location.id)
+    return { ...defaultMonitorDraft, regions: ['local', ...remote].slice(0, limit) }
   }, [availableLocations, maxLocations])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MonitorStatus>('all')

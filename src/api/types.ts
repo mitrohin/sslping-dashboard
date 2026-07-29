@@ -230,6 +230,7 @@ export interface Region {
   name: string
   capabilities: Array<'http' | 'keyword' | 'tcp' | 'udp' | 'tls' | 'dns' | 'domain' | 'reachability' | 'compliance'>
   status: 'available' | 'connecting'
+  system?: boolean
 }
 
 export interface CustomerRegion {
@@ -263,6 +264,7 @@ export interface CheckLocation {
   last_seen_at?: ISODateTime
   last_observed_ip?: string
   agent_version?: string
+  system?: boolean
   created_at: ISODateTime
   updated_at: ISODateTime
 }
