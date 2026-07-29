@@ -227,6 +227,7 @@ export interface InvitationCreateResponse {
 
 export interface Region {
   id: string
+  display_code?: string
   name: string
   capabilities: Array<'http' | 'keyword' | 'tcp' | 'udp' | 'tls' | 'dns' | 'domain' | 'reachability' | 'compliance'>
   status: 'available' | 'connecting'
@@ -252,6 +253,7 @@ export type CheckLocationState = 'provisioning' | 'active' | 'draining' | 'inact
 export interface CheckLocation {
   id: UUID
   code: string
+  display_code?: string
   name: string
   ip_address: string
   port: number

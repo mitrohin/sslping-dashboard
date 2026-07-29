@@ -204,7 +204,7 @@ describe('MonitorsPage monitor creation', () => {
   it('uses the live location catalog and enforces the plan location limit', async () => {
     const availableLocations: Region[] = [
       { id: 'ams-1', name: 'Amsterdam', capabilities: ['http'], status: 'available' },
-      { id: 'fra-1', name: 'Frankfurt', capabilities: ['http'], status: 'available' },
+      { id: 'lon-1', name: 'London', capabilities: ['http'], status: 'available' },
       { id: 'sin-1', name: 'Singapore', capabilities: ['http'], status: 'connecting' },
     ]
     const onCreate = vi.fn().mockResolvedValue(undefined)
@@ -213,18 +213,18 @@ describe('MonitorsPage monitor creation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New monitor' }))
     const dialog = screen.getByRole('dialog', { name: 'Create monitor' })
     const amsterdam = within(dialog).getByRole('checkbox', { name: /Amsterdam/ })
-    const local = within(dialog).getByRole('checkbox', { name: /local.*permanent system location/i })
-    const frankfurt = within(dialog).getByRole('checkbox', { name: /fra-1/ })
+    const local = within(dialog).getByRole('checkbox', { name: /fra-1.*permanent system location/i })
+    const london = within(dialog).getByRole('checkbox', { name: /lon-1/ })
     const singapore = within(dialog).getByRole('checkbox', { name: /Singapore/ })
     expect(amsterdam).toBeChecked()
     expect(local).toBeChecked()
     expect(local).toBeDisabled()
-    expect(frankfurt).not.toBeChecked()
-    expect(frankfurt).toBeDisabled()
+    expect(london).not.toBeChecked()
+    expect(london).toBeDisabled()
     expect(singapore).toBeDisabled()
 
     fireEvent.click(amsterdam)
-    expect(frankfurt).toBeEnabled()
+    expect(london).toBeEnabled()
     expect(singapore).toBeEnabled()
     fireEvent.click(singapore)
     fireEvent.change(within(dialog).getByPlaceholderText('Website / API monitor'), { target: { value: 'Distributed API' } })

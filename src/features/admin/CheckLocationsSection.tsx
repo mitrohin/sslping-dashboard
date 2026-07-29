@@ -184,7 +184,7 @@ export function CheckLocationsSection({ api }: { api: CheckLocationsApi }) {
               return <article className={`admin-location-row ${location.state === 'inactive' ? 'is-inactive' : ''} ${location.state === 'provisioning' || location.state === 'draining' ? 'is-transitioning' : ''}`} role="listitem" key={location.id}>
                 <div className="admin-location-identity">
                   <span className="admin-location-icon"><ServerCog size={20} /></span>
-                  <span><strong>{location.name}</strong><code>{location.code}</code></span>
+                  <span><strong>{location.name}</strong><code>{location.display_code ?? location.code}</code></span>
                 </div>
                 <div className="admin-location-cell admin-location-endpoint" data-label={t('admin.location.endpoint')}>
                   {location.system ? <strong>{t('admin.location.clusterManaged')}</strong> : <code>{formatCheckLocationEndpoint(location)}</code>}
@@ -240,7 +240,9 @@ function CheckLocationModal({ open, location, busy, onClose, onSave }: { open: b
 
   const valid = useMemo(() => {
     const key = draft.key.trim()
-    return /^[a-z0-9][a-z0-9-]{1,63}$/.test(draft.code)
+    return draft.code !== 'local'
+      && draft.code !== 'fra-1'
+      && /^[a-z0-9][a-z0-9-]{1,63}$/.test(draft.code)
       && draft.name.trim().length >= 2
       && draft.name.trim().length <= 120
       && isIPAddress(draft.ip_address)

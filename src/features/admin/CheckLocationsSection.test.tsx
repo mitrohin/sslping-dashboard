@@ -24,7 +24,8 @@ const location: CheckLocation = {
 const systemLocation: CheckLocation = {
   id: '00000000-0000-4000-8000-000000000001',
   code: 'local',
-  name: 'Frankfurt',
+  display_code: 'fra-1',
+  name: 'Frankfurt, Germany',
   ip_address: '',
   port: 0,
   key_fingerprint: 'managed by cluster',
@@ -83,15 +84,16 @@ describe('check location helpers', () => {
 })
 
 describe('check location administration', () => {
-  it('shows Frankfurt as a permanent cluster-managed location without edit controls', async () => {
+  it('shows Frankfurt, Germany with its public code as a permanent cluster-managed location', async () => {
     render(<CheckLocationsSection api={makeApi([systemLocation, location])} />)
 
-    expect(await screen.findByText('Frankfurt')).toBeInTheDocument()
+    expect(await screen.findByText('Frankfurt, Germany')).toBeInTheDocument()
+    expect(screen.getByText('fra-1')).toBeInTheDocument()
     expect(screen.getByText('In-cluster worker')).toBeInTheDocument()
     expect(screen.getByText('Always enabled for every monitor')).toBeInTheDocument()
     expect(screen.getByText('System location')).toBeInTheDocument()
     expect(screen.getByText('Permanent')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit Frankfurt' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Frankfurt, Germany' })).not.toBeInTheDocument()
   })
 
   it('shows operational metadata and only the stored key fingerprint', async () => {
@@ -107,7 +109,7 @@ describe('check location administration', () => {
 
   it('creates a location from the bootstrap values', async () => {
     const api = makeApi([])
-    const created = { ...location, id: 'location-2', code: 'fra-1', name: 'Frankfurt', ip_address: '198.51.100.20', concurrency: 24 }
+    const created = { ...location, id: 'location-2', code: 'lon-1', name: 'London, United Kingdom', ip_address: '198.51.100.20', concurrency: 24 }
     api.adminCreateCheckLocation.mockResolvedValue(created)
     render(<CheckLocationsSection api={api} />)
 
@@ -116,16 +118,16 @@ describe('check location administration', () => {
 
     const submit = within(screen.getByRole('dialog')).getByRole('button', { name: 'Add location' })
     expect(submit).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('Location name'), { target: { value: 'Frankfurt' } })
-    fireEvent.change(screen.getByLabelText(/^Location code/), { target: { value: 'fra-1' } })
+    fireEvent.change(screen.getByLabelText('Location name'), { target: { value: 'London, United Kingdom' } })
+    fireEvent.change(screen.getByLabelText(/^Location code/), { target: { value: 'lon-1' } })
     fireEvent.change(screen.getByLabelText(/^Public IP address/), { target: { value: '198.51.100.20' } })
     fireEvent.change(screen.getByLabelText(/^Probe key/), { target: { value: '0123456789abcdef0123456789abcdef' } })
     fireEvent.change(screen.getByLabelText(/^Concurrency/), { target: { value: '24' } })
     fireEvent.click(submit)
 
     await waitFor(() => expect(api.adminCreateCheckLocation).toHaveBeenCalledWith({
-      code: 'fra-1',
-      name: 'Frankfurt',
+      code: 'lon-1',
+      name: 'London, United Kingdom',
       ip_address: '198.51.100.20',
       port: 8443,
       key: '0123456789abcdef0123456789abcdef',
@@ -133,7 +135,7 @@ describe('check location administration', () => {
       enforce_ip: true,
       concurrency: 24,
     }))
-    expect(await screen.findByText('Frankfurt')).toBeInTheDocument()
+    expect(await screen.findByText('London, United Kingdom')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.queryByText('0123456789abcdef0123456789abcdef')).not.toBeInTheDocument()
   })

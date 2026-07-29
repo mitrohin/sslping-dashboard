@@ -220,16 +220,17 @@ export function MonitorForm({
       if (!known.has(region)) {
         items.push({
           id: region as Region['id'],
-          name: region === 'local' ? 'Frankfurt' : region,
+          name: region === 'local' ? 'Frankfurt, Germany' : region,
           capabilities: [],
           status: region === 'local' ? 'available' : 'connecting',
           system: region === 'local',
+          display_code: region === 'local' ? 'fra-1' : undefined,
           legacy: true,
         })
       }
     }
     if (items.length === 0) {
-      items.push({ id: 'local', name: 'Frankfurt', capabilities: [], status: 'available', system: true, legacy: true })
+      items.push({ id: 'local', display_code: 'fra-1', name: 'Frankfurt, Germany', capabilities: [], status: 'available', system: true, legacy: true })
     }
     return items
   }, [availableLocations, draft.regions, draft.type, t])
@@ -438,7 +439,7 @@ export function MonitorForm({
                   const atLimit = !checked && draft.regions.length >= locationLimit
                   return <label className={checked ? 'is-selected' : ''} key={location.id}>
                     <input type="checkbox" checked={checked} disabled={location.id === 'local' || atLimit} onChange={() => toggleLocation(location.id)} />
-                    <span><strong>{location.name}</strong><small>{location.id} · {location.id === 'local' ? t('monitorForm.locationPermanent') : t(`monitorForm.locationStatus.${location.status}`)}</small></span>
+                    <span><strong>{location.name}</strong><small>{location.display_code ?? location.id} · {location.id === 'local' ? t('monitorForm.locationPermanent') : t(`monitorForm.locationStatus.${location.status}`)}</small></span>
                   </label>
                 })}
               </div>
