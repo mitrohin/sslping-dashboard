@@ -1,5 +1,6 @@
 export type UUID = string
 export type ISODateTime = string
+export type Locale = 'en' | 'es' | 'zh' | 'ka' | 'tr' | 'ru'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
@@ -40,7 +41,8 @@ export interface User {
   email: string
   name: string
   phone?: string
-  locale: string
+  locale: Locale
+  region_id?: UUID
   timezone: string
   email_verified_at?: ISODateTime
   two_factor_enabled: boolean
@@ -64,8 +66,10 @@ export interface RegisterRequest {
   password: string
   name: string
   workspace_name?: string
-  locale?: string
+  region_code?: string
+  locale?: Locale
   timezone?: string
+  turnstile_token?: string
 }
 
 export interface RegisterResponse {
@@ -222,10 +226,64 @@ export interface InvitationCreateResponse {
 }
 
 export interface Region {
-  id: 'local' | 'eu-west' | 'us-east' | 'ap-south'
+  id: string
   name: string
-  capabilities: Array<'http' | 'tcp' | 'tls' | 'dns' | 'domain' | 'reachability'>
-  status: 'available' | 'deployable'
+  capabilities: Array<'http' | 'keyword' | 'tcp' | 'udp' | 'tls' | 'dns' | 'domain' | 'reachability' | 'compliance'>
+  status: 'available' | 'connecting'
+}
+
+export interface CustomerRegion {
+  id: UUID
+  code: string
+  name: string
+  default_locale: Locale
+  currency: string
+  payment_providers: PaymentProvider[]
+  default_plan_code: string
+  active: boolean
+  default: boolean
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+export type CheckLocationState = 'provisioning' | 'active' | 'draining' | 'inactive'
+
+export interface CheckLocation {
+  id: UUID
+  code: string
+  name: string
+  ip_address: string
+  port: number
+  key_fingerprint: string
+  state: CheckLocationState
+  active: boolean
+  drain_until?: ISODateTime
+  enforce_ip: boolean
+  concurrency: number
+  last_seen_at?: ISODateTime
+  last_observed_ip?: string
+  agent_version?: string
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
+interface CheckLocationWriteFields {
+  code: string
+  name: string
+  ip_address: string
+  port: number
+  active: boolean
+  enforce_ip: boolean
+  concurrency: number
+}
+
+export interface CheckLocationCreateInput extends CheckLocationWriteFields {
+  key: string
+}
+
+export interface CheckLocationUpdateInput extends CheckLocationWriteFields {
+  /** Omit this field to keep the existing probe credential. */
+  key?: string
 }
 
 export type MonitorType =
@@ -238,6 +296,8 @@ export type MonitorType =
   | 'domain'
   | 'reachability'
   | 'heartbeat'
+  | 'leakcheck'
+  | 'compliance'
 
 export type MonitorStatus = 'pending' | 'up' | 'down' | 'degraded' | 'paused'
 export type CheckStatus = 'ok' | 'failed' | 'degraded' | 'skipped'
@@ -320,6 +380,77 @@ export interface HeartbeatConfig {
   grace_seconds?: number
 }
 
+export interface LeakCheckConfig {
+  query_type: 'email' | 'phone' | 'username'
+  query: string
+}
+
+export interface ComplianceConfig {
+  url: string
+  framework: 'ru_152_fz'
+}
+
+export type ComplianceCheckStatus = 'pass' | 'fail' | 'warning' | 'manual'
+
+export interface ComplianceEvidence {
+  page_url: string
+  label?: string
+  code?: string
+}
+
+export interface ComplianceCheckFinding {
+  id: string
+  title: string
+  status: ComplianceCheckStatus
+  summary: string
+  legal_basis?: string
+  evidence?: string[]
+  locations?: ComplianceEvidence[]
+  recommendation?: string
+}
+
+export interface ComplianceReport {
+	framework: 'ru_152_fz'
+	framework_label: string
+	locale?: 'en' | 'es' | 'zh' | 'ka' | 'tr' | 'ru'
+  target_url: string
+  final_url: string
+  checked_at: ISODateTime
+	pages_scanned: number
+	scanned_pages?: string[]
+  relevant_forms: number
+  external_domains?: string[]
+  summary: { score: number; passed: number; failed: number; warnings: number; manual: number }
+  checks: ComplianceCheckFinding[]
+  disclaimer: string
+}
+
+export interface LeakCheckSource {
+  name: string
+  breach_date?: string
+  unverified: boolean
+  passwordless: boolean
+  compilation: boolean
+  records: number
+  fields: string[]
+}
+
+export interface LeakCheckRecord {
+  source: Omit<LeakCheckSource, 'records' | 'fields'>
+  collected_at?: string
+  data: Record<string, string>
+}
+
+export interface LeakCheckReport {
+  provider: 'leakcheck.io'
+  query_type: LeakCheckConfig['query_type']
+  query_masked: string
+  found: number
+  checked_at: ISODateTime
+  sources: LeakCheckSource[]
+  records: LeakCheckRecord[]
+}
+
 export interface MonitorConfig {
   http?: HTTPConfig
   tcp?: TCPConfig
@@ -329,6 +460,8 @@ export interface MonitorConfig {
   domain?: DomainConfig
   reachability?: ReachabilityConfig
   heartbeat?: HeartbeatConfig
+  leakcheck?: LeakCheckConfig
+  compliance?: ComplianceConfig
 }
 
 export interface RetryPolicy {
@@ -393,6 +526,15 @@ export interface MonitorCreateResponse {
   monitor: Monitor
   heartbeat_token?: string
   heartbeat_url?: string
+  leakcheck_scan?: LeakCheckScanResponse
+}
+
+export interface LeakCheckScanResponse {
+  monitor: Monitor
+  check: CheckResult
+  report: LeakCheckReport
+  cached: boolean
+  cache_expires_at: ISODateTime
 }
 
 export interface Page<T> {
@@ -462,6 +604,7 @@ export interface Incident {
   status: IncidentStatus
   title: string
   root_cause?: string
+  details?: JsonObject
   started_at: ISODateTime
   acknowledged_at?: ISODateTime
   acknowledged_by?: UUID
@@ -862,6 +1005,7 @@ export interface Plan {
   description?: string
   price_monthly_cents: number
   currency: string
+  region_id?: UUID
   public: boolean
   active: boolean
   limits: PlanLimits
@@ -882,10 +1026,12 @@ export interface BillingPlan extends Plan {
 export interface BillingPlanCatalog {
   items: BillingPlan[]
   annual_discount_percent: number
+  region: CustomerRegion
 }
 
 export interface BillingPlanSnapshot {
   plan_id: UUID
+  region_id?: UUID
   code: string
   name: string
   description?: string
@@ -1007,7 +1153,10 @@ export interface AdminBillingWorkspace {
   slug: string
   plan: string
   currency: string
-  payment_settings: WorkspacePaymentSettings
+  /** @deprecated Payment availability is inherited from region. */
+  payment_settings?: WorkspacePaymentSettings
+  region?: CustomerRegion
+  payment_providers: PaymentProvider[]
   created_at: ISODateTime
   updated_at: ISODateTime
 }
@@ -1020,6 +1169,7 @@ export interface BillingSettings {
 
 export interface AdminUser extends User {
   workspaces: Workspace[]
+  region?: CustomerRegion
 }
 
 export type SupportTicketStatus = 'open' | 'in_progress' | 'waiting' | 'resolved' | 'closed'

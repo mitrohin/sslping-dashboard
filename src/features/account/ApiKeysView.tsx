@@ -10,6 +10,7 @@ import {
 import { formatDate, formatRelativeTime, formatStatus } from '../../lib/format'
 import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, Panel, Select } from '../../components/ui'
 import type { ApiKeyCreateInput, ApiKeyCreateResult } from './types'
+import { useI18n } from '../../app/I18nProvider'
 
 const scopeLabels: Readonly<Record<ApiKeyScope, string>> = {
   read: 'Read all resources',
@@ -22,12 +23,6 @@ const scopeLabels: Readonly<Record<ApiKeyScope, string>> = {
 }
 
 const availableScopes = Object.keys(scopeLabels) as ApiKeyScope[]
-
-const keyKindLabels: Readonly<Record<ApiKeyViewModel['kind'], string>> = {
-  main: 'Main API key',
-  'read-only': 'Read-only API key',
-  'monitor-specific': 'Monitor-specific API key',
-}
 
 export interface ApiKeysViewProps {
   initialKeys?: readonly ApiKeyViewModel[]
@@ -65,6 +60,7 @@ export function ApiKeysView({
   onCreate,
   onRevoke,
 }: ApiKeysViewProps) {
+  const { t } = useI18n()
   const [keys, setKeys] = useState<readonly ApiKeyViewModel[]>(initialKeys)
   const [createOpen, setCreateOpen] = useState(false)
   const [draft, setDraft] = useState<KeyDraft>(initialDraft)
@@ -111,11 +107,11 @@ export function ApiKeysView({
     event.preventDefault()
     if (!draft.name.trim()) return
     if (draft.kind === 'monitor-specific' && !draft.monitorId) {
-      setError('Choose a monitor for this API key.')
+      setError(t('apiKeys.chooseMonitorError'))
       return
     }
     if (draft.scopes.length === 0) {
-      setError('Choose at least one scope.')
+      setError(t('apiKeys.chooseScopeError'))
       return
     }
 
@@ -159,7 +155,7 @@ export function ApiKeysView({
       setSecret(result.secret)
     } catch (creationError) {
       setKeys((current) => current.filter((key) => key.id !== optimisticId))
-      setError(creationError instanceof Error ? creationError.message : 'Could not create the API key.')
+      setError(creationError instanceof Error ? creationError.message : t('apiKeys.createError'))
     } finally {
       setSaving(false)
     }
@@ -181,7 +177,7 @@ export function ApiKeysView({
       setRevoking(null)
     } catch (revocationError) {
       setKeys((current) => current.map((key) => (key.id === original.id ? original : key)))
-      setError(revocationError instanceof Error ? revocationError.message : 'Could not revoke the API key.')
+      setError(revocationError instanceof Error ? revocationError.message : t('apiKeys.revokeError'))
       setRevoking(null)
     } finally {
       setSaving(false)
@@ -198,32 +194,32 @@ export function ApiKeysView({
   }
 
   return (
-    <section className="account-tab-panel" role="tabpanel" aria-label="API keys">
+    <section className="account-tab-panel" role="tabpanel" aria-label={t('apiKeys.title')}>
       <div className="account-section-heading">
-        <div><h2>API keys<span className="title-dot">.</span></h2><p>Create scoped keys for automation, integrations, and public widgets.</p></div>
-        <Button onClick={openCreate}><Plus size={17} /> Create API key</Button>
+        <div><h2>{t('apiKeys.title')}<span className="title-dot">.</span></h2><p>{t('apiKeys.description')}</p></div>
+        <Button onClick={openCreate}><Plus size={17} /> {t('apiKeys.create')}</Button>
       </div>
 
       {error && <FeedbackBanner tone="error" onDismiss={() => setError('')}>{error}</FeedbackBanner>}
 
       {keys.length === 0 ? (
-        <Panel><EmptyState icon={<KeyRound size={34} />} title="No API keys" description="Create a key to access the SSLPing API from your own tools." action={<Button onClick={openCreate}>Create API key</Button>} /></Panel>
+        <Panel><EmptyState icon={<KeyRound size={34} />} title={t('apiKeys.empty')} description={t('apiKeys.emptyHint')} action={<Button onClick={openCreate}>{t('apiKeys.create')}</Button>} /></Panel>
       ) : (
         <div className="api-key-groups">
           {(Object.keys(groupedKeys) as ApiKeyViewModel['kind'][]).map((kind) => (
             <Panel key={kind} className="api-key-group">
-              <div className="panel__header"><div><h2>{keyKindLabels[kind]}</h2><p>{kind === 'monitor-specific' ? 'Restricted to one monitor and read access.' : kind === 'read-only' ? 'Safe read access without mutation permissions.' : 'Workspace-wide access for trusted automation.'}</p></div><KeyRound size={22} /></div>
+              <div className="panel__header"><div><h2>{t(`apiKeys.kind.${kind}`)}</h2><p>{t(`apiKeys.kind.${kind}.hint`)}</p></div><KeyRound size={22} /></div>
               {groupedKeys[kind].length === 0 ? (
-                <div className="api-key-empty">No {keyKindLabels[kind].toLowerCase()} created.</div>
+                <div className="api-key-empty">{t('apiKeys.noneKind', { kind: t(`apiKeys.kind.${kind}`) })}</div>
               ) : (
                 <div className="api-key-list">
                   {groupedKeys[kind].map((key) => (
                     <article className="api-key-row" key={key.id}>
                       <div className="api-key-row__main"><strong>{key.name}</strong><code>{key.prefix}</code>{key.monitorName && <span className="muted">{key.monitorName}</span>}</div>
                       <div className="api-key-row__scopes">{key.scopes.map((scope) => <Badge key={scope} tone="purple">{scope}</Badge>)}</div>
-                      <div className="api-key-row__used"><span>Last used</span><strong>{key.lastUsedAt ? formatRelativeTime(key.lastUsedAt) : 'Never'}</strong>{key.expiresAt && <small>Expires {formatDate(key.expiresAt)}</small>}</div>
+                      <div className="api-key-row__used"><span>{t('apiKeys.lastUsed')}</span><strong>{key.lastUsedAt ? formatRelativeTime(key.lastUsedAt) : t('apiKeys.never')}</strong>{key.expiresAt && <small>{t('apiKeys.expires', { date: formatDate(key.expiresAt) })}</small>}</div>
                       <Badge tone={keyStatusTone(key.status)}>{formatStatus(key.status)}</Badge>
-                      <IconButton label={`Revoke ${key.name}`} onClick={() => setRevoking(key)} disabled={key.status === 'revoked'}><Trash2 size={16} /></IconButton>
+                      <IconButton label={t('apiKeys.revokeNamed', { name: key.name })} onClick={() => setRevoking(key)} disabled={key.status === 'revoked'}><Trash2 size={16} /></IconButton>
                     </article>
                   ))}
                 </div>
@@ -233,53 +229,53 @@ export function ApiKeysView({
         </div>
       )}
 
-      <Modal open={createOpen} onClose={() => !saving && setCreateOpen(false)} title={<>Create <span className="success-text">API key</span></>} icon={<KeyRound size={37} />} width="lg">
+      <Modal open={createOpen} onClose={() => !saving && setCreateOpen(false)} title={<>{t('apiKeys.create')} <span className="success-text">API</span></>} icon={<KeyRound size={37} />} width="lg">
         <form onSubmit={submitCreate}>
           <div className="form-section form-grid">
-            <Field label="Friendly name" hint="Choose a name that identifies where this key is used." error={error}>
-              <input autoFocus value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Deployment automation" required />
+            <Field label={t('apiKeys.name')} hint={t('apiKeys.nameHint')} error={error}>
+              <input autoFocus value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder={t('apiKeys.namePlaceholder')} required />
             </Field>
-            <Field label="Key type">
+            <Field label={t('apiKeys.type')}>
               <Select value={draft.kind} onChange={(event) => changeKind(event.target.value as ApiKeyViewModel['kind'])}>
-                <option value="main">Main API key</option>
-                <option value="read-only">Read-only API key</option>
-                <option value="monitor-specific">Monitor-specific API key</option>
+                <option value="main">{t('apiKeys.kind.main')}</option>
+                <option value="read-only">{t('apiKeys.kind.read-only')}</option>
+                <option value="monitor-specific">{t('apiKeys.kind.monitor-specific')}</option>
               </Select>
             </Field>
           </div>
           {draft.kind === 'monitor-specific' && (
-            <div className="form-section"><Field label="Monitor" hint="This key can read only the selected monitor."><Select value={draft.monitorId} onChange={(event) => setDraft((current) => ({ ...current, monitorId: event.target.value }))} required><option value="">Choose a monitor…</option>{monitors.map((monitor) => <option key={monitor.id} value={monitor.id}>{monitor.name}</option>)}</Select></Field></div>
+            <div className="form-section"><Field label={t('apiKeys.monitor')} hint={t('apiKeys.monitorHint')}><Select value={draft.monitorId} onChange={(event) => setDraft((current) => ({ ...current, monitorId: event.target.value }))} required><option value="">{t('apiKeys.chooseMonitor')}</option>{monitors.map((monitor) => <option key={monitor.id} value={monitor.id}>{monitor.name}</option>)}</Select></Field></div>
           )}
           <fieldset className="form-section account-fieldset">
-            <legend>Scopes</legend>
-            <p>Select the minimum permissions this integration needs.</p>
+            <legend>{t('apiKeys.scopes')}</legend>
+            <p>{t('apiKeys.scopesHint')}</p>
             <div className="scope-grid">
               {availableScopes.map((scope) => {
                 const locked = draft.kind === 'read-only' || draft.kind === 'monitor-specific'
                 return (
                   <label key={scope} className={draft.scopes.includes(scope) ? 'scope-option is-selected' : 'scope-option'}>
                     <input type="checkbox" checked={draft.scopes.includes(scope)} onChange={() => toggleScope(scope)} disabled={locked} />
-                    <span><strong>{scope}</strong><small>{scopeLabels[scope]}</small></span>
+                    <span><strong>{scope}</strong><small>{t(`apiKeys.scope.${scope}`)}</small></span>
                   </label>
                 )
               })}
             </div>
           </fieldset>
-          <div className="form-section"><Field label="Expiration date" hint="Optional. The key stops working at the end of this UTC date."><input type="date" value={draft.expiresOn} onChange={(event) => setDraft((current) => ({ ...current, expiresOn: event.target.value }))} /></Field></div>
-          <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create API key'}</Button></div>
+          <div className="form-section"><Field label={t('apiKeys.expiration')} hint={t('apiKeys.expirationHint')}><input type="date" value={draft.expiresOn} onChange={(event) => setDraft((current) => ({ ...current, expiresOn: event.target.value }))} /></Field></div>
+          <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button><Button type="submit" disabled={saving}>{saving ? t('apiKeys.creating') : t('apiKeys.create')}</Button></div>
         </form>
       </Modal>
 
-      <Modal open={Boolean(secret)} onClose={() => setSecret('')} title="Copy your API key" icon={<LockKeyhole size={37} />} width="sm">
+      <Modal open={Boolean(secret)} onClose={() => setSecret('')} title={t('apiKeys.copyTitle')} icon={<LockKeyhole size={37} />} width="sm">
         <div className="one-time-secret">
-          <div className="account-warning"><ShieldAlert size={20} /><span><strong>This secret is shown only once.</strong><small>Store it in a password manager or secrets vault. You cannot recover it later.</small></span></div>
-          <label><span className="field__label">API key secret</span><div><input readOnly value={secret} onFocus={(event) => event.currentTarget.select()} /><IconButton label="Copy API key" onClick={copySecret}>{copied ? <Check size={17} /> : <Copy size={17} />}</IconButton></div></label>
-          <Button onClick={() => setSecret('')} disabled={!secret}>{copied ? 'Done' : 'I have saved the key'}</Button>
+          <div className="account-warning"><ShieldAlert size={20} /><span><strong>{t('apiKeys.once')}</strong><small>{t('apiKeys.onceHint')}</small></span></div>
+          <label><span className="field__label">{t('apiKeys.secret')}</span><div><input readOnly value={secret} onFocus={(event) => event.currentTarget.select()} /><IconButton label={t('apiKeys.copy')} onClick={copySecret}>{copied ? <Check size={17} /> : <Copy size={17} />}</IconButton></div></label>
+          <Button onClick={() => setSecret('')} disabled={!secret}>{copied ? t('common.done') : t('apiKeys.saved')}</Button>
         </div>
       </Modal>
 
-      <Modal open={Boolean(revoking)} onClose={() => !saving && setRevoking(null)} title="Revoke API key" icon={<Trash2 size={34} />} width="sm">
-        {revoking && <div className="confirm-action"><p>Revoke <strong>{revoking.name}</strong>? Applications using this key will lose access immediately.</p><div className="form-actions"><Button variant="secondary" onClick={() => setRevoking(null)}>Cancel</Button><Button variant="danger" onClick={confirmRevoke} disabled={saving}>{saving ? 'Revoking…' : 'Revoke key'}</Button></div></div>}
+      <Modal open={Boolean(revoking)} onClose={() => !saving && setRevoking(null)} title={t('apiKeys.revokeTitle')} icon={<Trash2 size={34} />} width="sm">
+        {revoking && <div className="confirm-action"><p>{t('apiKeys.revokePrompt', { name: revoking.name })}</p><div className="form-actions"><Button variant="secondary" onClick={() => setRevoking(null)}>{t('common.cancel')}</Button><Button variant="danger" onClick={confirmRevoke} disabled={saving}>{saving ? t('apiKeys.revoking') : t('apiKeys.revoke')}</Button></div></div>}
       </Modal>
     </section>
   )

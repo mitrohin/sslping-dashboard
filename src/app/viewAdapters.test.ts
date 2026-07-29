@@ -182,7 +182,7 @@ describe('toMonitorViewModel', () => {
     })
     expect(result.last24Hours).toHaveLength(24)
     expect(result.last24Hours.slice(0, -2).every((bar) => bar.status === 'no-data')).toBe(true)
-    expect(result.last24Hours.at(-2)?.status).toBe('down')
+    expect(result.last24Hours.at(-2)?.status).toBe('up')
     expect(result.last24Hours.at(-1)?.status).toBe('no-data')
     expect(result.sslCertificate).toMatchObject({
       expiresAt: '2026-09-01T00:00:00.000Z',
@@ -190,6 +190,32 @@ describe('toMonitorViewModel', () => {
       state: 'ok',
     })
     expect(checks.map((check) => check.id)).toEqual(originalOrder)
+  })
+
+  it('marks an hourly outage only after failures from two distinct locations', () => {
+    const distributedMonitor: Monitor = { ...monitor, regions: ['eu', 'us', 'ap'] }
+    const result = (region: string, status: CheckResult['status']): CheckResult => ({
+      id: `${region}-${status}`,
+      workspace_id: monitor.workspace_id,
+      monitor_id: monitor.id,
+      region,
+      status,
+      latency_ms: 100,
+      started_at: '2026-07-25T11:40:00.000Z',
+      finished_at: '2026-07-25T11:40:01.000Z',
+    })
+
+    const singleFailure = toMonitorViewModel(distributedMonitor, {
+      checks: [result('eu', 'failed'), result('us', 'ok'), result('ap', 'ok')],
+      now,
+    })
+    expect(singleFailure.last24Hours.at(-2)?.status).toBe('up')
+
+    const confirmedFailure = toMonitorViewModel(distributedMonitor, {
+      checks: [result('eu', 'failed'), result('us', 'failed'), result('ap', 'ok')],
+      now,
+    })
+    expect(confirmedFailure.last24Hours.at(-2)?.status).toBe('down')
   })
 
   it('uses safe defaults for incomplete runtime payloads', () => {
@@ -283,6 +309,37 @@ describe('incident and maintenance adapters', () => {
       durationSeconds: 330,
       commentCount: 3,
       assignedTo: 'Alex Morgan',
+    })
+  })
+
+  it('maps the location quorum evidence captured with an incident', () => {
+    const withQuorum: Incident = {
+      ...incident,
+      details: {
+        location_quorum: {
+          policy: 'two-location-confirmation',
+          expected_locations: 3,
+          required_failures: 2,
+          required_recoveries: 2,
+          evaluated_at: '2026-07-25T11:00:10.000Z',
+          observations: [
+            { region: 'eu-west', status: 'failed', root_cause: 'timeout', latency_ms: 30000, finished_at: '2026-07-25T11:00:09.000Z' },
+            { region: 'us-east', status: 'ok', latency_ms: 87, finished_at: '2026-07-25T11:00:08.000Z' },
+          ],
+        },
+      },
+    }
+
+    expect(toIncidentViewModel(withQuorum).locationQuorum).toEqual({
+      policy: 'two-location-confirmation',
+      expectedLocations: 3,
+      requiredFailures: 2,
+      requiredRecoveries: 2,
+      evaluatedAt: '2026-07-25T11:00:10.000Z',
+      observations: [
+        { region: 'eu-west', status: 'failed', rootCause: 'timeout', latencyMs: 30000, finishedAt: '2026-07-25T11:00:09.000Z' },
+        { region: 'us-east', status: 'ok', rootCause: undefined, latencyMs: 87, finishedAt: '2026-07-25T11:00:08.000Z' },
+      ],
     })
   })
 

@@ -1,18 +1,23 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiClient, ApiError } from '../../api/client'
 import { SessionStore } from '../../api/session'
 import type { MeResponse, Problem, Tokens, User, Workspace } from '../../api/types'
 import { AuthProvider } from '../../app/AuthProvider'
 import {
+  AcceptInvitationController,
   EmailVerificationController,
   ForgotPasswordController,
   LoginController,
   RegisterController,
+  ResetPasswordController,
   TwoFactorController,
   authErrorMessage,
+  authReturnDestination,
   authReturnPath,
+  sensitiveTokenFromLocation,
 } from './AuthFlows'
 
 const user: User = {
@@ -59,18 +64,25 @@ function CurrentLocation() {
   return <div>{`${location.pathname}${location.search}${location.hash}`}</div>
 }
 
+function CurrentLocationState() {
+  const location = useLocation()
+  return <div data-testid="location-state">{JSON.stringify(location.state)}</div>
+}
+
 function renderWithAuth(
   api: ApiClient,
   initialEntry: string | { pathname: string; search?: string; state?: unknown },
   routes: React.ReactNode,
+  strict = false,
 ) {
-  return render(
+  const tree = (
     <AuthProvider api={api}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>{routes}</Routes>
       </MemoryRouter>
-    </AuthProvider>,
+    </AuthProvider>
   )
+  return render(strict ? <StrictMode>{tree}</StrictMode> : tree)
 }
 
 afterEach(() => {
@@ -149,6 +161,9 @@ describe('auth UI controllers', () => {
     const unverifiedUser = { ...user, email_verified_at: undefined }
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input)
+      if (url === '/v1/customer-regions') {
+        return json({ items: [{ id: 'region-global', code: 'global', name: 'Global', default_locale: 'en', currency: 'USD', payment_providers: ['manual'], default_plan_code: 'free', active: true, default: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }] })
+      }
       if (url === '/v1/auth/register') {
         expect(JSON.parse(String(init?.body))).toMatchObject({ workspace_name: 'Acme Operations' })
         return json({ user: unverifiedUser, tenant: workspace, verification_token: 'verification-token' }, 201)
@@ -176,7 +191,7 @@ describe('auth UI controllers', () => {
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
 
     expect(await screen.findByRole('heading', { name: /verify your email/i })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole('button', { name: /confirm email/i }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Your email address has been verified')
@@ -195,6 +210,134 @@ describe('auth UI controllers', () => {
     await waitFor(() => expect(screen.getByText(/if an account exists/i)).toBeInTheDocument())
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/v1/auth/password/forgot')
   })
+
+  it('consumes a reset token from the URL and changes the password through the public endpoint', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      expect(String(input)).toBe('/v1/auth/password/reset')
+      expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+      expect(JSON.parse(String(init?.body))).toEqual({ token: 'reset-secret', new_password: 'NewPassword1234' })
+      return new Response(null, { status: 204 })
+    })
+    const api = new ApiClient({ fetch: fetchMock, sessionStore: new SessionStore(localStorage) })
+    renderWithAuth(
+      api,
+      '/reset-password?token=reset-secret&lang=en',
+      <Route path="/reset-password" element={<><ResetPasswordController /><CurrentLocation /></>} />,
+    )
+
+    expect(await screen.findByText('/reset-password?lang=en')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/^New password/), { target: { value: 'NewPassword1234' } })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'NewPassword1234' } })
+    fireEvent.click(screen.getByRole('button', { name: /^reset password/i }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/changed securely/i)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns an unauthenticated invitee through login and accepts the invitation from cleaned history state', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      if (url === '/v1/auth/login') return json({ user, tokens, two_factor_required: false })
+      if (url === '/v1/me') return json(me)
+      if (url === '/v1/invitations/accept') {
+        expect(JSON.parse(String(init?.body))).toEqual({ token: 'invite-secret' })
+        return json({
+          workspace_id: workspace.id,
+          user_id: user.id,
+          role: 'viewer',
+          status: 'active',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        })
+      }
+      throw new Error(`Unexpected URL ${url}`)
+    })
+    const api = new ApiClient({ fetch: fetchMock, sessionStore: new SessionStore(localStorage) })
+    renderWithAuth(
+      api,
+      '/accept-invite#token=invite-secret',
+      <>
+        <Route path="/accept-invite" element={<><AcceptInvitationController /><CurrentLocation /></>} />
+        <Route path="/login" element={<LoginController />} />
+        <Route path="/monitors" element={<div>Monitor dashboard</div>} />
+      </>,
+      true,
+    )
+
+    expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: user.email } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1234' } })
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/workspace has been added/i)
+    expect(screen.getByText('/accept-invite')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      '/v1/auth/login',
+      '/v1/me',
+      '/v1/invitations/accept',
+    ])
+  })
+
+  it('preserves an invitation while a new invitee moves from login to registration', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input) === '/v1/customer-regions') {
+        return json({ items: [{ id: 'region-global', code: 'global', name: 'Global', default_locale: 'en', currency: 'USD', payment_providers: ['manual'], default_plan_code: 'free', active: true, default: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }] })
+      }
+      throw new Error(`Unexpected URL ${String(input)}`)
+    })
+    const api = new ApiClient({ fetch: fetchMock, sessionStore: new SessionStore(localStorage) })
+    renderWithAuth(
+      api,
+      '/accept-invite#token=new-invitee-secret',
+      <>
+        <Route path="/accept-invite" element={<AcceptInvitationController />} />
+        <Route path="/login" element={<LoginController />} />
+        <Route path="/register" element={<><RegisterController /><CurrentLocationState /></>} />
+      </>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /create an account/i }))
+
+    expect(await screen.findByRole('heading', { name: /create your workspace/i })).toBeInTheDocument()
+    expect(screen.getByTestId('location-state')).toHaveTextContent('new-invitee-secret')
+  })
+
+  it('retains a consumed invitation token in memory for a safe retry', async () => {
+    let invitationAttempts = 0
+    const store = new SessionStore(localStorage)
+    store.setTokens(tokens)
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/v1/me') return json(me)
+      if (url === '/v1/invitations/accept') {
+        invitationAttempts += 1
+        if (invitationAttempts === 1) throw new TypeError('temporary network failure')
+        return json({
+          workspace_id: workspace.id,
+          user_id: user.id,
+          role: 'viewer',
+          status: 'active',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        })
+      }
+      throw new Error(`Unexpected URL ${url}`)
+    })
+    const api = new ApiClient({ fetch: fetchMock, sessionStore: store })
+    renderWithAuth(
+      api,
+      '/accept-invite?token=retry-secret',
+      <Route path="/accept-invite" element={<><AcceptInvitationController /><CurrentLocation /></>} />,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to reach sslping/i)
+    expect(screen.getByText('/accept-invite')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /try accepting again/i }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/workspace has been added/i)
+    expect(invitationAttempts).toBe(2)
+  })
 })
 
 describe('auth flow safety helpers', () => {
@@ -203,6 +346,12 @@ describe('auth flow safety helpers', () => {
     expect(authReturnPath({ from: 'https://evil.example/path' })).toBe('/monitors')
     expect(authReturnPath({ from: '/\\evil.example/path' })).toBe('/monitors')
     expect(authReturnPath({ from: '/safe\nredirect' })).toBe('/monitors')
+    expect(authReturnDestination({ from: { pathname: '/accept-invite', state: { inviteToken: 'secret' } } })).toEqual({
+      to: '/accept-invite',
+      state: { inviteToken: 'secret' },
+    })
+    expect(sensitiveTokenFromLocation('', '#token=fragment-secret')).toBe('fragment-secret')
+    expect(sensitiveTokenFromLocation('?token=query-secret', '#token=fragment-secret')).toBe('query-secret')
 
     const error = new ApiError({
       type: 'about:blank',

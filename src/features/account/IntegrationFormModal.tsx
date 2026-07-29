@@ -10,6 +10,7 @@ import {
 } from '../../data'
 import { Button, FeedbackBanner, Field, Modal, Select, Toggle } from '../../components/ui'
 import type { IntegrationInput } from './types'
+import { useI18n } from '../../app/I18nProvider'
 
 interface ProviderField {
   key: string
@@ -97,6 +98,7 @@ export function IntegrationFormModal({
   onClose,
   onSubmit,
 }: IntegrationFormModalProps) {
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [type, setType] = useState<IntegrationType>(initialType)
   const [active, setActive] = useState(true)
@@ -130,13 +132,13 @@ export function IntegrationFormModal({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (events.length === 0) {
-      setLocalError('Choose at least one event to notify about.')
+      setLocalError(t('integrations.form.chooseEvent'))
       return
     }
     if (!integration) {
       const missing = fields.find((field) => field.required && !config[field.key]?.trim())
       if (missing) {
-        setLocalError(`${missing.label} is required.`)
+        setLocalError(t('integrations.form.required', { field: translated(`integrations.field.${missing.key}`, missing.label) }))
         return
       }
     }
@@ -151,20 +153,31 @@ export function IntegrationFormModal({
     })
   }
 
+  const translated = (key: string, fallback: string) => {
+    const value = t(key)
+    return value === key ? fallback : value
+  }
+
+  const providerFieldLabel = (field: ProviderField) => {
+    const label = translated(`integrations.field.${field.key}`, field.label)
+    if (field.key !== 'url' || type === 'webhook') return label
+    return `${provider?.name ?? field.label.split(' ')[0]} ${label}`
+  }
+
   return (
     <Modal
       open={open}
       onClose={() => !saving && onClose()}
-      title={<>{integration ? 'Edit' : 'Add'} <span className="success-text">{provider?.name ?? 'integration'}</span> integration</>}
+      title={<>{t(integration ? 'integrations.form.edit' : 'integrations.form.add')} <span className="success-text">{provider?.name ?? t('integrations.form.integration')}</span></>}
       icon={<Activity size={39} />}
       width="lg"
     >
       <form onSubmit={submit}>
         <div className="form-section form-grid">
-          <Field label="Friendly name" hint="Used to identify this destination in monitors and alerts.">
-            <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={`${provider?.name ?? 'Integration'} alerts`} required />
+          <Field label={t('integrations.form.name')} hint={t('integrations.form.nameHint')}>
+            <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={t('integrations.form.namePlaceholder', { provider: provider?.name ?? t('integrations.form.integration') })} required />
           </Field>
-          <Field label="Provider">
+          <Field label={t('integrations.form.provider')}>
             <Select value={type} onChange={(event) => { setType(event.target.value as IntegrationType); setConfig({}) }} disabled={Boolean(integration)}>
               {catalog.filter((item) => item.available).map((item) => <option key={item.type} value={item.type}>{item.name}</option>)}
             </Select>
@@ -172,16 +185,16 @@ export function IntegrationFormModal({
         </div>
 
         <div className="form-section">
-          <h3 className="form-section__title">Provider configuration</h3>
-          {integration && <p className="account-form-note"><ShieldCheck size={17} /> Stored credentials are encrypted and never returned. Leave sensitive fields empty to keep their current values.</p>}
+          <h3 className="form-section__title">{t('integrations.form.providerConfig')}</h3>
+          {integration && <p className="account-form-note"><ShieldCheck size={17} /> {t('integrations.form.credentialsHint')}</p>}
           <div className="form-grid integration-provider-fields">
             {fields.map((field) => (
-              <Field key={field.key} label={field.label} hint={field.hint}>
+              <Field key={field.key} label={providerFieldLabel(field)} hint={field.hint ? translated(`integrations.field.${field.key}Hint`, field.hint) : undefined}>
                 <input
                   type={field.type ?? 'text'}
                   value={config[field.key] ?? ''}
                   onChange={(event) => setConfig((current) => ({ ...current, [field.key]: event.target.value }))}
-                  placeholder={integration && field.type === 'password' ? 'Keep existing value' : field.placeholder}
+                  placeholder={integration && field.type === 'password' ? t('integrations.form.keepExisting') : translated(`integrations.field.${field.key}Placeholder`, field.placeholder)}
                   required={!integration && field.required}
                   multiple={field.key === 'recipients'}
                   pattern={field.key === 'from' || field.key === 'to' ? '\\+[0-9]{7,15}' : undefined}
@@ -193,21 +206,21 @@ export function IntegrationFormModal({
         </div>
 
         <fieldset className="form-section account-fieldset">
-          <legend>Events to notify about</legend>
-          <p>Choose when this destination should receive a message.</p>
+          <legend>{t('integrations.form.events')}</legend>
+          <p>{t('integrations.form.eventsHint')}</p>
           <div className="event-grid">
             {eventOptions.map((option) => (
               <label key={option.value} className={events.includes(option.value) ? 'event-option is-selected' : 'event-option'}>
                 <input type="checkbox" checked={events.includes(option.value)} onChange={() => toggleEvent(option.value)} />
-                <span><strong>{option.label}</strong><small>{option.description}</small></span>
+                <span><strong>{translated(`integrations.event.${option.value}.label`, option.label)}</strong><small>{translated(`integrations.event.${option.value}.description`, option.description)}</small></span>
               </label>
             ))}
           </div>
         </fieldset>
 
         <fieldset className="form-section account-fieldset">
-          <legend>Monitor routing</legend>
-          <p>No selection means events from every monitor. Select monitors to restrict this integration.</p>
+          <legend>{t('integrations.form.routing')}</legend>
+          <p>{t('integrations.form.routingHint')}</p>
           <div className="monitor-route-grid">
             {monitors.map((monitor) => (
               <label key={monitor.id} className={monitorIds.includes(monitor.id) ? 'monitor-route is-selected' : 'monitor-route'}>
@@ -218,9 +231,9 @@ export function IntegrationFormModal({
           </div>
         </fieldset>
 
-        <div className="form-section integration-active-row"><span><BellRing size={20} /><span><strong>Integration active</strong><small>Allow this destination to receive selected events.</small></span></span><Toggle checked={active} onChange={setActive} label="Integration active" /></div>
+        <div className="form-section integration-active-row"><span><BellRing size={20} /><span><strong>{t('integrations.form.active')}</strong><small>{t('integrations.form.activeHint')}</small></span></span><Toggle checked={active} onChange={setActive} label={t('integrations.form.active')} /></div>
         {(localError || error) && <FeedbackBanner tone="error">{localError || error}</FeedbackBanner>}
-        <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</Button><Button type="submit" disabled={saving}><Plus size={17} />{saving ? 'Saving…' : integration ? 'Update integration' : 'Create integration'}</Button></div>
+        <div className="form-actions"><Button variant="secondary" type="button" onClick={onClose} disabled={saving}>{t('common.cancel')}</Button><Button type="submit" disabled={saving}><Plus size={17} />{saving ? t('common.saving') : integration ? t('integrations.form.update') : t('integrations.form.create')}</Button></div>
       </form>
     </Modal>
   )

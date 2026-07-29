@@ -80,6 +80,26 @@ describe('monitor request conversion', () => {
       .toEqual({ period_seconds: 3600, grace_seconds: 300 })
   })
 
+  it('maps a 152-FZ compliance review and enforces its daily minimum', () => {
+    expect(monitorDraftToCreateRequest(draft({
+      type: 'compliance',
+      target: 'https://example.com',
+      intervalSeconds: 86400,
+      timeoutSeconds: 60,
+      complianceFramework: 'ru_152_fz',
+    }))).toMatchObject({
+      type: 'compliance',
+      interval_seconds: 86400,
+      timeout_seconds: 60,
+      group_name: 'Monitors',
+      config: { compliance: { url: 'https://example.com', framework: 'ru_152_fz' } },
+    })
+
+    expect(() => monitorDraftToCreateRequest(draft({
+      type: 'compliance', target: 'https://example.com', intervalSeconds: 86399,
+    }))).toThrow(/24 hours/i)
+  })
+
   it('omits immutable type from update requests and rejects missing socket ports', () => {
     expect(monitorDraftToUpdateRequest(draft({ type: 'domain', target: 'example.com' }))).not.toHaveProperty('type')
     expect(() => monitorDraftToCreateRequest(draft({ type: 'tcp', target: 'example.com' }))).toThrow(/host:port/i)
@@ -192,8 +212,8 @@ describe('monitor edit and chart adapters', () => {
     const series = toResponseTimeSeries([
       { id: 'a', workspace_id: 'w', monitor_id: 'm', region: 'eu-west', status: 'ok', latency_ms: 100, started_at: '2026-07-26T10:00:00.000Z', finished_at: '2026-07-26T10:00:01.000Z' },
       { id: 'b', workspace_id: 'w', monitor_id: 'm', region: 'eu-west', status: 'degraded', latency_ms: 300, started_at: '2026-07-26T10:01:00.000Z', finished_at: '2026-07-26T10:01:01.000Z' },
-    ])
+    ], [{ id: 'eu-west', name: 'Amsterdam' }])
     expect(series).toHaveLength(1)
-    expect(series[0]).toMatchObject({ regionId: 'eu-west', averageMs: 200, minimumMs: 100, maximumMs: 300 })
+    expect(series[0]).toMatchObject({ regionId: 'eu-west', regionLabel: 'Amsterdam', averageMs: 200, minimumMs: 100, maximumMs: 300 })
   })
 })

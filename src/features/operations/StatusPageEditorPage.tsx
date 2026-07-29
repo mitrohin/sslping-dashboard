@@ -36,6 +36,12 @@ import './operations.css'
 type MaybePromise<T> = T | Promise<T>
 export type StatusPageEditorTab = 'monitors' | 'appearance' | 'global' | 'announcements'
 
+// Dynamic customer-host TLS and routing are deliberately disabled for the
+// first production release. Keep the inactive controls visible so the roadmap
+// is clear without letting a customer verify a domain that cannot be served.
+const customStatusDomainsAvailable = false
+const statusSubscriptionsAvailable = false
+
 export interface StatusPageEditorPageProps {
   page?: StatusPageViewModel
   monitors?: readonly MonitorViewModel[]
@@ -65,13 +71,14 @@ const defaultFeatures: StatusPageFeatureSettings = {
   enableFloatingStatusBar: false,
   showMonitorUrl: false,
   hidePausedMonitors: true,
-  enableSubscribe: true,
+  enableSubscribe: false,
   showLatestDowntime: true,
   smallCookieDialog: true,
   shareAnalytics: false,
 }
 
 function makeDefaultValue(page: StatusPageViewModel, monitors: readonly MonitorViewModel[]): StatusPageEditorValue {
+	const publishableMonitors = monitors.filter((monitor) => monitor.type !== 'leakcheck' && monitor.type !== 'compliance')
   return {
     name: page.name,
     slug: page.slug,
@@ -84,7 +91,7 @@ function makeDefaultValue(page: StatusPageViewModel, monitors: readonly MonitorV
     passwordEnabled: page.accessLevel === 'password',
     password: '',
     removeCookieConsent: false,
-    monitorIds: monitors.slice(0, page.monitorCount).map((monitor) => monitor.id),
+	monitorIds: publishableMonitors.slice(0, page.monitorCount).map((monitor) => monitor.id),
     branding: {
       logoUrl: '',
       accentColor: '#34d77b',
@@ -147,17 +154,19 @@ export function StatusPageEditorPage({
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+	const publishableMonitors = useMemo(() => monitors.filter((monitor) => monitor.type !== 'leakcheck' && monitor.type !== 'compliance'), [monitors])
+	const publishableMonitorIds = useMemo(() => new Set(publishableMonitors.map((monitor) => monitor.id)), [publishableMonitors])
 
   const selectedMonitors = useMemo(
-    () => value.monitorIds.map((id) => monitors.find((monitor) => monitor.id === id)).filter((monitor): monitor is MonitorViewModel => Boolean(monitor)),
-    [monitors, value.monitorIds],
+	() => value.monitorIds.map((id) => publishableMonitors.find((monitor) => monitor.id === id)).filter((monitor): monitor is MonitorViewModel => Boolean(monitor)),
+	[publishableMonitors, value.monitorIds],
   )
   const availableMonitors = useMemo(() => {
     const query = monitorQuery.trim().toLowerCase()
     return query
-      ? monitors.filter((monitor) => monitor.name.toLowerCase().includes(query) || monitor.target.toLowerCase().includes(query))
-      : monitors
-  }, [monitorQuery, monitors])
+	  ? publishableMonitors.filter((monitor) => monitor.name.toLowerCase().includes(query) || monitor.target.toLowerCase().includes(query))
+	  : publishableMonitors
+	}, [monitorQuery, publishableMonitors])
 
   const update = <Key extends keyof StatusPageEditorValue>(key: Key, next: StatusPageEditorValue[Key]) =>
     setValue((current) => ({ ...current, [key]: next }))
@@ -184,7 +193,7 @@ export function StatusPageEditorPage({
     setError('')
     setMessage('')
     try {
-      await onSave?.(value)
+	  await onSave?.({ ...value, monitorIds: value.monitorIds.filter((id) => publishableMonitorIds.has(id)) })
       setMessage('Changes saved.')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Changes could not be saved.')
@@ -280,9 +289,9 @@ export function StatusPageEditorPage({
                     variant="secondary"
                     size="sm"
                     type="button"
-                    onClick={() => update('monitorIds', value.monitorIds.length === monitors.length ? [] : monitors.map((monitor) => monitor.id))}
-                  >
-                    {value.monitorIds.length === monitors.length ? 'Clear all' : 'Select all'}
+				  onClick={() => update('monitorIds', value.monitorIds.length === publishableMonitors.length ? [] : publishableMonitors.map((monitor) => monitor.id))}
+				>
+				  {value.monitorIds.length === publishableMonitors.length ? 'Clear all' : 'Select all'}
                   </Button>
                 </div>
                 <div className="ops-monitor-picker">
@@ -343,22 +352,28 @@ export function StatusPageEditorPage({
             <>
               <EditorSection title="White-label" icon={<ShieldCheck size={20} />}>
                 <div className="form-grid">
-                  <Field label="Custom domain" hint="Create the required TXT record before verification.">
-                    <div className="ops-inline-field"><input value={value.customDomain} onChange={(event) => { update('customDomain', event.target.value.toLowerCase().replace(/\.$/, '')); setDomainState('idle') }} placeholder="status.example.com" /><Button variant="secondary" type="button" disabled={!value.customDomain || busy !== null} onClick={() => void claimDomain()}>Claim</Button></div>
-                  </Field>
+                  {customStatusDomainsAvailable ? (
+                    <Field label="Custom domain" hint="Create the required TXT record before verification.">
+                      <div className="ops-inline-field"><input value={value.customDomain} onChange={(event) => { update('customDomain', event.target.value.toLowerCase().replace(/\.$/, '')); setDomainState('idle') }} placeholder="status.example.com" /><Button variant="secondary" type="button" disabled={!value.customDomain || busy !== null} onClick={() => void claimDomain()}>Claim</Button></div>
+                    </Field>
+                  ) : (
+                    <Field label="Custom domain" hint="Coming soon after managed TLS and customer-host routing are enabled.">
+                      <input value="" placeholder="Available soon" disabled />
+                    </Field>
+                  )}
                   <Field label="Google Analytics" hint="Measurement ID stored in branding configuration."><input value={value.googleAnalyticsId} onChange={(event) => update('googleAnalyticsId', event.target.value.toUpperCase())} placeholder="G-XXXXXXXXXX" pattern="G-[A-Z0-9]+" /></Field>
                 </div>
-                {domainState === 'pending' && (
+                {customStatusDomainsAvailable && domainState === 'pending' && (
                   <div className="ops-domain-challenge">
                     <div><span>TXT name</span><code>_sslping-verification.{value.customDomain}</code></div>
                     <div><span>TXT value</span><code>sslping-verification=••••••••••••••••</code></div>
                     <Button size="sm" type="button" disabled={busy !== null} onClick={() => void verifyDomain()}>Verify DNS</Button>
                   </div>
                 )}
-                {domainState === 'verified' && <div className="ops-success"><Check size={17} /> Custom domain verified</div>}
+                {customStatusDomainsAvailable && domainState === 'verified' && <div className="ops-success"><Check size={17} /> Custom domain verified</div>}
                 <div className="ops-settings-grid">
                   <SettingsToggle checked={value.branding.removeProductLogo} onChange={(next) => updateBranding('removeProductLogo', next)} title="Remove SSLPing logo" description="Hide the powered-by link in the public footer." />
-                  <SettingsToggle checked={value.removeCookieConsent} onChange={(next) => update('removeCookieConsent', next)} title="Remove cookie consent" description="Available only when a verified custom domain is used." disabled={domainState !== 'verified'} />
+                  <SettingsToggle checked={value.removeCookieConsent} onChange={(next) => update('removeCookieConsent', next)} title="Remove cookie consent" description="Available only when a verified custom domain is used." disabled={!customStatusDomainsAvailable || domainState !== 'verified'} />
                 </div>
               </EditorSection>
 
@@ -383,7 +398,7 @@ export function StatusPageEditorPage({
                   <SettingsToggle checked={value.features.showOverallPercentage} onChange={(next) => updateFeature('showOverallPercentage', next)} title="Show overall percentage" description="Show 24-hour, 7-day and 30-day availability." />
                   <SettingsToggle checked={value.features.hidePausedMonitors} onChange={(next) => updateFeature('hidePausedMonitors', next)} title="Hide paused monitors" description="Do not display paused components." />
                   <SettingsToggle checked={value.features.showLatestDowntime} onChange={(next) => updateFeature('showLatestDowntime', next)} title="Show outage updates and latest downtime" description="Group recent outages in the announcement feed." />
-                  <SettingsToggle checked={value.features.enableSubscribe} onChange={(next) => updateFeature('enableSubscribe', next)} title="Enable subscribe feature" description="Visitors can receive announcements by email." />
+                  <SettingsToggle checked={statusSubscriptionsAvailable && value.features.enableSubscribe} onChange={(next) => updateFeature('enableSubscribe', next)} title="Enable subscribe feature" description="Available soon after subscriber abuse protection is enabled." disabled={!statusSubscriptionsAvailable} />
                 </div>
               </EditorSection>
 

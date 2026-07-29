@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Check, Clipboard, HeartPulse, ShieldAlert } from 'lucide-react'
 import { Button, Modal } from '../../components/ui'
+import { useI18n } from '../../app/I18nProvider'
 
 export interface HeartbeatCredential {
   monitorName: string
@@ -14,6 +15,7 @@ export function HeartbeatCredentialModal({
   credential: HeartbeatCredential
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const urlInput = useRef<HTMLInputElement>(null)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
 
@@ -33,7 +35,7 @@ export function HeartbeatCredentialModal({
     <Modal
       open
       onClose={onClose}
-      title={<>Heartbeat <span className="success-text">is ready</span></>}
+      title={<>Heartbeat <span className="success-text">{t('heartbeat.ready')}</span></>}
       icon={<HeartPulse size={31} />}
       width="lg"
     >
@@ -41,14 +43,14 @@ export function HeartbeatCredentialModal({
         <div className="heartbeat-credential__warning" role="note">
           <ShieldAlert size={23} aria-hidden="true" />
           <div>
-            <strong>Save this secret URL now</strong>
-            <p>For security, it is shown only once. Anyone with this URL can record a heartbeat for {credential.monitorName}.</p>
+            <strong>{t('heartbeat.saveNow')}</strong>
+            <p>{t('heartbeat.once', { name: credential.monitorName })}</p>
           </div>
         </div>
 
         <label className="field heartbeat-credential__field">
           <span className="field__label">Heartbeat URL</span>
-          <span className="field__hint">Send a GET or POST request to this URL after every successful job run.</span>
+          <span className="field__hint">{t('heartbeat.hint')}</span>
           <span className="heartbeat-credential__control">
             <input
               ref={urlInput}
@@ -60,17 +62,17 @@ export function HeartbeatCredentialModal({
             />
             <Button type="button" variant="secondary" onClick={() => void copyUrl()}>
               {copyState === 'copied' ? <Check size={17} /> : <Clipboard size={17} />}
-              {copyState === 'copied' ? 'Copied' : 'Copy URL'}
+              {copyState === 'copied' ? t('heartbeat.copied') : t('heartbeat.copy')}
             </Button>
           </span>
         </label>
 
-        {copyState === 'copied' && <p className="heartbeat-credential__feedback success-text" role="status">Heartbeat URL copied.</p>}
-        {copyState === 'error' && <p className="heartbeat-credential__feedback danger-text" role="alert">Automatic copy was blocked. The URL is selected so you can copy it manually.</p>}
+        {copyState === 'copied' && <p className="heartbeat-credential__feedback success-text" role="status">{t('heartbeat.copiedFeedback')}</p>}
+        {copyState === 'error' && <p className="heartbeat-credential__feedback danger-text" role="alert">{t('heartbeat.copyBlocked')}</p>}
 
         <div className="heartbeat-credential__actions">
-          <p>Rotating the URL later immediately invalidates this one.</p>
-          <Button type="button" onClick={onClose}>I’ve saved the URL</Button>
+          <p>{t('heartbeat.rotateWarning')}</p>
+          <Button type="button" onClick={onClose}>{t('heartbeat.saved')}</Button>
         </div>
       </div>
     </Modal>

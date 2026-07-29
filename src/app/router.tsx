@@ -1,16 +1,20 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router'
 import { AppShell } from '../components/AppShell'
+import { PageLoadingSkeleton } from '../components/ui'
 import {
+  AcceptInvitationController,
   EmailVerificationController,
   ForgotPasswordController,
   LoginController,
   RegisterController,
+  ResetPasswordController,
   TwoFactorController,
 } from '../features/auth/AuthFlows'
 import { DashboardGate, DemoEntry } from './DashboardGate'
 import { GuestOnly, RequireSystemAdmin, RequireWorkspaceAccess } from './AuthProvider'
 import { demoPublicStatusApi } from './demoPublicStatus'
+import { useI18n } from './I18nProvider'
 
 const LiveMonitorsPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorsPage })))
 const LiveMonitorDetailPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorDetailPage })))
@@ -26,20 +30,22 @@ const SupportPage = lazy(() => import('../features/support/SupportPage').then((m
 const AdminConsolePage = lazy(() => import('../features/admin/AdminConsolePage').then((module) => ({ default: module.AdminConsolePage })))
 
 function RouteSuspense({ children }: { children: ReactNode }) {
+  const { t } = useI18n()
   return (
-    <Suspense fallback={<div className="route-loading" role="status"><span className="spinner" /> Loading workspace…</div>}>
+    <Suspense fallback={<div className="page page--wide"><PageLoadingSkeleton label={t('app.loadingWorkspace')} /></div>}>
       {children}
     </Suspense>
   )
 }
 
 function NotFoundPage() {
+  const { t } = useI18n()
   return (
     <main className="not-found">
       <span>404</span>
-      <h1>This page is off the radar<span className="title-dot">.</span></h1>
-      <p>The page may have moved, or the monitor link is no longer available.</p>
-      <a className="button button--primary" href="/monitors">Return to monitoring</a>
+      <h1>{t('app.notFoundTitle')}<span className="title-dot">.</span></h1>
+      <p>{t('app.notFoundHint')}</p>
+      <a className="button button--primary" href="/monitors">{t('app.returnMonitoring')}</a>
     </main>
   )
 }
@@ -79,6 +85,8 @@ export const router = createBrowserRouter([
   },
   { path: '/login/2fa', element: <TwoFactorController /> },
   { path: '/verify-email', element: <EmailVerificationController /> },
+  { path: '/reset-password', element: <ResetPasswordController /> },
+  { path: '/accept-invite', element: <AcceptInvitationController /> },
   { path: '/status/:slug', element: <PublicStatusRoute /> },
   {
     path: '/',

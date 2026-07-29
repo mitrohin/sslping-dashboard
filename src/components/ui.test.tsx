@@ -39,6 +39,20 @@ describe('Select', () => {
 })
 
 describe('Modal', () => {
+  it('renders at the document root so scrolling ancestors cannot invalidate the backdrop', () => {
+    const { container, unmount } = render(
+      <div className="scrolling-page-layer">
+        <Modal open onClose={() => undefined} title="Stable modal">
+          <p>Modal content</p>
+        </Modal>
+      </div>,
+    )
+
+    expect(container.querySelector('.modal-backdrop')).toBeNull()
+    expect(document.body.querySelector('.modal-backdrop')).toContainElement(screen.getByRole('dialog', { name: 'Stable modal' }))
+    unmount()
+  })
+
   it('moves focus into the dialog and restores it after closing', async () => {
     function Harness() {
       const [open, setOpen] = useState(false)

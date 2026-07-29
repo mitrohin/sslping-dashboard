@@ -7,11 +7,12 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router'
 import { ApiClient, ApiError } from '../api/client'
 import type {
   EmailVerificationRequestedResponse,
   LoginRequest,
+  Locale,
   PasswordChangeRequest,
   PasswordResetRequestedResponse,
   RegisterRequest,
@@ -61,6 +62,7 @@ export interface AuthContextValue {
   changeWorkspace: (tenantId: UUID, password: string) => Promise<LoginOutcome>
   requestEmailVerification: (email?: string) => Promise<EmailVerificationRequestedResponse>
   confirmEmailVerification: (token: string) => Promise<User>
+  updateLocale: (locale: Locale) => Promise<User>
 }
 
 export interface AuthProviderProps {
@@ -285,6 +287,12 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
     [api],
   )
 
+  const updateLocale = useCallback(async (locale: Locale) => {
+	const updated = await api.updateMe({ locale })
+	setUser(updated)
+	return updated
+  }, [api])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       api,
@@ -309,6 +317,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
       changeWorkspace,
       requestEmailVerification,
       confirmEmailVerification,
+      updateLocale,
     }),
     [
       api,
@@ -330,6 +339,7 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
       workspaceRole,
       twoFactorChallenge,
       user,
+      updateLocale,
       workspace,
     ],
   )

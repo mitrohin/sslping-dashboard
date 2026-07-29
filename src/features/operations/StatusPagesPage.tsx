@@ -15,10 +15,11 @@ import {
   type MonitorViewModel,
   type StatusPageViewModel,
 } from '../../data'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatStatus } from '../../lib/format'
 import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
 import type { StatusPageAnnouncementInput, StatusPageCreateInput, StatusPageLanguageCode } from './types'
 import './operations.css'
+import { useI18n } from '../../app/I18nProvider'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -84,6 +85,7 @@ export function StatusPagesPage({
   onEdit,
   onDelete,
 }: StatusPagesPageProps) {
+  const { locale, t } = useI18n()
   const [pages, setPages] = useState<StatusPageViewModel[]>(() => [...initialPages])
   const [query, setQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -92,10 +94,11 @@ export function StatusPagesPage({
   const [announcementDraft, setAnnouncementDraft] = useState<StatusPageAnnouncementInput>(emptyAnnouncement)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+	const publishableMonitors = useMemo(() => monitors.filter((monitor) => monitor.type !== 'leakcheck' && monitor.type !== 'compliance'), [monitors])
 
   useEffect(() => {
-    if (!initialCreateMonitorId || !monitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
-    const monitor = monitors.find((item) => item.id === initialCreateMonitorId)
+	if (!initialCreateMonitorId || !publishableMonitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
+	const monitor = publishableMonitors.find((item) => item.id === initialCreateMonitorId)
     const suggestedName = monitor ? `${monitor.name} status` : ''
     setError('')
     setCreateDraft({
@@ -105,7 +108,7 @@ export function StatusPagesPage({
       monitorIds: [initialCreateMonitorId],
     })
     setCreateOpen(true)
-  }, [initialCreateMonitorId, monitors])
+	}, [initialCreateMonitorId, publishableMonitors])
 
   const filteredPages = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -127,21 +130,22 @@ export function StatusPagesPage({
     const name = createDraft.name.trim()
     const slug = toSlug(createDraft.slug || name)
     if (!name || !slug) {
-      setError('Name and a valid slug are required.')
+      setError(t('statusPages.validationName'))
       return
     }
     if (createDraft.accessLevel === 'password' && createDraft.password.length < 12) {
-      setError('Status-page passwords must contain at least 12 characters.')
+      setError(t('statusPages.validationPassword'))
       return
     }
 
-    const input: StatusPageCreateInput = { ...createDraft, name, slug }
+	const allowedMonitorIds = new Set(publishableMonitors.map((monitor) => monitor.id))
+	const input: StatusPageCreateInput = { ...createDraft, name, slug, monitorIds: createDraft.monitorIds.filter((id) => allowedMonitorIds.has(id)) }
     const languageLabel = languageOptions.find((option) => option.value === input.language)?.label ?? input.language
     const optimistic: StatusPageViewModel = {
       id: makeId(),
       name,
       slug,
-      url: `https://status.sslping.local/${slug}`,
+      url: `https://status.sslping.io/status/${slug}`,
       monitorCount: input.monitorIds.length,
       accessLevel: input.accessLevel,
       status: input.published ? 'published' : 'draft',
@@ -163,7 +167,7 @@ export function StatusPagesPage({
       setCreateDraft(emptyCreate)
     } catch (caught) {
       setPages((current) => current.filter((page) => page.id !== optimistic.id))
-      setError(caught instanceof Error ? caught.message : 'The status page could not be created.')
+      setError(caught instanceof Error ? caught.message : t('statusPages.createFailed'))
     } finally {
       setBusy(false)
     }
@@ -195,67 +199,67 @@ export function StatusPagesPage({
           ? { ...page, announcementCount: Math.max(0, page.announcementCount - 1) }
           : page,
       ))
-      setError(caught instanceof Error ? caught.message : 'The announcement could not be published.')
+      setError(caught instanceof Error ? caught.message : t('statusPages.announcementFailed'))
     } finally {
       setBusy(false)
     }
   }
 
   const deletePage = async (page: StatusPageViewModel) => {
-    if (!window.confirm(`Delete “${page.name}”? This cannot be undone.`)) return
+    if (!window.confirm(t('statusPages.confirmDelete', { name: page.name }))) return
     const snapshot = pages
     setPages((current) => current.filter((item) => item.id !== page.id))
     try {
       await onDelete?.(page.id)
     } catch (caught) {
       setPages(snapshot)
-      setError(caught instanceof Error ? caught.message : 'The status page could not be deleted.')
+      setError(caught instanceof Error ? caught.message : t('statusPages.deleteFailed'))
     }
   }
 
   return (
     <div className="page page--wide ops-page">
       <PageHeader
-        title="Status pages"
-        description="Publish clear, real-time service health for customers and internal teams."
-        actions={<Button type="button" onClick={() => { setError(''); setCreateOpen(true) }}><Plus size={18} /> Create status page</Button>}
+        title={t('statusPages.title')}
+        description={t('statusPages.description')}
+        actions={<Button type="button" onClick={() => { setError(''); setCreateDraft((current) => ({ ...current, language: locale === 'ka' || locale === 'tr' ? 'en' : locale })); setCreateOpen(true) }}><Plus size={18} /> {t('statusPages.create')}</Button>}
       />
 
       {pages.length === 0 ? (
         <Panel>
           <EmptyState
             icon={<Radio size={36} />}
-            title="Create a status page"
-            description="Share real-time uptime, incident updates, and planned maintenance from one branded page."
-            action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> Create status page</Button>}
+            title={t('statusPages.create')}
+            description={t('statusPages.emptyHint')}
+            action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> {t('statusPages.create')}</Button>}
           />
         </Panel>
       ) : (
         <>
           <div className="ops-toolbar ops-toolbar--compact">
-            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search status pages" aria-label="Search status pages" />
-            <span className="ops-result-count">{filteredPages.length} of {pages.length} pages</span>
+            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('statusPages.search')} aria-label={t('statusPages.search')} />
+            <span className="ops-result-count">{t('statusPages.count', { filtered: filteredPages.length, total: pages.length })}</span>
           </div>
           {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <Panel className="ops-table-panel">
             <div className="ops-table-scroll ops-desktop-only">
               <table className="ops-data-table">
-                <thead><tr><th>Name</th><th>Access level</th><th>Status</th><th>Updated</th><th className="ops-actions-column">Actions</th></tr></thead>
+                <thead><tr><th>{t('statusPages.name')}</th><th>{t('statusPages.access')}</th><th>{t('common.status')}</th><th>{t('statusPages.updated')}</th><th className="ops-actions-column">{t('common.actions')}</th></tr></thead>
                 <tbody>
                   {filteredPages.map((page) => (
                     <tr key={page.id}>
                       <td>
-                        <div className="ops-name-cell"><span className="ops-round-icon"><Radio size={18} /></span><span><strong>{page.name}</strong><small>{page.monitorCount} monitors · {page.subscribers} subscribers</small></span></div>
+                        <div className="ops-name-cell"><span className="ops-round-icon"><Radio size={18} /></span><span><strong>{page.name}</strong><small>{t('statusPages.stats', { monitors: page.monitorCount, subscribers: page.subscribers })}</small></span></div>
                       </td>
-                      <td><span className="ops-inline-meta">{page.accessLevel === 'public' ? <Globe2 size={16} /> : <LockKeyhole size={16} />}{page.accessLevel === 'public' ? 'Public' : page.accessLevel === 'password' ? 'Password' : 'Private'}</span></td>
-                      <td><Badge tone={page.status === 'published' ? 'success' : 'neutral'}>{page.status === 'published' ? 'Published' : 'Draft'}</Badge></td>
+                      <td><span className="ops-inline-meta">{page.accessLevel === 'public' ? <Globe2 size={16} /> : <LockKeyhole size={16} />}{t(`statusPages.access.${page.accessLevel}`)}</span></td>
+                      <td><Badge tone={page.status === 'published' ? 'success' : 'neutral'}>{t(`statusPages.status.${page.status}`)}</Badge></td>
                       <td>{formatDate(page.updatedAt)}</td>
                       <td>
                         <div className="ops-row-actions">
-                          <Button size="sm" type="button" onClick={() => { setAnnouncementPageId(page.id); setError('') }}><Megaphone size={16} /> Add announcement</Button>
-                          <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={`Open ${page.name}`} title="Open public page"><ExternalLink size={17} /></a>
-                          <IconButton label={`Edit ${page.name}`} onClick={() => onEdit?.(page.id)}><MoreHorizontal size={18} /></IconButton>
-                          {onDelete && <Button variant="ghost" size="sm" type="button" onClick={() => void deletePage(page)}>Delete</Button>}
+                          <Button size="sm" type="button" onClick={() => { setAnnouncementPageId(page.id); setError('') }}><Megaphone size={16} /> {t('statusPages.addAnnouncement')}</Button>
+                          <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={t('monitors.open', { name: page.name })} title={t('statusPages.openPublic')}><ExternalLink size={17} /></a>
+                          <IconButton label={t('maintenance.editNamed', { name: page.name })} onClick={() => onEdit?.(page.id)}><MoreHorizontal size={18} /></IconButton>
+                          {onDelete && <Button variant="ghost" size="sm" type="button" onClick={() => void deletePage(page)}>{t('common.delete')}</Button>}
                         </div>
                       </td>
                     </tr>
@@ -269,11 +273,11 @@ export function StatusPagesPage({
                 <article className="ops-resource-card" key={page.id}>
                   <div className="ops-card-row"><span className="ops-round-icon"><Radio size={18} /></span><Badge tone={page.status === 'published' ? 'success' : 'neutral'}>{page.status}</Badge></div>
                   <h2>{page.name}</h2>
-                  <p>{page.monitorCount} monitors · {page.accessLevel} · {page.subscribers} subscribers</p>
+                  <p>{t('statusPages.mobileStats', { monitors: page.monitorCount, access: t(`statusPages.access.${page.accessLevel}`), subscribers: page.subscribers })}</p>
                   <div className="ops-card-actions">
-                    <Button size="sm" type="button" onClick={() => setAnnouncementPageId(page.id)}><Megaphone size={16} /> Announce</Button>
-                    <Button size="sm" variant="secondary" type="button" onClick={() => onEdit?.(page.id)}>Edit</Button>
-                    <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={`Open ${page.name}`}><ExternalLink size={17} /></a>
+                    <Button size="sm" type="button" onClick={() => setAnnouncementPageId(page.id)}><Megaphone size={16} /> {t('statusPages.announce')}</Button>
+                    <Button size="sm" variant="secondary" type="button" onClick={() => onEdit?.(page.id)}>{t('common.edit')}</Button>
+                    <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={t('monitors.open', { name: page.name })}><ExternalLink size={17} /></a>
                   </div>
                 </article>
               ))}
@@ -282,41 +286,41 @@ export function StatusPagesPage({
         </>
       )}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create status page" icon={<Radio size={35} />} width="lg">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={t('statusPages.create')} icon={<Radio size={35} />} width="lg">
         <form className="ops-form" onSubmit={submitCreate}>
           <div className="form-grid">
-            <Field label="Name" hint="Used in the page title and heading.">
-              <input value={createDraft.name} onChange={(event) => updateCreate('name', event.target.value)} required maxLength={160} placeholder="System status" />
+            <Field label={t('statusPages.name')} hint={t('statusPages.nameHint')}>
+              <input value={createDraft.name} onChange={(event) => updateCreate('name', event.target.value)} required maxLength={160} placeholder={t('statusPages.namePlaceholder')} />
             </Field>
-            <Field label="Slug" hint="Leave empty to generate it from the name.">
+            <Field label={t('statusPages.slug')} hint={t('statusPages.slugHint')}>
               <input value={createDraft.slug} onChange={(event) => updateCreate('slug', toSlug(event.target.value))} pattern="[a-z0-9-]+" placeholder="system-status" />
             </Field>
           </div>
-          <Field label="Homepage URL">
+          <Field label={t('statusPages.homepage')}>
             <input type="url" value={createDraft.homepageUrl} onChange={(event) => updateCreate('homepageUrl', event.target.value)} placeholder="https://example.com" />
           </Field>
           <div className="form-grid">
-            <Field label="Access level">
+            <Field label={t('statusPages.access')}>
               <Select value={createDraft.accessLevel} onChange={(event) => updateCreate('accessLevel', event.target.value as StatusPageCreateInput['accessLevel'])}>
-                <option value="public">Public</option>
-                <option value="password">Password protected</option>
-                <option value="private">Private draft</option>
+                <option value="public">{t('statusPages.access.public')}</option>
+                <option value="password">{t('statusPages.access.password')}</option>
+                <option value="private">{t('statusPages.access.private')}</option>
               </Select>
             </Field>
-            <Field label="Language">
+            <Field label={t('language.label')}>
               <Select value={createDraft.language} onChange={(event) => updateCreate('language', event.target.value as StatusPageLanguageCode)}>
                 {languageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
             </Field>
           </div>
           {createDraft.accessLevel === 'password' && (
-            <Field label="Password" hint="Minimum 12 characters.">
+            <Field label={t('auth.password')} hint={t('statusPages.passwordHint')}>
               <input type="password" value={createDraft.password} onChange={(event) => updateCreate('password', event.target.value)} minLength={12} maxLength={72} required autoComplete="new-password" />
             </Field>
           )}
           <fieldset className="ops-check-grid">
-            <legend>Monitors to include</legend>
-            {monitors.map((monitor) => (
+            <legend>{t('statusPages.monitorsInclude')}</legend>
+			{publishableMonitors.map((monitor) => (
               <label key={monitor.id}>
                 <input
                   type="checkbox"
@@ -333,25 +337,25 @@ export function StatusPagesPage({
             ))}
           </fieldset>
           <div className="toggle-row">
-            <Toggle checked={createDraft.published} onChange={(value) => updateCreate('published', value)} label="Publish immediately" />
-            <div className="toggle-row__copy"><strong>Publish immediately</strong><span>The page can be changed back to a draft later.</span></div>
+            <Toggle checked={createDraft.published} onChange={(value) => updateCreate('published', value)} label={t('statusPages.publishNow')} />
+            <div className="toggle-row__copy"><strong>{t('statusPages.publishNow')}</strong><span>{t('statusPages.publishNowHint')}</span></div>
           </div>
           {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
-          <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" disabled={busy}><Plus size={17} /> {busy ? 'Creating…' : 'Create status page'}</Button></div>
+          <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button><Button type="submit" disabled={busy}><Plus size={17} /> {busy ? t('statusPages.creating') : t('statusPages.create')}</Button></div>
         </form>
       </Modal>
 
-      <Modal open={Boolean(announcementPageId)} onClose={() => setAnnouncementPageId(null)} title="Add announcement" icon={<Megaphone size={35} />} width="md">
+      <Modal open={Boolean(announcementPageId)} onClose={() => setAnnouncementPageId(null)} title={t('statusPages.addAnnouncement')} icon={<Megaphone size={35} />} width="md">
         <form className="ops-form" onSubmit={submitAnnouncement}>
-          <Field label="Title"><input value={announcementDraft.title} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, title: event.target.value }))} maxLength={200} required placeholder="Investigating elevated error rates" /></Field>
-          <Field label="Message"><textarea value={announcementDraft.body} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, body: event.target.value }))} maxLength={10_000} required placeholder="Tell subscribers what is happening and what to expect." /></Field>
-          <Field label="Incident status">
+          <Field label={t('statusPages.announcementTitle')}><input value={announcementDraft.title} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, title: event.target.value }))} maxLength={200} required placeholder={t('statusPages.announcementTitlePlaceholder')} /></Field>
+          <Field label={t('statusPages.message')}><textarea value={announcementDraft.body} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, body: event.target.value }))} maxLength={10_000} required placeholder={t('statusPages.messagePlaceholder')} /></Field>
+          <Field label={t('statusPages.incidentStatus')}>
             <Select value={announcementDraft.status} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, status: event.target.value as StatusPageAnnouncementInput['status'] }))}>
-              <option value="investigating">Investigating</option><option value="identified">Identified</option><option value="monitoring">Monitoring</option><option value="resolved">Resolved</option>
+              <option value="investigating">{formatStatus('investigating')}</option><option value="identified">{formatStatus('identified')}</option><option value="monitoring">{formatStatus('monitoring')}</option><option value="resolved">{formatStatus('resolved')}</option>
             </Select>
           </Field>
           {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
-          <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setAnnouncementPageId(null)}>Cancel</Button><Button type="submit" disabled={busy}><Megaphone size={17} /> {busy ? 'Publishing…' : 'Publish announcement'}</Button></div>
+          <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setAnnouncementPageId(null)}>{t('common.cancel')}</Button><Button type="submit" disabled={busy}><Megaphone size={17} /> {busy ? t('statusPages.publishing') : t('statusPages.publishAnnouncement')}</Button></div>
         </form>
       </Modal>
     </div>

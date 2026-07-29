@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sslping-dashboard-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@1e60f620b9541d2305ce4fc3d6a8f13a8a6b5c4c # v4.0.3
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install, test, and build
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test -- --run
+          npm run check
+          npm run build
+
+      - name: Build production container
+        run: |
+          docker build --pull --platform linux/amd64 \
+            --build-arg VITE_API_URL=https://api.sslping.io \
+            --build-arg VITE_DEMO_MODE=false \
+            --build-arg VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA \
+            --tag sslping-dashboard:ci .

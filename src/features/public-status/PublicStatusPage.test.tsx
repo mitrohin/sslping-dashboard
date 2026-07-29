@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import type { PublicStatusSnapshot } from '../../api'
 import { PublicStatusPage, type PublicStatusApi } from './PublicStatusPage'
 
@@ -61,6 +61,7 @@ function renderRoute(api: PublicStatusApi, path = '/status/example-cloud') {
 function createApi(result: PublicStatusSnapshot = snapshot): PublicStatusApi {
   return {
     getPublicStatusPage: vi.fn().mockResolvedValue(result),
+    accessPublicStatusPage: vi.fn().mockResolvedValue(result),
     subscribeStatusPage: vi.fn().mockResolvedValue({
       message: 'If the address can be subscribed, a confirmation email has been sent.',
     }),
@@ -76,7 +77,7 @@ describe('PublicStatusPage', () => {
     expect(await screen.findByRole('heading', { name: 'All systems operational' })).toBeInTheDocument()
     expect(screen.getByText('Public API')).toBeInTheDocument()
     expect(screen.getByText('API latency resolved')).toBeInTheDocument()
-    expect(api.getPublicStatusPage).toHaveBeenCalledWith('example-cloud', undefined)
+    expect(api.getPublicStatusPage).toHaveBeenCalledWith('example-cloud')
   })
 
   it('unlocks password-protected pages without storing the password', async () => {
@@ -86,11 +87,13 @@ describe('PublicStatusPage', () => {
       components: null,
       announcements: null,
     }
-    const getPublicStatusPage = vi.fn().mockImplementation((_slug: string, password?: string) =>
+    const getPublicStatusPage = vi.fn().mockResolvedValue(locked)
+    const accessPublicStatusPage = vi.fn().mockImplementation((_slug: string, password: string) =>
       Promise.resolve(password === 'correct horse' ? { ...snapshot, password_protected: true } : locked),
     )
     const api: PublicStatusApi = {
       getPublicStatusPage,
+      accessPublicStatusPage,
       subscribeStatusPage: vi.fn(),
     }
     renderRoute(api)
@@ -100,7 +103,8 @@ describe('PublicStatusPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /view status page/i }))
 
     expect(await screen.findByRole('heading', { name: 'All systems operational' })).toBeInTheDocument()
-    expect(getPublicStatusPage).toHaveBeenLastCalledWith('example-cloud', 'correct horse')
+    expect(accessPublicStatusPage).toHaveBeenLastCalledWith('example-cloud', 'correct horse')
+    expect(getPublicStatusPage).toHaveBeenCalledWith('example-cloud')
     expect(localStorage.getItem('correct horse')).toBeNull()
     expect(window.location.search).not.toContain('correct')
   })
@@ -109,6 +113,7 @@ describe('PublicStatusPage', () => {
     const notFound = Object.assign(new Error('missing'), { status: 404 })
     const api: PublicStatusApi = {
       getPublicStatusPage: vi.fn().mockRejectedValue(notFound),
+      accessPublicStatusPage: vi.fn(),
       subscribeStatusPage: vi.fn(),
     }
     renderRoute(api)

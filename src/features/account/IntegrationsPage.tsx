@@ -1,5 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import {
   Activity,
   Bell,
@@ -49,25 +49,26 @@ import type {
   IntegrationInput,
   SaveIntegrationCallback,
 } from './types'
+import { useI18n } from '../../app/I18nProvider'
 import './account.css'
 
 type AccountTab = 'integrations' | 'api-keys' | 'audit-log'
 type IntegrationFilter = 'all' | IntegrationCategory
 
-const tabs: readonly { value: AccountTab; label: string; icon: typeof Activity }[] = [
-  { value: 'integrations', label: 'Integrations', icon: Activity },
-  { value: 'api-keys', label: 'API keys', icon: KeyRound },
-  { value: 'audit-log', label: 'Audit log', icon: ScrollText },
+const tabs: readonly { value: AccountTab; labelKey: string; icon: typeof Activity }[] = [
+  { value: 'integrations', labelKey: 'integrations.tab.integrations', icon: Activity },
+  { value: 'api-keys', labelKey: 'integrations.tab.apiKeys', icon: KeyRound },
+  { value: 'audit-log', labelKey: 'integrations.tab.auditLog', icon: ScrollText },
 ]
 
-const categoryOptions: readonly { value: IntegrationFilter; label: string; icon: typeof Activity }[] = [
-  { value: 'all', label: 'All integrations', icon: Activity },
-  { value: 'chat', label: 'Chat platforms', icon: MessageCircle },
-  { value: 'webhook', label: 'Webhooks', icon: Webhook },
-  { value: 'incident-management', label: 'Incident management', icon: Siren },
-  { value: 'push', label: 'Push notifications', icon: Bell },
-  { value: 'email', label: 'Email', icon: Mail },
-  { value: 'sms-voice', label: 'SMS & voice', icon: PhoneCall },
+const categoryOptions: readonly { value: IntegrationFilter; labelKey: string; icon: typeof Activity }[] = [
+  { value: 'all', labelKey: 'integrations.category.all', icon: Activity },
+  { value: 'chat', labelKey: 'integrations.category.chat', icon: MessageCircle },
+  { value: 'webhook', labelKey: 'integrations.category.webhook', icon: Webhook },
+  { value: 'incident-management', labelKey: 'integrations.category.incident', icon: Siren },
+  { value: 'push', labelKey: 'integrations.category.push', icon: Bell },
+  { value: 'email', labelKey: 'integrations.category.email', icon: Mail },
+  { value: 'sms-voice', labelKey: 'integrations.category.smsVoice', icon: PhoneCall },
 ]
 
 const categoryIcons: Readonly<Record<IntegrationCategory, typeof Activity>> = {
@@ -100,24 +101,24 @@ interface EditorState {
   integration: IntegrationViewModel | null
 }
 
-function destinationLabel(input: IntegrationInput): string {
+function destinationLabel(input: IntegrationInput, t: (key: string, variables?: Record<string, string | number>) => string): string {
   if (input.type === 'email') {
     const count = input.config.recipients?.split(',').filter(Boolean).length ?? 0
-    return count > 0 ? `${count} email recipient${count === 1 ? '' : 's'}` : 'Email recipients configured'
+    return count > 0 ? t('integrations.destination.emailCount', { count }) : t('integrations.destination.email')
   }
-  if (input.type === 'telegram') return 'Telegram chat configured'
-  if (input.type === 'sms' || input.type === 'voice') return 'Phone destination configured'
-  if (input.type === 'pagerduty' || input.type === 'opsgenie') return 'On-call service configured'
-  if (input.type === 'webhook') return 'HTTPS endpoint · credentials hidden'
-  return 'Notification destination configured'
+  if (input.type === 'telegram') return t('integrations.destination.telegram')
+  if (input.type === 'sms' || input.type === 'voice') return t('integrations.destination.phone')
+  if (input.type === 'pagerduty' || input.type === 'opsgenie') return t('integrations.destination.onCall')
+  if (input.type === 'webhook') return t('integrations.destination.webhook')
+  return t('integrations.destination.generic')
 }
 
-function eventSummary(integration: IntegrationViewModel): string {
+function eventSummary(integration: IntegrationViewModel, t: (key: string, variables?: Record<string, string | number>) => string): string {
   const down = integration.events.includes('monitor.down')
   const up = integration.events.includes('monitor.up')
   const expiry = integration.events.includes('ssl.expiry') || integration.events.includes('domain.expiry')
-  const parts = [down && 'Down', up && 'Up', expiry && 'SSL & domain expiry'].filter(Boolean)
-  return parts.length > 0 ? parts.join(', ') : `${integration.events.length} selected events`
+  const parts = [down && t('integrations.event.downShort'), up && t('integrations.event.upShort'), expiry && t('integrations.event.expiryShort')].filter(Boolean)
+  return parts.length > 0 ? parts.join(', ') : t('integrations.event.selectedCount', { count: integration.events.length })
 }
 
 export function IntegrationsPage({
@@ -135,6 +136,7 @@ export function IntegrationsPage({
   onRevokeApiKey,
   onExportAudit,
 }: IntegrationsPageProps) {
+  const { t } = useI18n()
   const [activeTab, setActiveTab] = useState<AccountTab>(initialTab)
   const [integrations, setIntegrations] = useState<readonly IntegrationViewModel[]>(initialIntegrations)
   const [category, setCategory] = useState<IntegrationFilter>('all')
@@ -194,7 +196,7 @@ export function IntegrationsPage({
       category: provider.category,
       active: input.active,
       needsAttention: false,
-      destinationLabel: original?.destinationLabel ?? destinationLabel(input),
+      destinationLabel: original?.destinationLabel ?? destinationLabel(input, t),
       events: input.events,
       monitorIds: input.monitorIds,
       updatedAt: new Date().toISOString(),
@@ -219,7 +221,7 @@ export function IntegrationsPage({
           ? current.map((integration) => (integration.id === original.id ? original : integration))
           : current.filter((integration) => integration.id !== optimisticId),
       )
-      setError(saveError instanceof Error ? saveError.message : 'Could not save this integration.')
+      setError(saveError instanceof Error ? saveError.message : t('integrations.error.save'))
     } finally {
       setSaving(false)
     }
@@ -233,7 +235,7 @@ export function IntegrationsPage({
       if (saved) setIntegrations((current) => current.map((item) => (item.id === integration.id ? saved : item)))
     } catch (toggleError) {
       setIntegrations((current) => current.map((item) => (item.id === integration.id ? integration : item)))
-      setError(toggleError instanceof Error ? toggleError.message : 'Could not change integration status.')
+      setError(toggleError instanceof Error ? toggleError.message : t('integrations.error.toggle'))
     }
   }
 
@@ -246,20 +248,20 @@ export function IntegrationsPage({
       await onDeleteIntegration?.(original.id)
     } catch (deleteError) {
       setIntegrations((current) => [...current, original])
-      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete this integration.')
+      setError(deleteError instanceof Error ? deleteError.message : t('integrations.error.delete'))
     }
   }
 
   return (
     <div className="page page--wide account-page integrations-page">
       <PageHeader
-        title="Integrations & API"
-        description="Route alerts, automate monitoring, and inspect security-sensitive workspace activity."
-        actions={activeTab === 'integrations' ? <Button onClick={() => openCreate()}><Plus size={17} /> Add integration</Button> : undefined}
+        title={t('integrations.title')}
+        description={t('integrations.description')}
+        actions={activeTab === 'integrations' ? <Button onClick={() => openCreate()}><Plus size={17} /> {t('integrations.add')}</Button> : undefined}
       />
 
-      <div className="account-tabs" role="tablist" aria-label="Integrations and API sections" onKeyDown={switchTabWithKeyboard}>
-        {tabs.map(({ value, label, icon: Icon }) => (
+      <div className="account-tabs" role="tablist" aria-label={t('integrations.sections')} onKeyDown={switchTabWithKeyboard}>
+        {tabs.map(({ value, labelKey, icon: Icon }) => (
           <button
             key={value}
             id={`account-tab-${value}`}
@@ -270,25 +272,25 @@ export function IntegrationsPage({
             tabIndex={activeTab === value ? 0 : -1}
             className={activeTab === value ? 'is-active' : ''}
             onClick={() => setActiveTab(value)}
-          ><Icon size={18} />{label}</button>
+          ><Icon size={18} />{t(labelKey)}</button>
         ))}
       </div>
 
       {error && <FeedbackBanner tone="error" className="feedback-banner--page" onDismiss={() => setError('')}>{error}</FeedbackBanner>}
-      {focusedMonitor && <div className="integration-focus"><Bell size={18} /><span><strong>Notification routes for {focusedMonitor.name}</strong><small>New integrations will be assigned to this monitor automatically. Workspace-wide routes are also shown.</small></span><Link to={`/monitors/${focusedMonitor.id}`}>Back to monitor</Link></div>}
+      {focusedMonitor && <div className="integration-focus"><Bell size={18} /><span><strong>{t('integrations.routesFor', { name: focusedMonitor.name })}</strong><small>{t('integrations.routesHint')}</small></span><Link to={`/monitors/${focusedMonitor.id}`}>{t('integrations.backMonitor')}</Link></div>}
 
       <div id="account-panel-integrations" hidden={activeTab !== 'integrations'} role="tabpanel" aria-labelledby="account-tab-integrations">
         <div className="integration-layout">
-          <nav className="integration-categories" aria-label="Integration categories">
-            {categoryOptions.map(({ value, label, icon: Icon }) => (
-              <button type="button" key={value} className={category === value ? 'is-active' : ''} onClick={() => setCategory(value)}><Icon size={18} />{label}</button>
+          <nav className="integration-categories" aria-label={t('integrations.categories')}>
+            {categoryOptions.map(({ value, labelKey, icon: Icon }) => (
+              <button type="button" key={value} className={category === value ? 'is-active' : ''} onClick={() => setCategory(value)}><Icon size={18} />{t(labelKey)}</button>
             ))}
           </nav>
 
           <div className="integration-content">
-            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by integration type or name…" aria-label="Search integrations" />
+            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('integrations.search')} aria-label={t('integrations.searchLabel')} />
             {filteredCatalog.length === 0 ? (
-              <Panel><EmptyState icon={<Activity size={35} />} title="No matching integrations" description="Try another category or search phrase." /></Panel>
+              <Panel><EmptyState icon={<Activity size={35} />} title={t('integrations.empty')} description={t('integrations.emptyHint')} /></Panel>
             ) : (
               <div className="integration-catalog">
                 {filteredCatalog.map((item) => {
@@ -303,7 +305,7 @@ export function IntegrationsPage({
                       <div className="integration-card__header">
                         <div className="integration-logo"><CategoryIcon size={24} /></div>
                         <div><h2>{item.name}</h2><p>{item.description}</p></div>
-                        <Button size="sm" onClick={() => openCreate(item.type)}><Plus size={16} /> Add</Button>
+                        <Button size="sm" onClick={() => openCreate(item.type)}><Plus size={16} /> {t('common.add')}</Button>
                       </div>
                       {configured.length > 0 && (
                         <div className="configured-integrations">
@@ -311,13 +313,13 @@ export function IntegrationsPage({
                             <article key={integration.id} className="configured-integration">
                               <span className={integration.active ? 'integration-state is-active' : 'integration-state'} aria-hidden="true" />
                               <div><strong>{integration.name}</strong><small>{integration.destinationLabel}</small></div>
-                              <span className="configured-integration__events">{eventSummary(integration)}</span>
-                              <span className="muted configured-integration__updated">Updated {formatRelativeTime(integration.updatedAt)}</span>
-                              {integration.needsAttention && <Badge tone="warning">Activation needed</Badge>}
-                              {!integration.needsAttention && <Badge tone={integration.active ? 'success' : 'neutral'}>{integration.active ? 'Active' : 'Paused'}</Badge>}
-                              <Toggle checked={integration.active} onChange={(active) => void toggleIntegration(integration, active)} label={`${integration.active ? 'Pause' : 'Enable'} ${integration.name}`} />
-                              <IconButton label={`Edit ${integration.name}`} onClick={() => openEdit(integration)}><Pencil size={16} /></IconButton>
-                              <IconButton label={`Delete ${integration.name}`} onClick={() => setDeleting(integration)}><Trash2 size={16} /></IconButton>
+                              <span className="configured-integration__events">{eventSummary(integration, t)}</span>
+                              <span className="muted configured-integration__updated">{t('integrations.updated', { time: formatRelativeTime(integration.updatedAt) })}</span>
+                              {integration.needsAttention && <Badge tone="warning">{t('integrations.activationNeeded')}</Badge>}
+                              {!integration.needsAttention && <Badge tone={integration.active ? 'success' : 'neutral'}>{integration.active ? t('common.active') : t('common.paused')}</Badge>}
+                              <Toggle checked={integration.active} onChange={(active) => void toggleIntegration(integration, active)} label={t(integration.active ? 'integrations.pauseNamed' : 'integrations.enableNamed', { name: integration.name })} />
+                              <IconButton label={t('common.editNamed', { name: integration.name })} onClick={() => openEdit(integration)}><Pencil size={16} /></IconButton>
+                              <IconButton label={t('common.deleteNamed', { name: integration.name })} onClick={() => setDeleting(integration)}><Trash2 size={16} /></IconButton>
                             </article>
                           ))}
                         </div>
@@ -352,8 +354,8 @@ export function IntegrationsPage({
         onSubmit={saveIntegration}
       />
 
-      <Modal open={Boolean(deleting)} onClose={() => setDeleting(null)} title="Delete integration" icon={<Trash2 size={35} />} width="sm">
-        {deleting && <div className="confirm-action"><p>Delete <strong>{deleting.name}</strong>? It will stop receiving alerts immediately.</p><div className="form-actions"><Button variant="secondary" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="danger" onClick={confirmDelete}><Trash2 size={16} /> Delete integration</Button></div></div>}
+      <Modal open={Boolean(deleting)} onClose={() => setDeleting(null)} title={t('integrations.deleteTitle')} icon={<Trash2 size={35} />} width="sm">
+        {deleting && <div className="confirm-action"><p>{t('integrations.deletePrompt', { name: deleting.name })}</p><div className="form-actions"><Button variant="secondary" onClick={() => setDeleting(null)}>{t('common.cancel')}</Button><Button variant="danger" onClick={confirmDelete}><Trash2 size={16} /> {t('integrations.delete')}</Button></div></div>}
       </Modal>
     </div>
   )

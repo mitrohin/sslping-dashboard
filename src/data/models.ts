@@ -8,6 +8,8 @@ export type MonitorType =
   | 'domain'
   | 'reachability'
   | 'heartbeat'
+  | 'leakcheck'
+  | 'compliance'
 
 export type MonitorStatus = 'pending' | 'up' | 'down' | 'degraded' | 'paused'
 export type CheckStatus = 'ok' | 'failed' | 'degraded' | 'skipped'
@@ -55,6 +57,10 @@ export interface MonitorViewModel {
   hasOpenIncident?: boolean
   sslCertificate?: ExpirySnapshot
   domainRegistration?: ExpirySnapshot
+  leakReport?: import('../api/types').LeakCheckReport
+  leakReportCached?: boolean
+  leakCacheExpiresAt?: string
+  complianceReport?: import('../api/types').ComplianceReport
 }
 
 export interface MonitorSummary {
@@ -99,6 +105,23 @@ export interface UptimePeriodSummary {
   downtimeSeconds: number
 }
 
+export interface IncidentLocationObservation {
+  region: string
+  status: CheckStatus
+  rootCause?: string
+  latencyMs?: number
+  finishedAt?: string
+}
+
+export interface IncidentLocationQuorum {
+  policy: string
+  expectedLocations: number
+  requiredFailures: number
+  requiredRecoveries: number
+  evaluatedAt?: string
+  observations: readonly IncidentLocationObservation[]
+}
+
 export interface IncidentViewModel {
   id: string
   monitorId: string
@@ -113,6 +136,9 @@ export interface IncidentViewModel {
   commentCount: number
   visibility: 'included' | 'excluded'
   assignedTo?: string
+  locationQuorum?: IncidentLocationQuorum
+  leakReport?: import('../api/types').LeakCheckReport
+  complianceReport?: import('../api/types').ComplianceReport
 }
 
 export interface IncidentSummary {

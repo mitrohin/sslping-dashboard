@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle2, ChevronDown, CircleAlert, Info, Search, TriangleAlert, X } from 'lucide-react'
 
 let openModalCount = 0
@@ -200,8 +201,10 @@ export function Field({
 }) {
   return (
     <label className={`field ${className}`}>
-      <span className="field__label">{label}</span>
-      {hint && <span className="field__hint">{hint}</span>}
+      <span className="field__intro">
+        <span className="field__label">{label}</span>
+        {hint && <span className="field__hint">{hint}</span>}
+      </span>
       {children}
       {error && <span className="field__error">{error}</span>}
     </label>
@@ -343,7 +346,7 @@ export function Modal({
   }, [open])
 
   if (!open) return null
-  return (
+  return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         ref={dialogRef}
@@ -363,7 +366,8 @@ export function Modal({
         </header>
         <div className="modal__body">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -396,4 +400,47 @@ export function SegmentedControl<T extends string>({
 
 export function Skeleton({ className = '' }: { className?: string }) {
   return <span className={`skeleton ${className}`} aria-hidden="true" />
+}
+
+export function PageLoadingSkeleton({
+  label = 'Loading workspace data',
+  rows = 4,
+}: {
+  label?: string
+  rows?: number
+}) {
+  return (
+    <div className="page-loading-skeleton" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">{label}…</span>
+      <div className="page-loading-skeleton__heading" aria-hidden="true">
+        <Skeleton className="page-loading-skeleton__title" />
+        <Skeleton className="page-loading-skeleton__action" />
+      </div>
+      <div className="page-loading-skeleton__toolbar" aria-hidden="true">
+        <Skeleton />
+        <Skeleton />
+        <Skeleton />
+        <Skeleton />
+      </div>
+      <div className="page-loading-skeleton__layout" aria-hidden="true">
+        <div className="page-loading-skeleton__list">
+          {Array.from({ length: rows }, (_, index) => (
+            <div className="page-loading-skeleton__row" key={index}>
+              <Skeleton className="page-loading-skeleton__avatar" />
+              <span className="page-loading-skeleton__copy">
+                <Skeleton />
+                <Skeleton />
+              </span>
+              <Skeleton className="page-loading-skeleton__meta" />
+            </div>
+          ))}
+        </div>
+        <div className="page-loading-skeleton__aside">
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+        </div>
+      </div>
+    </div>
+  )
 }

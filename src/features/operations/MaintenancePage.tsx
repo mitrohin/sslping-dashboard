@@ -18,6 +18,8 @@ import {
 import { formatDate, formatDuration, formatStatus } from '../../lib/format'
 import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
 import './operations.css'
+import { useI18n } from '../../app/I18nProvider'
+import { dateTimeInputToUTC, dateToTimeZoneInput, timeZoneGroups, timeZones } from '../../lib/timezones'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -37,6 +39,7 @@ export interface MaintenancePageProps {
   windows?: readonly MaintenanceWindowViewModel[]
   monitors?: readonly MonitorViewModel[]
   initialCreateMonitorId?: string
+  defaultTimezone?: string
   onCreate?: (input: MaintenanceWindowInput) => MaybePromise<MaintenanceWindowViewModel | void>
   onUpdate?: (windowId: string, input: MaintenanceWindowInput) => MaybePromise<MaintenanceWindowViewModel | void>
   onDelete?: (windowId: string) => MaybePromise<void>
@@ -61,14 +64,12 @@ const weekdays = [
   { value: 0, label: 'Sun' },
 ] as const
 
-const timezones = ['UTC', 'Europe/London', 'Europe/Moscow', 'America/New_York', 'America/Los_Angeles', 'Asia/Singapore', 'Asia/Tokyo'] as const
-
-const emptyDraft = (): MaintenanceDraft => ({
+const emptyDraft = (defaultTimezone?: string): MaintenanceDraft => ({
   name: '',
   monitorIds: [],
   startsAt: '',
   durationMinutes: 60,
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  timezone: defaultTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   recurrence: 'once',
   weekdays: [],
   endsAt: '',
@@ -80,17 +81,17 @@ const makeId = (): string =>
     ? crypto.randomUUID()
     : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-const recurrenceLabel = (recurrence: MaintenanceRecurrence): string =>
-  recurrence === 'once' ? 'Does not repeat' : recurrence === 'daily' ? 'Repeats daily' : 'Repeats weekly'
-
 export function MaintenancePage({
   windows: initialWindows = demoMaintenanceWindows,
   monitors = demoMonitors,
   initialCreateMonitorId,
+  defaultTimezone,
   onCreate,
   onUpdate,
   onDelete,
 }: MaintenancePageProps) {
+  const { t } = useI18n()
+  const recurrenceLabel = (recurrence: MaintenanceRecurrence): string => t(`maintenance.recurrence.${recurrence}`)
   const [windows, setWindows] = useState<MaintenanceWindowViewModel[]>(() => [...initialWindows])
   const [query, setQuery] = useState('')
   const [draft, setDraft] = useState<MaintenanceDraft | null>(null)
@@ -112,15 +113,15 @@ export function MaintenancePage({
     const monitor = monitors.find((item) => item.id === initialCreateMonitorId)
     setError('')
     setDraft({
-      ...emptyDraft(),
-      name: monitor ? `Maintenance on ${monitor.name}` : '',
+      ...emptyDraft(defaultTimezone),
+      name: monitor ? t('maintenance.onMonitor', { name: monitor.name }) : '',
       monitorIds: [initialCreateMonitorId],
     })
-  }, [initialCreateMonitorId, monitors])
+  }, [defaultTimezone, initialCreateMonitorId, monitors])
 
   const openCreate = () => {
     setError('')
-    setDraft(emptyDraft())
+    setDraft(emptyDraft(defaultTimezone))
   }
 
   const openEdit = (window: MaintenanceWindowViewModel) => {
@@ -129,12 +130,12 @@ export function MaintenancePage({
       id: window.id,
       name: window.name,
       monitorIds: [...window.monitorIds],
-      startsAt: window.startsAt.slice(0, 16),
+      startsAt: dateToTimeZoneInput(window.startsAt, window.timezone),
       durationMinutes: window.durationMinutes,
       timezone: window.timezone,
       recurrence: window.recurrence,
       weekdays: [...window.weekdays],
-      endsAt: window.endsAt?.slice(0, 16) ?? '',
+      endsAt: window.endsAt ? dateToTimeZoneInput(window.endsAt, window.timezone) : '',
       active: window.active,
     })
   }
@@ -146,16 +147,17 @@ export function MaintenancePage({
     event.preventDefault()
     if (!draft) return
     if (!draft.name.trim() || draft.monitorIds.length === 0 || !draft.startsAt) {
-      setError('Name, start time, and at least one monitor are required.')
+      setError(t('maintenance.validationRequired'))
       return
     }
     if (draft.recurrence === 'weekly' && draft.weekdays.length === 0) {
-      setError('Choose at least one weekday for a weekly window.')
+      setError(t('maintenance.validationWeekday'))
       return
     }
-    const parsedStart = new Date(draft.startsAt)
-    if (Number.isNaN(parsedStart.getTime())) {
-      setError('Choose a valid start date and time.')
+    const parsedStart = dateTimeInputToUTC(draft.startsAt, draft.timezone)
+    const parsedEnd = draft.endsAt ? dateTimeInputToUTC(draft.endsAt, draft.timezone) : null
+    if (!parsedStart || (draft.endsAt && !parsedEnd)) {
+      setError(t('maintenance.validationDate'))
       return
     }
     const input: MaintenanceWindowInput = {
@@ -166,13 +168,13 @@ export function MaintenancePage({
       timezone: draft.timezone,
       recurrence: draft.recurrence,
       weekdays: draft.recurrence === 'weekly' ? draft.weekdays : [],
-      ...(draft.endsAt ? { endsAt: new Date(draft.endsAt).toISOString() } : {}),
+      ...(parsedEnd ? { endsAt: parsedEnd.toISOString() } : {}),
       active: draft.active,
     }
     const optimistic: MaintenanceWindowViewModel = {
       id: draft.id ?? makeId(),
       ...input,
-      monitorNames: input.monitorIds.map((id) => monitorById.get(id)?.name ?? 'Unknown monitor'),
+      monitorNames: input.monitorIds.map((id) => monitorById.get(id)?.name ?? t('maintenance.unknownMonitor')),
       state: input.active ? 'upcoming' : 'disabled',
     }
     const snapshot = windows
@@ -192,52 +194,52 @@ export function MaintenancePage({
       setDraft(null)
     } catch (caught) {
       setWindows(snapshot)
-      setError(caught instanceof Error ? caught.message : 'The maintenance window could not be saved.')
+      setError(caught instanceof Error ? caught.message : t('maintenance.saveFailed'))
     } finally {
       setBusy(false)
     }
   }
 
   const remove = async (window: MaintenanceWindowViewModel) => {
-    if (!globalThis.confirm(`Delete “${window.name}”?`)) return
+    if (!globalThis.confirm(t('maintenance.confirmDelete', { name: window.name }))) return
     const snapshot = windows
     setWindows((current) => current.filter((item) => item.id !== window.id))
     try {
       await onDelete?.(window.id)
     } catch (caught) {
       setWindows(snapshot)
-      setError(caught instanceof Error ? caught.message : 'The maintenance window could not be deleted.')
+      setError(caught instanceof Error ? caught.message : t('maintenance.deleteFailed'))
     }
   }
 
   return (
     <div className="page page--wide ops-page">
       <PageHeader
-        title="Maintenance windows"
-        description="Suppress alerts during planned work and keep maintenance out of uptime statistics."
-        actions={<Button type="button" onClick={openCreate}><Plus size={18} /> Create maintenance</Button>}
+        title={t('maintenance.title')}
+        description={t('maintenance.description')}
+        actions={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('maintenance.create')}</Button>}
       />
 
       {windows.length === 0 ? (
         <Panel className="ops-maintenance-empty">
           <EmptyState
             icon={<Wrench size={38} />}
-            title="Plan your first maintenance"
-            description="Choose affected monitors and a schedule. Alerts are paused while the maintenance window is active."
-            action={<Button type="button" onClick={openCreate}><CalendarClock size={18} /> Create maintenance window</Button>}
+            title={t('maintenance.first')}
+            description={t('maintenance.firstHint')}
+            action={<Button type="button" onClick={openCreate}><CalendarClock size={18} /> {t('maintenance.createWindow')}</Button>}
           />
         </Panel>
       ) : (
         <>
           <div className="ops-toolbar ops-toolbar--compact">
-            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by maintenance name or monitor" aria-label="Search maintenance windows" />
-            <span className="ops-result-count">{filteredWindows.length} windows</span>
+            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('maintenance.search')} aria-label={t('maintenance.searchLabel')} />
+            <span className="ops-result-count">{t('maintenance.windowCount', { count: filteredWindows.length })}</span>
           </div>
           {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <Panel className="ops-table-panel">
             <div className="ops-table-scroll ops-desktop-only">
               <table className="ops-data-table">
-                <thead><tr><th>Maintenance</th><th>Monitors</th><th>Next start</th><th>Duration</th><th>Repeat</th><th>Status</th><th className="ops-actions-column">Actions</th></tr></thead>
+                <thead><tr><th>{t('nav.maintenance')}</th><th>{t('monitors.title')}</th><th>{t('maintenance.nextStart')}</th><th>{t('incidents.duration')}</th><th>{t('maintenance.repeat')}</th><th>{t('common.status')}</th><th className="ops-actions-column">{t('common.actions')}</th></tr></thead>
                 <tbody>
                   {filteredWindows.map((window) => (
                     <tr key={window.id}>
@@ -247,7 +249,7 @@ export function MaintenancePage({
                       <td>{formatDuration(window.durationMinutes * 60)}</td>
                       <td><span className="ops-inline-meta"><Repeat2 size={15} />{recurrenceLabel(window.recurrence)}</span></td>
                       <td><Badge tone={window.state === 'upcoming' || window.state === 'active' ? 'success' : 'neutral'}>{formatStatus(window.state)}</Badge></td>
-                      <td><div className="ops-row-actions"><IconButton label={`Edit ${window.name}`} onClick={() => openEdit(window)}><Edit3 size={17} /></IconButton><IconButton label={`Delete ${window.name}`} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div></td>
+                      <td><div className="ops-row-actions"><IconButton label={t('maintenance.editNamed', { name: window.name })} onClick={() => openEdit(window)}><Edit3 size={17} /></IconButton><IconButton label={t('maintenance.deleteNamed', { name: window.name })} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -259,22 +261,22 @@ export function MaintenancePage({
                   <div className="ops-card-row"><span className="ops-round-icon"><Wrench size={17} /></span><Badge tone={window.active ? 'success' : 'neutral'}>{formatStatus(window.state)}</Badge></div>
                   <h2>{window.name}</h2>
                   <p>{window.monitorNames.join(', ')}</p>
-                  <dl><div><dt>Starts</dt><dd>{formatDate(window.startsAt)}</dd></div><div><dt>Duration</dt><dd>{formatDuration(window.durationMinutes * 60)}</dd></div><div><dt>Repeat</dt><dd>{recurrenceLabel(window.recurrence)}</dd></div></dl>
-                  <div className="ops-card-actions"><Button size="sm" variant="secondary" type="button" onClick={() => openEdit(window)}><Edit3 size={16} /> Edit</Button><IconButton label={`Delete ${window.name}`} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div>
+                  <dl><div><dt>{t('maintenance.starts')}</dt><dd>{formatDate(window.startsAt)}</dd></div><div><dt>{t('incidents.duration')}</dt><dd>{formatDuration(window.durationMinutes * 60)}</dd></div><div><dt>{t('maintenance.repeat')}</dt><dd>{recurrenceLabel(window.recurrence)}</dd></div></dl>
+                  <div className="ops-card-actions"><Button size="sm" variant="secondary" type="button" onClick={() => openEdit(window)}><Edit3 size={16} /> {t('common.edit')}</Button><IconButton label={t('maintenance.deleteNamed', { name: window.name })} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div>
                 </article>
               ))}
             </div>
-            {filteredWindows.length === 0 && <div className="ops-filter-empty"><Search size={28} /><strong>No matching windows</strong><span>Try another maintenance name or monitor.</span></div>}
+            {filteredWindows.length === 0 && <div className="ops-filter-empty"><Search size={28} /><strong>{t('maintenance.empty')}</strong><span>{t('maintenance.emptyHint')}</span></div>}
           </Panel>
         </>
       )}
 
-      <Modal open={Boolean(draft)} onClose={() => setDraft(null)} title={draft?.id ? 'Edit maintenance window' : 'Create maintenance window'} icon={<Wrench size={36} />} width="lg">
+      <Modal open={Boolean(draft)} onClose={() => setDraft(null)} title={draft?.id ? t('maintenance.editWindow') : t('maintenance.createWindow')} icon={<Wrench size={36} />} width="lg">
         {draft && (
           <form className="ops-form" onSubmit={submit}>
-            <Field label="Friendly name"><input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} required placeholder="Maintenance on production API" /></Field>
+            <Field label={t('monitorForm.friendlyName')}><input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} required placeholder={t('maintenance.namePlaceholder')} /></Field>
             <fieldset className="ops-check-grid">
-              <legend>Monitors</legend>
+              <legend>{t('monitors.title')}</legend>
               {monitors.map((monitor) => (
                 <label key={monitor.id}>
                   <input type="checkbox" checked={draft.monitorIds.includes(monitor.id)} onChange={(event) => updateDraft('monitorIds', event.target.checked ? [...draft.monitorIds, monitor.id] : draft.monitorIds.filter((id) => id !== monitor.id))} />
@@ -283,20 +285,20 @@ export function MaintenancePage({
               ))}
             </fieldset>
             <div className="form-grid">
-              <Field label="Repeat"><Select value={draft.recurrence} onChange={(event) => updateDraft('recurrence', event.target.value as MaintenanceRecurrence)}><option value="once">Don't repeat</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></Select></Field>
-              <Field label="Time zone"><Select value={draft.timezone} onChange={(event) => updateDraft('timezone', event.target.value)}>{timezones.includes(draft.timezone as typeof timezones[number]) ? null : <option value={draft.timezone}>{draft.timezone}</option>}{timezones.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}</Select></Field>
+              <Field label={t('maintenance.repeat')}><Select value={draft.recurrence} onChange={(event) => updateDraft('recurrence', event.target.value as MaintenanceRecurrence)}><option value="once">{t('maintenance.dontRepeat')}</option><option value="daily">{t('maintenance.repeatDaily')}</option><option value="weekly">{t('maintenance.repeatWeekly')}</option></Select></Field>
+              <Field label={t('maintenance.timezone')}><Select value={draft.timezone} onChange={(event) => updateDraft('timezone', event.target.value)}>{!timeZones.includes(draft.timezone) && <option value={draft.timezone}>{draft.timezone}</option>}{timeZoneGroups.map((group) => <optgroup key={group.area} label={group.area}>{group.zones.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}</optgroup>)}</Select></Field>
             </div>
             {draft.recurrence === 'weekly' && (
-              <fieldset className="ops-weekdays"><legend>Days in week to repeat</legend>{weekdays.map((day) => <label key={day.value} className={draft.weekdays.includes(day.value) ? 'is-selected' : ''}><input type="checkbox" checked={draft.weekdays.includes(day.value)} onChange={(event) => updateDraft('weekdays', event.target.checked ? [...draft.weekdays, day.value] : draft.weekdays.filter((value) => value !== day.value))} /><span>{day.label}</span></label>)}</fieldset>
+              <fieldset className="ops-weekdays"><legend>{t('maintenance.weekdays')}</legend>{weekdays.map((day) => <label key={day.value} className={draft.weekdays.includes(day.value) ? 'is-selected' : ''}><input type="checkbox" checked={draft.weekdays.includes(day.value)} onChange={(event) => updateDraft('weekdays', event.target.checked ? [...draft.weekdays, day.value] : draft.weekdays.filter((value) => value !== day.value))} /><span>{t(`weekday.${day.value}`)}</span></label>)}</fieldset>
             )}
             <div className="form-grid">
-              <Field label="Start date & time"><input type="datetime-local" value={draft.startsAt} onChange={(event) => updateDraft('startsAt', event.target.value)} required /></Field>
-              <Field label="Duration (minutes)"><input type="number" min={1} max={525_600} value={draft.durationMinutes} onChange={(event) => updateDraft('durationMinutes', Number(event.target.value))} required /></Field>
+              <Field label={t('maintenance.startDate')}><input type="datetime-local" value={draft.startsAt} onChange={(event) => updateDraft('startsAt', event.target.value)} required /></Field>
+              <Field label={t('maintenance.durationMinutes')}><input type="number" min={1} max={525_600} value={draft.durationMinutes} onChange={(event) => updateDraft('durationMinutes', Number(event.target.value))} required /></Field>
             </div>
-            {draft.recurrence !== 'once' && <Field label="Repeat until" hint="Optional end for this recurring schedule."><input type="datetime-local" value={draft.endsAt} onChange={(event) => updateDraft('endsAt', event.target.value)} /></Field>}
-            {draft.id && <div className="toggle-row"><Toggle checked={draft.active} onChange={(value) => updateDraft('active', value)} label="Maintenance active" /><div className="toggle-row__copy"><strong>Active schedule</strong><span>Disabled windows remain in history but do not suppress alerts.</span></div></div>}
+            {draft.recurrence !== 'once' && <Field label={t('maintenance.repeatUntil')} hint={t('maintenance.repeatUntilHint')}><input type="datetime-local" value={draft.endsAt} onChange={(event) => updateDraft('endsAt', event.target.value)} /></Field>}
+            {draft.id && <div className="toggle-row"><Toggle checked={draft.active} onChange={(value) => updateDraft('active', value)} label={t('maintenance.active')} /><div className="toggle-row__copy"><strong>{t('maintenance.activeSchedule')}</strong><span>{t('maintenance.activeHint')}</span></div></div>}
             {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
-            <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setDraft(null)}>Close</Button><Button type="submit" disabled={busy}><CalendarClock size={17} /> {busy ? 'Saving…' : draft.id ? 'Save changes' : 'Create window'}</Button></div>
+            <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setDraft(null)}>{t('common.close')}</Button><Button type="submit" disabled={busy}><CalendarClock size={17} /> {busy ? t('common.saving') : draft.id ? t('common.saveChanges') : t('maintenance.createWindow')}</Button></div>
           </form>
         )}
       </Modal>

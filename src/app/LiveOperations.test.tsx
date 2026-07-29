@@ -1,7 +1,7 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import type {
   Announcement,
   Incident,
@@ -349,7 +349,6 @@ describe('LiveIncidentsPage', () => {
         },
       ],
     })
-    mocks.api.acknowledgeIncident.mockResolvedValue(incident)
     mocks.api.assignIncident.mockResolvedValue(incident)
     mocks.api.addIncidentComment.mockResolvedValue({ id: 'comment-2' })
     mocks.api.resolveIncident.mockResolvedValue({ ...incident, status: 'resolved' })
@@ -379,13 +378,11 @@ describe('LiveIncidentsPage', () => {
     expect(props.members?.[0]).toMatchObject({ id: user.id, role: 'admin' })
 
     await act(async () => {
-      await props.onAcknowledge?.(incident.id)
       await props.onAssign?.(incident.id, user.id)
       await props.onComment?.(incident.id, 'A useful update')
       await props.onResolve?.(incident.id)
     })
 
-    expect(mocks.api.acknowledgeIncident).toHaveBeenCalledWith('workspace-1', incident.id)
     expect(mocks.api.assignIncident).toHaveBeenCalledWith('workspace-1', incident.id, user.id)
     expect(mocks.api.addIncidentComment).toHaveBeenCalledWith(
       'workspace-1', incident.id, 'A useful update',

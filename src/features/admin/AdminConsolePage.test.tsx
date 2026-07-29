@@ -1,12 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AdminBillingWorkspace, Invoice, SupportTicketDetail } from '../../api/types'
+import type { AdminBillingWorkspace, AdminUser, CustomerRegion, Invoice, SupportTicketDetail } from '../../api/types'
+import { I18nProvider, LanguageSelect } from '../../app/I18nProvider'
 import { AdminConsolePage, PlanModal, TicketModal } from './AdminConsolePage'
 
 const mocks = vi.hoisted(() => {
   const users = vi.fn()
   const plans = vi.fn()
+  const regions = vi.fn().mockResolvedValue({ items: [] })
+  const checkLocations = vi.fn().mockResolvedValue({ items: [] })
+  const createCheckLocation = vi.fn()
+  const updateCheckLocation = vi.fn()
   const tickets = vi.fn()
   const channels = vi.fn()
   const ticketDetail = vi.fn()
@@ -20,11 +25,15 @@ const mocks = vi.hoisted(() => {
   const markInvoicePaid = vi.fn()
   const updateBillingSettings = vi.fn()
   return {
-    users, plans, tickets, channels, ticketDetail, markRead, invoices, billingWorkspaces, billingSettings, invoiceDetail, workspacePayments, updateWorkspacePayments, markInvoicePaid, updateBillingSettings,
+    users, plans, regions, checkLocations, createCheckLocation, updateCheckLocation, tickets, channels, ticketDetail, markRead, invoices, billingWorkspaces, billingSettings, invoiceDetail, workspacePayments, updateWorkspacePayments, markInvoicePaid, updateBillingSettings,
     auth: { user: { id: 'admin-1', name: 'Administrator', system_role: 'superadmin' as 'user' | 'accountant' | 'superadmin' } },
     api: {
       adminListUsers: users,
       adminListPlans: plans,
+      adminListRegions: regions,
+      adminListCheckLocations: checkLocations,
+      adminCreateCheckLocation: createCheckLocation,
+      adminUpdateCheckLocation: updateCheckLocation,
       adminListTickets: tickets,
       adminListNotificationChannels: channels,
       adminGetTicket: ticketDetail,
@@ -64,12 +73,58 @@ const detail: SupportTicketDetail = {
   messages: [],
 }
 
+const globalRegion: CustomerRegion = {
+  id: 'region-global',
+  code: 'global',
+  name: 'Global',
+  default_locale: 'en',
+  currency: 'USD',
+  payment_providers: ['manual', 'keepz', 'cloudpayments'],
+  default_plan_code: 'free',
+  active: true,
+  default: true,
+  created_at: '2026-07-26T17:00:00Z',
+  updated_at: '2026-07-26T17:00:00Z',
+}
+
 afterEach(() => {
   cleanup()
+  window.localStorage.removeItem('sslping.locale')
   vi.clearAllMocks()
   mocks.invoices.mockReset().mockResolvedValue({ items: [] })
   mocks.billingWorkspaces.mockReset().mockResolvedValue({ items: [] })
+  mocks.regions.mockReset().mockResolvedValue({ items: [globalRegion] })
+  mocks.checkLocations.mockReset().mockResolvedValue({ items: [] })
+  mocks.createCheckLocation.mockReset()
+  mocks.updateCheckLocation.mockReset()
   mocks.auth.user = { id: 'admin-1', name: 'Administrator', system_role: 'superadmin' }
+})
+
+describe('administrator localization', () => {
+  it('updates the complete administration overview when the dashboard language changes', async () => {
+    mocks.users.mockResolvedValue({ items: [] })
+    mocks.plans.mockResolvedValue({ items: [] })
+    mocks.tickets.mockResolvedValue({ items: [] })
+    mocks.channels.mockResolvedValue({ items: [] })
+    mocks.regions.mockResolvedValue({ items: [globalRegion] })
+
+    render(
+      <I18nProvider>
+        <LanguageSelect />
+        <AdminConsolePage />
+      </I18nProvider>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /Control center/ })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'ru' } })
+
+    expect(await screen.findByRole('heading', { name: /Центр управления/ })).toBeInTheDocument()
+    expect(screen.getByText('Зарегистрированные пользователи')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Пользователи и пространства' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Точки проверки' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Поиск по пользователю, email или пространству')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Control center/ })).not.toBeInTheDocument()
+  })
 })
 
 function invoice(overrides: Partial<Invoice> = {}): Invoice {
@@ -144,7 +199,7 @@ describe('administrator ticket reply', () => {
 describe('plan price editor', () => {
   it('keeps a decimal draft stable and converts it to integer cents before saving', () => {
     const onSave = vi.fn()
-    render(<PlanModal open plan={null} busy={false} onClose={() => undefined} onSave={onSave} />)
+    render(<PlanModal open plan={null} regions={[globalRegion]} busy={false} onClose={() => undefined} onSave={onSave} />)
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Pro' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Code' }), { target: { value: 'pro' } })
@@ -159,7 +214,7 @@ describe('plan price editor', () => {
   })
 
   it('uses the backend minimums and clamps invalid limit input', () => {
-    render(<PlanModal open plan={null} busy={false} onClose={() => undefined} onSave={() => undefined} />)
+    render(<PlanModal open plan={null} regions={[globalRegion]} busy={false} onClose={() => undefined} onSave={() => undefined} />)
 
     const monitors = screen.getByRole('spinbutton', { name: 'Monitors' })
     const interval = screen.getByRole('spinbutton', { name: 'Minimum interval, seconds' })
@@ -181,7 +236,7 @@ describe('plan price editor', () => {
 
   it('matches backend plan code and name validation before saving', () => {
     const onSave = vi.fn()
-    render(<PlanModal open plan={null} busy={false} onClose={() => undefined} onSave={onSave} />)
+    render(<PlanModal open plan={null} regions={[globalRegion]} busy={false} onClose={() => undefined} onSave={onSave} />)
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Pro' } })
     fireEvent.change(screen.getByRole('textbox', { name: /^Code/ }), { target: { value: '--' } })
@@ -214,6 +269,36 @@ describe('annual billing discount', () => {
   })
 })
 
+describe('administrator data loading', () => {
+  it('keeps successful sections visible when one newer endpoint is unavailable', async () => {
+    const loadedUser: AdminUser = {
+      id: 'customer-1',
+      email: 'customer@example.test',
+      name: 'Example Customer',
+      locale: 'en',
+      region_id: globalRegion.id,
+      region: globalRegion,
+      timezone: 'UTC',
+      email_verified_at: '2026-07-26T17:00:00Z',
+      two_factor_enabled: false,
+      system_role: 'user',
+      created_at: '2026-07-26T17:00:00Z',
+      updated_at: '2026-07-26T17:00:00Z',
+      workspaces: [],
+    }
+    mocks.users.mockResolvedValue({ items: [loadedUser] })
+    mocks.plans.mockResolvedValue({ items: [] })
+    mocks.regions.mockRejectedValueOnce(new Error('404 page not found'))
+    mocks.tickets.mockResolvedValue({ items: [] })
+    mocks.channels.mockResolvedValue({ items: [] })
+
+    render(<AdminConsolePage />)
+
+    expect(await screen.findByText('Example Customer')).toBeInTheDocument()
+    expect(screen.getByText('404 page not found')).toBeInTheDocument()
+  })
+})
+
 describe('administrator ticket unread state', () => {
   it('highlights new customer activity and clears it only after marking the latest customer message', async () => {
     const unreadDetail: SupportTicketDetail = {
@@ -243,6 +328,21 @@ describe('administrator ticket unread state', () => {
   })
 })
 
+describe('check location access', () => {
+  it('loads the dedicated check-location section for a superadministrator', async () => {
+    mocks.users.mockResolvedValue({ items: [] })
+    mocks.plans.mockResolvedValue({ items: [] })
+    mocks.tickets.mockResolvedValue({ items: [] })
+    mocks.channels.mockResolvedValue({ items: [] })
+    render(<AdminConsolePage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check locations' }))
+
+    expect(await screen.findByRole('heading', { name: 'Check locations' })).toBeInTheDocument()
+    await waitFor(() => expect(mocks.checkLocations).toHaveBeenCalledOnce())
+  })
+})
+
 describe('accountant access', () => {
   it('loads and exposes only invoice administration', async () => {
     mocks.auth.user = { id: 'accountant-1', name: 'Billing', system_role: 'accountant' }
@@ -252,21 +352,20 @@ describe('accountant access', () => {
     expect(await screen.findByRole('heading', { name: /invoices & payments/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /invoices/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /users & workspaces/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /check locations/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /plans & limits/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /tickets/i })).not.toBeInTheDocument()
     expect(mocks.users).not.toHaveBeenCalled()
     expect(mocks.plans).not.toHaveBeenCalled()
+    expect(mocks.checkLocations).not.toHaveBeenCalled()
     expect(mocks.tickets).not.toHaveBeenCalled()
   })
 
-  it('lets an accountant grant CloudPayments access and confirm an invoice payment', async () => {
+  it('shows region-managed payment access and lets an accountant confirm an invoice payment', async () => {
     mocks.auth.user = { id: 'accountant-1', name: 'Billing', system_role: 'accountant' }
     const currentInvoice = invoice()
-    const settings = { workspace_id: 'workspace-1', keepz_allowed: true, cloudpayments_allowed: false, updated_at: '2026-07-26T17:00:00Z' }
     mocks.invoices.mockResolvedValueOnce({ items: [currentInvoice] })
     mocks.invoiceDetail.mockResolvedValue(currentInvoice)
-    mocks.workspacePayments.mockResolvedValue(settings)
-    mocks.updateWorkspacePayments.mockResolvedValue({ ...settings, cloudpayments_allowed: true })
     mocks.markInvoicePaid.mockResolvedValue({ ...currentInvoice, status: 'paid', paid_at: '2026-07-26T18:00:00Z' })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<AdminConsolePage />)
@@ -274,9 +373,8 @@ describe('accountant access', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Review invoice' }))
     expect(await screen.findByRole('dialog', { name: /invoice inv-0001/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /void invoice/i })).not.toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('switch', { name: 'Allow CloudPayments' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save payment access' }))
-    await waitFor(() => expect(mocks.updateWorkspacePayments).toHaveBeenCalledWith('workspace-1', { keepz_allowed: true, cloudpayments_allowed: true }))
+    expect(screen.queryByRole('switch', { name: 'Allow CloudPayments' })).not.toBeInTheDocument()
+    expect(mocks.updateWorkspacePayments).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }))
     await waitFor(() => expect(mocks.markInvoicePaid).toHaveBeenCalledWith('invoice-1', {}))
     confirm.mockRestore()
@@ -295,8 +393,12 @@ describe('accountant access', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Review invoice' }))
     const receivedAt = '2026-07-26T18:30'
-    fireEvent.change(await screen.findByLabelText(/Payment received at/i), { target: { value: receivedAt } })
-    fireEvent.change(screen.getByLabelText(/Payment note/i), { target: { value: 'Bank transfer 1042' } })
+    const receivedAtField = await screen.findByLabelText(/Payment received at/i)
+    const paymentNoteField = screen.getByLabelText(/Payment note/i)
+    expect(receivedAtField.closest('label')).toHaveClass('field')
+    expect(paymentNoteField.closest('label')).toHaveClass('field')
+    fireEvent.change(receivedAtField, { target: { value: receivedAt } })
+    fireEvent.change(paymentNoteField, { target: { value: 'Bank transfer 1042' } })
     fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }))
 
     await waitFor(() => expect(mocks.markInvoicePaid).toHaveBeenCalledWith('invoice-1', {
@@ -318,7 +420,7 @@ describe('accountant access', () => {
     expect(await screen.findByText('INV-RECENT')).toBeInTheDocument()
     const loadedKpi = screen.getByText('Invoices loaded').closest('div')!
     expect(within(loadedKpi).getByText('1+')).toBeInTheDocument()
-    expect(screen.getByText('Open in loaded set')).toBeInTheDocument()
+    expect(screen.getByText('Currencies loaded')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load older invoices' }))
 
     expect(await screen.findByText('INV-OLDER')).toBeInTheDocument()
@@ -328,7 +430,7 @@ describe('accountant access', () => {
     expect(screen.queryByRole('button', { name: 'Load older invoices' })).not.toBeInTheDocument()
   })
 
-  it('lets an accountant configure payment access before a workspace has an invoice', async () => {
+  it('shows the regional payment policy before a workspace has an invoice', async () => {
     mocks.auth.user = { id: 'accountant-1', name: 'Billing', system_role: 'accountant' }
     const workspace: AdminBillingWorkspace = {
       id: 'workspace-no-invoice',
@@ -336,32 +438,38 @@ describe('accountant access', () => {
       slug: 'no-invoice-yet',
       plan: 'free',
       currency: 'USD',
-      payment_settings: { workspace_id: 'workspace-no-invoice', keepz_allowed: true, cloudpayments_allowed: false, updated_at: '2026-07-26T17:00:00Z' },
+      region: globalRegion,
+      payment_providers: ['manual', 'keepz', 'cloudpayments'],
       created_at: '2026-07-26T17:00:00Z',
       updated_at: '2026-07-26T17:00:00Z',
     }
-    mocks.billingWorkspaces.mockResolvedValueOnce({ items: [workspace] })
+    mocks.billingWorkspaces.mockResolvedValue({ items: [workspace] })
     render(<AdminConsolePage />)
 
+    fireEvent.click(await screen.findByRole('button', { name: /Regional payment policies/i }))
+    expect(screen.queryByText('No Invoice Yet')).not.toBeInTheDocument()
+    expect(mocks.billingWorkspaces).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search billing workspaces' }), { target: { value: 'No Invoice' } })
+    await waitFor(() => expect(mocks.billingWorkspaces).toHaveBeenCalledWith({ limit: 5, search: 'No Invoice' }))
     expect(await screen.findByText('No Invoice Yet')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Configure access' }))
-    expect(screen.getByRole('dialog', { name: /payment access/i })).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Allow Keepz payments' })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('switch', { name: 'Allow CloudPayments' })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByText('Global · USD')).toBeInTheDocument()
+    expect(screen.getByText('Keepz')).toBeInTheDocument()
+    expect(screen.getByText('CloudPayments')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Configure access' })).not.toBeInTheDocument()
   })
 
-  it('clears a workspace search when Refresh data reloads the default directory', async () => {
+  it('clears workspace results when the directory closes and never preloads the full directory', async () => {
     mocks.auth.user = { id: 'accountant-1', name: 'Billing', system_role: 'accountant' }
     render(<AdminConsolePage />)
 
+    fireEvent.click(await screen.findByRole('button', { name: /Regional payment policies/i }))
     const search = await screen.findByRole('textbox', { name: 'Search billing workspaces' })
     fireEvent.change(search, { target: { value: 'Acme' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
-    await waitFor(() => expect(mocks.billingWorkspaces).toHaveBeenCalledWith({ limit: 50, search: 'Acme' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Search' })).toBeEnabled())
+    await waitFor(() => expect(mocks.billingWorkspaces).toHaveBeenCalledWith({ limit: 5, search: 'Acme' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh data' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Regional payment policies/i }))
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Search billing workspaces' })).toHaveValue(''))
-    expect(mocks.billingWorkspaces).toHaveBeenLastCalledWith({ limit: 50 })
+    expect(mocks.billingWorkspaces).toHaveBeenCalledTimes(1)
   })
 })

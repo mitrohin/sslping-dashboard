@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { AppShell } from './AppShell'
 
 const mocks = vi.hoisted(() => {
@@ -9,12 +9,14 @@ const mocks = vi.hoisted(() => {
   const billingPlans = vi.fn().mockResolvedValue({ annual_discount_percent: 20, items: [{ id: 'plan-free', code: 'free', name: 'Free', description: 'Free monitoring', price_monthly_cents: 0, price_yearly_cents: 0, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 5, min_interval_seconds: 300, max_team_members: 1, max_status_pages: 1, max_integrations: 1, max_locations: 1, data_retention_days: 7, allow_manual_tests: false }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }, { id: 'plan-pro', code: 'pro', name: 'Pro', description: 'Production monitoring', price_monthly_cents: 2000, price_yearly_cents: 19200, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 100, min_interval_seconds: 30, max_team_members: 10, max_status_pages: 10, max_integrations: 20, max_locations: 5, data_retention_days: 365, allow_manual_tests: false }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }] })
   const billingSubscription = vi.fn().mockResolvedValue({ id: 'sub-1', workspace_id: 'workspace-1', plan_code: 'free', billing_cycle: 'monthly', status: 'active', payment_provider: 'manual', current_period_amount_cents: 0, currency: 'USD', current_period_start: '2026-07-01T00:00:00Z', current_period_end: '2026-08-01T00:00:00Z', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' })
   const billingInvoices = vi.fn().mockResolvedValue({ items: [] })
+  const listIncidents = vi.fn().mockResolvedValue({ items: [] })
   return {
     logout: vi.fn().mockResolvedValue(undefined),
     supportSummary,
     adminSummary,
+    listIncidents,
     auth: {
-      api: { getSupportTicketSummary: supportSummary, adminGetSupportTicketSummary: adminSummary, listBillingPlans: billingPlans, getBillingSubscription: billingSubscription, listBillingInvoices: billingInvoices },
+      api: { getSupportTicketSummary: supportSummary, adminGetSupportTicketSummary: adminSummary, listBillingPlans: billingPlans, getBillingSubscription: billingSubscription, listBillingInvoices: billingInvoices, listIncidents },
     user: { id: 'user-1', name: 'Jordan Lee', system_role: 'user' },
     workspace: { id: 'workspace-1', name: 'Production workspace', plan: 'free' },
     authenticated: true,
@@ -39,6 +41,7 @@ afterEach(() => {
   mocks.logout.mockClear()
   mocks.supportSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
   mocks.adminSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
+  mocks.listIncidents.mockReset().mockResolvedValue({ items: [] })
   mocks.auth.user = { id: 'user-1', name: 'Jordan Lee', system_role: 'user' }
   mocks.auth.authenticated = true
   mocks.auth.workspaceRole = 'owner'
@@ -63,6 +66,13 @@ function renderShell() {
 }
 
 describe('AppShell actions', () => {
+  it('marks the incidents navigation when an open incident is assigned to the current user', async () => {
+    mocks.listIncidents.mockResolvedValue({ items: [{ id: 'incident-1', status: 'investigating', assigned_to: 'user-1' }] })
+    renderShell()
+
+    expect(await screen.findByRole('link', { name: /incidents, 1 unread/i })).toBeInTheDocument()
+  })
+
   it('opens local support diagnostics and follows a quick investigation route', () => {
     renderShell()
 

@@ -43,6 +43,14 @@ const statusLabels: Readonly<Record<string, string>> = {
   expiring: 'Expiring soon',
 }
 
+const localizedStatusLabels: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  es: { pending:'Pendiente', up:'Disponible', down:'Caído', degraded:'Degradado', paused:'Pausado', investigating:'Investigando', identified:'Identificado', monitoring:'En observación', resolved:'Resuelto', maintenance:'Mantenimiento', 'no-data':'Sin datos', ok:'Operativo', failed:'Fallido', skipped:'Omitido', active:'Activo', invited:'Invitado', suspended:'Suspendido', published:'Publicado', draft:'Borrador', expired:'Vencido', revoked:'Revocado', 'never-used':'Nunca usado', expiring:'Vence pronto' },
+  zh: { pending:'等待中', up:'正常', down:'故障', degraded:'性能下降', paused:'已暂停', investigating:'调查中', identified:'已定位', monitoring:'观察中', resolved:'已解决', maintenance:'维护中', 'no-data':'无数据', ok:'运行正常', failed:'失败', skipped:'已跳过', active:'活跃', invited:'已邀请', suspended:'已停用', published:'已发布', draft:'草稿', expired:'已过期', revoked:'已撤销', 'never-used':'从未使用', expiring:'即将到期' },
+  ka: { pending:'მოლოდინშია', up:'მუშაობს', down:'გათიშულია', degraded:'შეფერხებულია', paused:'შეჩერებულია', investigating:'მიმდინარეობს მოკვლევა', identified:'მიზეზი დადგენილია', monitoring:'დაკვირვება', resolved:'გადაწყვეტილია', maintenance:'ტექნიკური სამუშაოები', 'no-data':'მონაცემები არ არის', ok:'გამართულია', failed:'შეცდომა', skipped:'გამოტოვებულია', active:'აქტიურია', invited:'მოწვეულია', suspended:'შეჩერებულია', published:'გამოქვეყნებულია', draft:'მონახაზი', expired:'ვადაგასულია', revoked:'გაუქმებულია', 'never-used':'არ გამოყენებულა', expiring:'ვადა მალე იწურება' },
+  tr: { pending:'Bekliyor', up:'Çalışıyor', down:'Kapalı', degraded:'Yavaşlamış', paused:'Duraklatıldı', investigating:'Araştırılıyor', identified:'Belirlendi', monitoring:'İzleniyor', resolved:'Çözüldü', maintenance:'Bakım', 'no-data':'Veri yok', ok:'Çalışıyor', failed:'Başarısız', skipped:'Atlandı', active:'Aktif', invited:'Davet edildi', suspended:'Askıya alındı', published:'Yayınlandı', draft:'Taslak', expired:'Süresi doldu', revoked:'İptal edildi', 'never-used':'Hiç kullanılmadı', expiring:'Yakında doluyor' },
+  ru: { pending:'Ожидание', up:'Работает', down:'Недоступен', degraded:'Есть проблемы', paused:'На паузе', investigating:'Расследуется', identified:'Причина найдена', monitoring:'Наблюдение', resolved:'Решён', maintenance:'Обслуживание', 'no-data':'Нет данных', ok:'Работает', failed:'Ошибка', skipped:'Пропущено', active:'Активен', invited:'Приглашён', suspended:'Заблокирован', published:'Опубликован', draft:'Черновик', expired:'Истёк', revoked:'Отозван', 'never-used':'Не использовался', expiring:'Скоро истекает' },
+}
+
 const statusTones: Readonly<Record<string, StatusTone>> = {
   up: 'positive',
   ok: 'positive',
@@ -72,6 +80,18 @@ const statusTones: Readonly<Record<string, StatusTone>> = {
 function toDate(value: string | number | Date): Date | null {
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
+}
+
+function activeLocale(): string {
+  if (typeof document !== 'undefined' && document.documentElement.lang) {
+    const language = document.documentElement.lang.toLowerCase()
+    return ({ en:'en-US', es:'es-ES', zh:'zh-CN', ka:'ka-GE', tr:'tr-TR', ru:'ru-RU' } as Record<string, string>)[language] ?? language
+  }
+  return 'en-US'
+}
+
+function activeLanguage(): string {
+  return activeLocale().split('-')[0]
 }
 
 export function formatDuration(totalSeconds: number, maxParts = 3): string {
@@ -107,7 +127,7 @@ export function formatDate(
   if (!date) return '—'
 
   const {
-    locale = 'en-US',
+    locale = activeLocale(),
     timeZone,
     includeYear = true,
     includeSeconds = false,
@@ -152,7 +172,7 @@ export function formatRelativeTime(
   ]
   const amount = Math.round(differenceSeconds / size)
 
-  return new Intl.RelativeTimeFormat(options.locale ?? 'en', {
+  return new Intl.RelativeTimeFormat(options.locale ?? activeLocale(), {
     numeric: options.numeric ?? 'always',
   }).format(amount, unit)
 }
@@ -161,7 +181,7 @@ export function formatUptime(value: number | null | undefined, maximumFractionDi
   if (value === null || value === undefined || !Number.isFinite(value)) return '—'
 
   const normalized = Math.min(100, Math.max(0, value))
-  return `${new Intl.NumberFormat('en-US', {
+  return `${new Intl.NumberFormat(activeLocale(), {
     maximumFractionDigits: Math.max(0, maximumFractionDigits),
   }).format(normalized)}%`
 }
@@ -170,6 +190,8 @@ export function formatStatus(
   status: MonitorStatus | IncidentStatus | UptimeBarStatus | string | null | undefined,
 ): string {
   if (!status) return 'Unknown'
+  const localized = localizedStatusLabels[activeLanguage()]
+  if (localized?.[status]) return localized[status]
   if (statusLabels[status]) return statusLabels[status]
 
   return status

@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { ArrowLeft, LifeBuoy, MessageSquarePlus, Send, Ticket } from 'lucide-react'
-import type { SupportAttachment, SupportMessage, SupportTicket, SupportTicketDetail, SupportTicketPriority } from '../../api/types'
+import type { SupportAttachment, SupportMessage, SupportTicket, SupportTicketDetail } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
-import { Badge, Button, EmptyState, FeedbackBanner, Field, PageHeader, Panel, Select } from '../../components/ui'
+import { Badge, Button, EmptyState, FeedbackBanner, Field, PageHeader, PageLoadingSkeleton, Panel } from '../../components/ui'
 import { formatDate } from '../../lib/format'
 import { AttachmentList, AttachmentPicker, openAttachmentBlob } from './SupportAttachments'
 import { requestSupportUnreadRefresh } from './unread'
+import { useI18n } from '../../app/I18nProvider'
 import './support.css'
+
+// Binary support uploads remain disabled until object storage, quotas,
+// retention and malware scanning are in place. Text support is available.
+const supportAttachmentsAvailable = false
 
 function ticketTone(status: SupportTicket['status']) {
   if (status === 'resolved' || status === 'closed') return 'success' as const
@@ -16,11 +21,11 @@ function ticketTone(status: SupportTicket['status']) {
 
 export function SupportPage() {
   const { api, user } = useAuth()
+  const { t } = useI18n()
   const [tickets, setTickets] = useState<SupportTicket[]>([])
   const [detail, setDetail] = useState<SupportTicketDetail | null>(null)
   const [creating, setCreating] = useState(false)
   const [subject, setSubject] = useState('')
-  const [priority, setPriority] = useState<SupportTicketPriority>('normal')
   const [message, setMessage] = useState('')
   const [reply, setReply] = useState('')
   const [ticketFiles, setTicketFiles] = useState<File[]>([])
@@ -35,11 +40,11 @@ export function SupportPage() {
       setTickets(result.items)
       setError('')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not load support tickets.')
+      setError(reason instanceof Error ? reason.message : t('support.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [api])
+  }, [api, t])
 
   useEffect(() => { void load() }, [load])
 
@@ -58,7 +63,7 @@ export function SupportPage() {
       }
       setError('')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not open this ticket.')
+      setError(reason instanceof Error ? reason.message : t('support.openFailed'))
     } finally {
       setBusy(false)
     }
@@ -69,10 +74,10 @@ export function SupportPage() {
     if (subject.trim().length < 4 || message.trim().length < 2) return
     setBusy(true)
     try {
-      let created = await api.createSupportTicket({ subject: subject.trim(), priority, message: message.trim() })
+      let created = await api.createSupportTicket({ subject: subject.trim(), message: message.trim() })
       setTickets((current) => [created.ticket, ...current])
       setDetail(created)
-      if (ticketFiles.length > 0) {
+      if (supportAttachmentsAvailable && ticketFiles.length > 0) {
         for (const file of ticketFiles) await api.uploadSupportAttachment(created.ticket.id, created.messages[0].id, file)
         created = await api.getSupportTicket(created.ticket.id)
         setDetail(created)
@@ -80,12 +85,11 @@ export function SupportPage() {
       setCreating(false)
       setSubject('')
       setMessage('')
-      setPriority('normal')
       setTicketFiles([])
       setError('')
       requestSupportUnreadRefresh()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not create the ticket.')
+      setError(reason instanceof Error ? reason.message : t('support.createFailed'))
     } finally {
       setBusy(false)
     }
@@ -99,7 +103,7 @@ export function SupportPage() {
       const result = await api.replySupportTicket(detail.ticket.id, reply.trim())
       setDetail((current) => current ? { ticket: result.ticket, messages: [...current.messages, result.message] } : current)
       setTickets((current) => current.map((ticket) => ticket.id === result.ticket.id ? result.ticket : ticket))
-      if (replyFiles.length > 0) {
+      if (supportAttachmentsAvailable && replyFiles.length > 0) {
         for (const file of replyFiles) await api.uploadSupportAttachment(result.ticket.id, result.message.id, file)
         setDetail(await api.getSupportTicket(result.ticket.id))
       }
@@ -108,7 +112,7 @@ export function SupportPage() {
       setError('')
       requestSupportUnreadRefresh()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not send the reply.')
+      setError(reason instanceof Error ? reason.message : t('support.replyFailed'))
     } finally {
       setBusy(false)
     }
@@ -123,39 +127,47 @@ export function SupportPage() {
       openAttachmentBlob(await api.downloadSupportAttachment(detail.ticket.id, attachment.id), attachment.file_name)
       setError('')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not download the attachment.')
+      setError(reason instanceof Error ? reason.message : t('support.downloadFailed'))
     } finally {
       setBusy(false)
     }
   }
 
+  if (loading && tickets.length === 0 && !detail) {
+    return (
+      <div className="page page--wide support-page">
+        <PageLoadingSkeleton label={t('support.loading')} />
+      </div>
+    )
+  }
+
   if (detail) {
     return (
       <div className="page support-page">
-        <button className="support-back" type="button" onClick={() => setDetail(null)}><ArrowLeft size={17} /> All tickets</button>
-        <PageHeader title={detail.ticket.subject} description={`Ticket opened ${formatDate(detail.ticket.created_at)}`} actions={<Badge tone={ticketTone(detail.ticket.status)}>{detail.ticket.status.replace('_', ' ')}</Badge>} />
+        <button className="support-back" type="button" onClick={() => setDetail(null)}><ArrowLeft size={17} /> {t('support.allTickets')}</button>
+        <PageHeader title={detail.ticket.subject} description={t('support.opened', { date: formatDate(detail.ticket.created_at) })} actions={<Badge tone={ticketTone(detail.ticket.status)}>{t(`support.status.${detail.ticket.status}`)}</Badge>} />
         {error && <FeedbackBanner tone="error" className="feedback-banner--page" onDismiss={() => setError('')}>{error}</FeedbackBanner>}
         <Panel className="support-thread">
           <div className="support-thread__meta">
-            <span>Priority <strong>{detail.ticket.priority}</strong></span>
-            <span>Last activity <strong>{formatDate(detail.ticket.last_reply_at)}</strong></span>
+            <span>{t('support.priority')} <strong>{t(`support.priority.${detail.ticket.priority}`)}</strong></span>
+            <span>{t('support.lastActivity')} <strong>{formatDate(detail.ticket.last_reply_at)}</strong></span>
           </div>
           <div className="support-messages">
             {messages.map((item: SupportMessage) => (
               <article key={item.id} className={`support-message ${item.author_role === 'superadmin' ? 'support-message--staff' : ''}`}>
-                <div className="support-message__head"><strong>{item.author_role === 'superadmin' ? 'SSLPing support' : item.author_id === user?.id ? 'You' : 'Workspace member'}</strong><time>{formatDate(item.created_at)}</time></div>
+                <div className="support-message__head"><strong>{item.author_role === 'superadmin' ? t('support.staff') : item.author_id === user?.id ? t('support.you') : t('support.workspaceMember')}</strong><time>{formatDate(item.created_at)}</time></div>
                 <p>{item.body}</p>
-                <AttachmentList attachments={item.attachments} onOpen={(attachment) => void openAttachment(attachment)} busy={busy} />
+                {supportAttachmentsAvailable && <AttachmentList attachments={item.attachments} onOpen={(attachment) => void openAttachment(attachment)} busy={busy} />}
               </article>
             ))}
           </div>
           {!['closed'].includes(detail.ticket.status) && (
             <form className="support-reply" onSubmit={submitReply}>
-              <Field label="Reply" hint="Your message will be visible to the SSLPing support team.">
-                <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Add more context, expected behaviour or steps to reproduce…" />
+              <Field label={t('support.reply')} hint={t('support.replyHint')}>
+                <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder={t('support.replyPlaceholder')} />
               </Field>
-              <AttachmentPicker files={replyFiles} onChange={setReplyFiles} disabled={busy} />
-              <Button type="submit" disabled={busy || reply.trim().length < 2}><Send size={17} /> Send reply</Button>
+              {supportAttachmentsAvailable && <AttachmentPicker files={replyFiles} onChange={setReplyFiles} disabled={busy} />}
+              <Button type="submit" disabled={busy || reply.trim().length < 2}><Send size={17} /> {t('support.sendReply')}</Button>
             </form>
           )}
         </Panel>
@@ -165,39 +177,36 @@ export function SupportPage() {
 
   return (
     <div className="page support-page">
-      <PageHeader title="Support" description="Create a ticket and continue the conversation with the SSLPing support team." actions={<Button onClick={() => setCreating((value) => !value)}><MessageSquarePlus size={18} /> New ticket</Button>} />
-      {error && <FeedbackBanner tone="error" className="feedback-banner--page" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>} onDismiss={() => setError('')}>{error}</FeedbackBanner>}
+      <PageHeader title={t('support.title')} description={t('support.description')} actions={<Button onClick={() => setCreating((value) => !value)}><MessageSquarePlus size={18} /> {t('support.newTicket')}</Button>} />
+      {error && <FeedbackBanner tone="error" className="feedback-banner--page" action={<Button size="sm" variant="secondary" onClick={() => void load()}>{t('support.retry')}</Button>} onDismiss={() => setError('')}>{error}</FeedbackBanner>}
       {creating && (
         <Panel className="support-create">
           <form onSubmit={submitTicket}>
-            <div className="form-grid">
-              <Field label="Subject" hint="A short description of what you need help with."><input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Monitoring alert does not arrive" /></Field>
-              <Field label="Priority" hint="Choose urgent only for production-impacting issues."><Select value={priority} onChange={(event) => setPriority(event.target.value as SupportTicketPriority)}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></Select></Field>
-            </div>
-            <Field label="Message"><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe the problem, what you expected and what happened…" /></Field>
-            <AttachmentPicker files={ticketFiles} onChange={setTicketFiles} disabled={busy} />
-            <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreating(false)}>Cancel</Button><Button type="submit" disabled={busy || subject.trim().length < 4 || message.trim().length < 2}>Create ticket</Button></div>
+            <Field label={t('support.subject')} hint={t('support.subjectHint')}><input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={t('support.subjectPlaceholder')} /></Field>
+            <Field label={t('support.message')}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t('support.messagePlaceholder')} /></Field>
+            {supportAttachmentsAvailable && <AttachmentPicker files={ticketFiles} onChange={setTicketFiles} disabled={busy} />}
+            <div className="form-actions"><Button variant="secondary" type="button" onClick={() => setCreating(false)}>{t('common.cancel')}</Button><Button type="submit" disabled={busy || subject.trim().length < 4 || message.trim().length < 2}>{t('support.createTicket')}</Button></div>
           </form>
         </Panel>
       )}
-      {!creating && !loading && tickets.length === 0 ? (
-        <Panel><EmptyState icon={<LifeBuoy size={34} />} title="No support tickets" description="When you need help, create a ticket and your full conversation will remain here." action={<Button onClick={() => setCreating(true)}>Create first ticket</Button>} /></Panel>
+      {!creating && (tickets.length === 0 ? (
+        <Panel><EmptyState icon={<LifeBuoy size={34} />} title={t('support.noTickets')} description={t('support.noTicketsHint')} action={<Button onClick={() => setCreating(true)}>{t('support.createFirst')}</Button>} /></Panel>
       ) : (
         <Panel className="support-list">
-          {loading ? <div className="route-loading"><span className="spinner" /> Loading tickets…</div> : tickets.map((ticket) => (
+          {tickets.map((ticket) => (
             <button key={ticket.id} type="button" className={ticket.unread_count > 0 ? 'is-unread' : ''} onClick={() => void openTicket(ticket)} disabled={busy}>
               <span className="support-list__icon"><Ticket size={20} /></span>
               <span>
                 <strong>{ticket.subject}</strong>
-                <small>Updated {formatDate(ticket.updated_at)}</small>
-                {ticket.unread_count > 0 && <span className="support-list__unread">{ticket.unread_count === 1 ? 'New reply' : `${ticket.unread_count} new replies`}</span>}
+                <small>{t('support.updated', { date: formatDate(ticket.updated_at) })}</small>
+                {ticket.unread_count > 0 && <span className="support-list__unread">{ticket.unread_count === 1 ? t('support.newReply') : t('support.newReplies', { count: ticket.unread_count })}</span>}
               </span>
-              <Badge tone={ticket.priority === 'urgent' ? 'danger' : ticket.priority === 'high' ? 'warning' : 'neutral'}>{ticket.priority}</Badge>
-              <Badge tone={ticketTone(ticket.status)}>{ticket.status.replace('_', ' ')}</Badge>
+              <Badge tone={ticket.priority === 'urgent' ? 'danger' : ticket.priority === 'high' ? 'warning' : 'neutral'}>{t(`support.priority.${ticket.priority}`)}</Badge>
+              <Badge tone={ticketTone(ticket.status)}>{t(`support.status.${ticket.status}`)}</Badge>
             </button>
           ))}
         </Panel>
-      )}
+      ))}
     </div>
   )
 }

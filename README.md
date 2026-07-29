@@ -40,9 +40,22 @@ VITE_API_URL=
 
 # Enables the local demo entry in a production build when explicitly needed.
 VITE_DEMO_MODE=false
+VITE_TURNSTILE_SITE_KEY=
 ```
 
 Do not put API keys or integration secrets in Vite environment variables: every `VITE_*` value is included in the browser bundle.
+
+Production uses `VITE_API_URL=https://api.sslping.io`. The dashboard is
+published at `https://dashboard.sslping.io`; `https://sslping.io` remains the
+marketing site and `https://www.sslping.io` redirects to it. The image is also
+built with the public Cloudflare Turnstile site key from the production GitHub
+Environment variable `CLOUDFLARE_TURNSTILE_SITE_KEY`; the private Turnstile
+secret is never present in this repository or browser bundle.
+
+Production image delivery is defined in
+`.github/workflows/deploy-production.yml`. Cluster bootstrap, GitHub secrets,
+deployment order and Cloudflare DNS are documented in the backend repository's
+`deploy/kubernetes/README.md`.
 
 ## Quality checks
 
@@ -57,7 +70,8 @@ The test suite covers API/session behavior, auth flows, monitor mappings, live d
 
 ## Routes
 
-- `/login`, `/register`, `/forgot-password`, `/login/2fa`, `/verify-email`
+- `/login`, `/register`, `/forgot-password`, `/reset-password`, `/login/2fa`, `/verify-email`
+- `/accept-invite` for authenticated invitation acceptance (with safe login return)
 - `/monitors`, `/monitors/:monitorId`, `/monitors/:monitorId/edit`
 - `/incidents`, `/status-pages`, `/status-pages/:statusPageId/edit`
 - `/maintenance`, `/team`, `/integrations`

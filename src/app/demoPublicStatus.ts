@@ -59,6 +59,9 @@ export const demoPublicStatusApi: PublicStatusApi = {
     }
     return snapshot
   },
+  async accessPublicStatusPage(slug, password) {
+    return demoPublicStatusApi.getPublicStatusPage(slug, password)
+  },
   async subscribeStatusPage() {
     return { message: 'If the address can be subscribed, a confirmation email has been sent.' }
   },

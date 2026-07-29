@@ -12,7 +12,7 @@ import type {
   Role,
   Workspace,
 } from '../api/types'
-import { Button, Panel } from '../components/ui'
+import { Button, PageLoadingSkeleton, Panel } from '../components/ui'
 import {
   demoApiKeys,
   demoIntegrationCatalog,
@@ -325,13 +325,20 @@ interface RouteStateProps {
 }
 
 function RouteState({ label, error, onRetry }: RouteStateProps) {
+  if (!error) {
+    return (
+      <div className="page page--wide account-page">
+        <PageLoadingSkeleton label={`Loading ${label}`} />
+      </div>
+    )
+  }
   return (
     <div className="page account-page" aria-live="polite">
       <Panel>
         <div className="panel__body">
-          <h1>{error ? `Unable to load ${label}` : `Loading ${label}…`}</h1>
-          {error && <p role="alert">{error.message}</p>}
-          {error && onRetry && <Button onClick={onRetry}>Try again</Button>}
+          <h1>Unable to load {label}</h1>
+          <p role="alert">{error.message}</p>
+          {onRetry && <Button onClick={onRetry}>Try again</Button>}
         </div>
       </Panel>
     </div>

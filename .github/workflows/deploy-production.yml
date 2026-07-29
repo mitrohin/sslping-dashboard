@@ -1,0 +1,106 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sslping-dashboard-production
+  cancel-in-progress: false
+
+env:
+  CLUSTER_ID: 42c71c20-f7ee-4e76-b31b-3973adfebcf3
+  CLUSTER_NAME: mitrohin-cluster
+  REGISTRY_NAME: mitrohin-registry
+  IMAGE_NAME: sslping-dashboard
+
+jobs:
+  test-build-deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@1e60f620b9541d2305ce4fc3d6a8f13a8a6b5c4c # v4.0.3
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and test
+        run: |
+          npm ci
+          npm test -- --run
+          npm run check
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Verify DigitalOcean production identity
+        run: |
+          set -euo pipefail
+          actual_cluster_id="$(doctl kubernetes cluster get "${CLUSTER_ID}" --format ID --no-header | xargs)"
+          actual_cluster_name="$(doctl kubernetes cluster get "${CLUSTER_ID}" --format Name --no-header | xargs)"
+          actual_registry_name="$(doctl registry get --format Name --no-header | xargs)"
+          test "${actual_cluster_id}" = "${CLUSTER_ID}"
+          test "${actual_cluster_name}" = "${CLUSTER_NAME}"
+          test "${actual_registry_name}" = "${REGISTRY_NAME}"
+
+      - name: Build and push image
+        env:
+          IMAGE: registry.digitalocean.com/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          TURNSTILE_SITE_KEY: ${{ vars.CLOUDFLARE_TURNSTILE_SITE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${TURNSTILE_SITE_KEY:-}"
+          case "${TURNSTILE_SITE_KEY}" in
+            1x00000000000000000000AA|2x00000000000000000000AB|3x00000000000000000000FF)
+              echo "Cloudflare Turnstile test site keys are forbidden in production." >&2
+              exit 1
+              ;;
+          esac
+          doctl registry login --expiry-seconds 1200
+          docker build --pull --platform linux/amd64 \
+            --build-arg VITE_API_URL=https://api.sslping.io \
+            --build-arg VITE_DEMO_MODE=false \
+            --build-arg "VITE_TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY}" \
+            --tag "${IMAGE}" \
+            --tag "registry.digitalocean.com/${REGISTRY_NAME}/${IMAGE_NAME}:latest" .
+          docker push "${IMAGE}"
+          docker push "registry.digitalocean.com/${REGISTRY_NAME}/${IMAGE_NAME}:latest"
+
+          deploy_image="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}")"
+          case "${deploy_image}" in
+            "registry.digitalocean.com/${REGISTRY_NAME}/${IMAGE_NAME}@sha256:"*) ;;
+            *) echo "Unexpected pushed image digest: ${deploy_image}" >&2; exit 1 ;;
+          esac
+          printf 'DEPLOY_IMAGE=%s\n' "${deploy_image}" >> "${GITHUB_ENV}"
+
+      - name: Deploy dashboard
+        run: |
+          set -euo pipefail
+          test -n "${DEPLOY_IMAGE:-}"
+          doctl kubernetes cluster kubeconfig save "${CLUSTER_ID}" --expiry-seconds 1200
+          kubectl get nodes
+          sed "s|IMAGE_PLACEHOLDER|${DEPLOY_IMAGE}|g" deploy/kubernetes/dashboard.yaml | kubectl apply -f -
+
+      - name: Restart dashboard after a manual deployment
+        if: github.event_name == 'workflow_dispatch'
+        run: kubectl -n sslping rollout restart deployment/sslping-dashboard
+
+      - name: Verify dashboard rollout
+        run: |
+          set -euo pipefail
+          kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
+          kubectl -n sslping get pods,services,gateways,httproutes

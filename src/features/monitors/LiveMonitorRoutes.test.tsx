@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiClient } from '../../api/client'
-import type { Monitor, User, Workspace } from '../../api/types'
+import type { CheckResult, HistoryQuery, Monitor, User, Workspace } from '../../api/types'
 import type { AuthContextValue } from '../../app/AuthProvider'
 
 const authMocks = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('../../app/DashboardGate', async (importOriginal) => {
   return { ...original, isDemoSession: authMocks.isDemoSession }
 })
 
-import { LiveMonitorDetailPage, LiveMonitorsPage } from './LiveMonitorRoutes'
+import { LiveMonitorDetailPage, LiveMonitorsPage, loadMonitorCheckHistory } from './LiveMonitorRoutes'
 
 const now = '2026-07-26T08:00:00.000Z'
 const workspace: Workspace = {
@@ -71,6 +71,19 @@ function baseMonitor(): Monitor {
   }
 }
 
+function checkResult(id: string, latencyMs: number, startedAt = new Date().toISOString()): CheckResult {
+  return {
+    id,
+    workspace_id: workspace.id,
+    monitor_id: 'monitor-1',
+    region: 'eu-west',
+    status: 'ok',
+    latency_ms: latencyMs,
+    started_at: startedAt,
+    finished_at: startedAt,
+  }
+}
+
 function fakeApi() {
   let stored = baseMonitor()
   const api = {
@@ -83,6 +96,9 @@ function fakeApi() {
       plan_code: 'business',
       plan_name: 'Business',
       limits: { max_monitors: 500, min_interval_seconds: 30, max_team_members: 15, max_status_pages: 20, max_integrations: 50, max_locations: 10, data_retention_days: 365, allow_manual_tests: true },
+    }),
+    listRegions: vi.fn().mockResolvedValue({
+      items: [{ id: 'eu-west', name: 'Europe West', capabilities: ['http', 'tcp', 'tls', 'dns', 'domain', 'reachability'], status: 'available' }],
     }),
     createMonitor: vi.fn(),
     rotateHeartbeatToken: vi.fn(),
@@ -129,6 +145,50 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks()
   authMocks.isDemoSession.mockReturnValue(false)
+})
+
+describe('monitor check-history pagination', () => {
+  it('loads every cursor page in the requested time range', async () => {
+    const first = checkResult('check-1', 100)
+    const second = checkResult('check-2', 300)
+    const listMonitorChecks = vi.fn(async (_workspaceId: string, _monitorId: string, query?: HistoryQuery) => (
+      query?.cursor === 'next-page'
+        ? { items: [second] }
+        : { items: [first], next_cursor: 'next-page' }
+    ))
+    const query = { from: '2026-07-25T08:00:00.000Z', to: '2026-07-26T08:00:00.000Z' }
+
+    await expect(loadMonitorCheckHistory(
+      { listMonitorChecks } as unknown as Pick<ApiClient, 'listMonitorChecks'>,
+      workspace.id,
+      'monitor-1',
+      query,
+    )).resolves.toEqual([first, second])
+
+    expect(listMonitorChecks).toHaveBeenNthCalledWith(1, workspace.id, 'monitor-1', { ...query, limit: 250, cursor: undefined })
+    expect(listMonitorChecks).toHaveBeenNthCalledWith(2, workspace.id, 'monitor-1', { ...query, limit: 250, cursor: 'next-page' })
+  })
+
+  it('fails explicitly instead of silently truncating or looping forever', async () => {
+    const overLimit = vi.fn().mockResolvedValue({ items: [checkResult('check-1', 100), checkResult('check-2', 200)] })
+    await expect(loadMonitorCheckHistory(
+      { listMonitorChecks: overLimit } as unknown as Pick<ApiClient, 'listMonitorChecks'>,
+      workspace.id,
+      'monitor-1',
+      {},
+      { maxItems: 1 },
+    )).rejects.toThrow(/too large to display safely/i)
+
+    const repeatedCursor = vi.fn()
+      .mockResolvedValueOnce({ items: [], next_cursor: 'same-page' })
+      .mockResolvedValueOnce({ items: [], next_cursor: 'same-page' })
+    await expect(loadMonitorCheckHistory(
+      { listMonitorChecks: repeatedCursor } as unknown as Pick<ApiClient, 'listMonitorChecks'>,
+      workspace.id,
+      'monitor-1',
+      {},
+    )).rejects.toThrow(/repeated check-history cursor/i)
+  })
 })
 
 describe('LiveMonitorsPage controls', () => {
@@ -259,6 +319,48 @@ describe('LiveMonitorsPage controls', () => {
 })
 
 describe('LiveMonitorDetailPage refresh', () => {
+  it('uses all paginated checks for the 24-hour bars and response chart', async () => {
+    const api = fakeApi()
+    const monitor = {
+      ...baseMonitor(),
+      last_check_at: new Date().toISOString(),
+    }
+    const first = checkResult('check-page-1', 100, new Date(Date.now() - 30_000).toISOString())
+    const second = checkResult('check-page-2', 300, new Date(Date.now() - 15_000).toISOString())
+    const listMonitorChecks = vi.fn(async (_workspaceId: string, _monitorId: string, query?: HistoryQuery) => (
+      query?.cursor === 'next-page'
+        ? { items: [second] }
+        : { items: [first], next_cursor: 'next-page' }
+    ))
+    Object.assign(api, {
+      getMonitor: vi.fn().mockResolvedValue(monitor),
+      listMonitorChecks,
+      getMonitorMetrics: vi.fn().mockResolvedValue({ availability: 100, incidents: 0, downtime_seconds: 0 }),
+      listCertificateEvidence: vi.fn().mockResolvedValue({ items: [] }),
+      listDnsEvidence: vi.fn().mockResolvedValue({ items: [] }),
+      listDomainEvidence: vi.fn().mockResolvedValue({ items: [] }),
+      listMaintenanceWindows: vi.fn().mockResolvedValue({ items: [] }),
+      listIntegrations: vi.fn().mockResolvedValue({ items: [] }),
+      listStatusPages: vi.fn().mockResolvedValue({ items: [] }),
+      listStatusPageComponents: vi.fn().mockResolvedValue({ items: [] }),
+    })
+    mockAuth(api)
+
+    render(
+      <MemoryRouter initialEntries={['/monitors/monitor-1']}>
+        <Routes><Route path="/monitors/:monitorId" element={<LiveMonitorDetailPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    await waitFor(() => expect(listMonitorChecks).toHaveBeenCalledWith(
+      workspace.id,
+      'monitor-1',
+      expect.objectContaining({ cursor: 'next-page', limit: 250 }),
+    ))
+    expect(await screen.findByText('200 ms')).toBeInTheDocument()
+  })
+
   it('reloads monitor data after the configured check interval has elapsed', async () => {
     const api = fakeApi()
     const monitor = {

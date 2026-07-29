@@ -19,6 +19,7 @@ import type {
   ApiKeyViewModel,
   ExpirySnapshot,
   IncidentViewModel,
+  IncidentLocationQuorum,
   IntegrationCategory,
   IntegrationEvent,
   IntegrationType,
@@ -50,6 +51,8 @@ const monitorTypes = new Set<MonitorType>([
   'domain',
   'reachability',
   'heartbeat',
+  'leakcheck',
+  'compliance',
 ])
 
 const monitorStatuses = new Set<MonitorStatus>([
@@ -70,6 +73,8 @@ const monitorTypeLabels: Readonly<Record<MonitorType, string>> = {
   domain: 'Domain',
   reachability: 'Reachability',
   heartbeat: 'Heartbeat',
+  leakcheck: 'Leak exposure',
+  compliance: 'Legal compliance',
 }
 
 const languageLabels: Readonly<Record<string, string>> = {
@@ -118,6 +123,10 @@ function isRecord(value: JsonValue | undefined): value is JsonObject {
 function recordString(record: JsonObject | undefined, key: string): string | undefined {
   const value = record?.[key]
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function recordNonNegativeNumber(record: JsonObject | undefined, key: string): number | undefined {
+  return optionalNonNegativeNumber(record?.[key])
 }
 
 function childRecord(record: JsonObject | undefined, key: string): JsonObject | undefined {
@@ -191,6 +200,10 @@ function monitorTarget(monitor: Monitor, type: MonitorType): string {
         : ''
       return `Every ${formatInterval(config.heartbeat.period_seconds)}${grace}`
     }
+    case 'leakcheck':
+      return nonEmpty(config.leakcheck?.query, 'Protected identifier')
+    case 'compliance':
+      return nonEmpty(config.compliance?.url, 'Target unavailable')
   }
 }
 
@@ -208,43 +221,53 @@ function uptimeBarStatus(status: unknown): UptimeBarStatus {
   }
 }
 
-function toUptimeBars(monitorId: string, checks: readonly CheckResult[], referenceTime: number): readonly UptimeBar[] {
+function toUptimeBars(monitor: Pick<Monitor, 'id' | 'regions'>, checks: readonly CheckResult[], referenceTime: number): readonly UptimeBar[] {
   const currentHour = new Date(referenceTime)
   currentHour.setUTCMinutes(0, 0, 0)
   const hourMs = 60 * 60 * 1000
   const firstHour = currentHour.getTime() - 23 * hourMs
   const buckets = Array.from({ length: 24 }, (_, index) => ({
-    id: `${monitorId}-hour-${index}`,
+    id: `${monitor.id}-hour-${index}`,
     startedAt: new Date(firstHour + index * hourMs).toISOString(),
-    statuses: [] as UptimeBarStatus[],
+    latestByRegion: new Map<string, { status: UptimeBarStatus; timestamp: number }>(),
     responseTimes: [] as number[],
   }))
 
   for (const check of checks) {
-    if (check.monitor_id && check.monitor_id !== monitorId) continue
-    const timestamp = toTimestamp(check.started_at) ?? toTimestamp(check.finished_at)
+    if (check.monitor_id && check.monitor_id !== monitor.id) continue
+    const timestamp = toTimestamp(check.finished_at) ?? toTimestamp(check.started_at)
     if (timestamp === null) continue
     const bucketIndex = Math.floor((timestamp - firstHour) / hourMs)
     if (bucketIndex < 0 || bucketIndex >= buckets.length) continue
-    buckets[bucketIndex].statuses.push(uptimeBarStatus(check.status))
+    const region = check.region || 'local'
+    const current = buckets[bucketIndex].latestByRegion.get(region)
+    if (!current || timestamp >= current.timestamp) {
+      buckets[bucketIndex].latestByRegion.set(region, { status: uptimeBarStatus(check.status), timestamp })
+    }
     const responseTime = optionalNonNegativeNumber(check.latency_ms)
     if (responseTime !== undefined) buckets[bucketIndex].responseTimes.push(responseTime)
   }
 
-  return buckets.map((bucket) => ({
-    id: bucket.id,
-    startedAt: bucket.startedAt,
-    status: bucket.statuses.includes('down')
+  const requiredFailures = (monitor.regions?.length ?? 0) > 1 ? 2 : 1
+  return buckets.map((bucket) => {
+    const statuses = [...bucket.latestByRegion.values()].map(({ status }) => status)
+    const failures = statuses.filter((status) => status === 'down').length
+    const status: UptimeBarStatus = failures >= requiredFailures
       ? 'down'
-      : bucket.statuses.includes('degraded')
+      : statuses.includes('degraded')
         ? 'degraded'
-        : bucket.statuses.includes('up')
+        : statuses.some((value) => value === 'up' || value === 'down')
           ? 'up'
-          : 'no-data',
-    responseTimeMs: bucket.responseTimes.length > 0
-      ? bucket.responseTimes.reduce((total, value) => total + value, 0) / bucket.responseTimes.length
-      : undefined,
-  }))
+          : 'no-data'
+    return {
+      id: bucket.id,
+      startedAt: bucket.startedAt,
+      status,
+      responseTimeMs: bucket.responseTimes.length > 0
+        ? bucket.responseTimes.reduce((total, value) => total + value, 0) / bucket.responseTimes.length
+        : undefined,
+    }
+  })
 }
 
 function latestCheck(monitorId: string, checks: readonly CheckResult[]): CheckResult | undefined {
@@ -342,6 +365,12 @@ export function toMonitorViewModel(
     )
   )
   const tracksDomainExpiry = type === 'domain' || type === 'http' || type === 'keyword'
+  const leakEnvelope = isRecord(lastCheck?.details) ? lastCheck?.details : undefined
+  const leakReportValue = leakEnvelope?.leakcheck_report
+  const leakReport = isRecord(leakReportValue) ? leakReportValue as unknown as import('../api/types').LeakCheckReport : undefined
+  const complianceReportValue = leakEnvelope?.compliance_report
+  const complianceReport = isRecord(complianceReportValue) ? complianceReportValue as unknown as import('../api/types').ComplianceReport : undefined
+  const evidenceOnly = type === 'leakcheck' || type === 'compliance'
 
   return {
     id: nonEmpty(monitor.id, 'unknown-monitor'),
@@ -358,11 +387,11 @@ export function toMonitorViewModel(
     lastCheckedAt: monitor.last_check_at ?? lastCheck?.finished_at ?? lastCheck?.started_at,
     statusChangedAt: monitor.last_status_change_at,
     responseTimeMs: optionalNonNegativeNumber(lastCheck?.latency_ms),
-    uptime24h: clampPercentage(options.stats?.availability),
-    incidentCount24h: optionalNonNegativeNumber(options.stats?.incidents),
-    downtimeSeconds24h: optionalNonNegativeNumber(options.stats?.downtime_seconds),
-    mtbfSeconds24h: optionalNonNegativeNumber(options.stats?.mtbf_seconds),
-    last24Hours: toUptimeBars(monitor.id, checks, referenceTime),
+    uptime24h: evidenceOnly ? undefined : clampPercentage(options.stats?.availability),
+    incidentCount24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.incidents),
+    downtimeSeconds24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.downtime_seconds),
+    mtbfSeconds24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.mtbf_seconds),
+    last24Hours: toUptimeBars(monitor, checks, referenceTime),
     regions: Array.isArray(monitor.regions) ? [...monitor.regions] : [],
     incidentId: options.activeIncident?.id ?? lastCheck?.incident_id,
     lastIncidentAt: options.latestIncident?.resolved_at ?? options.latestIncident?.started_at,
@@ -373,6 +402,10 @@ export function toMonitorViewModel(
         : undefined,
     domainRegistration:
       tracksDomainExpiry ? expirySnapshot(lastCheck, 'domain', referenceTime) : undefined,
+    leakReport,
+    leakReportCached: leakEnvelope?.cached === true,
+    leakCacheExpiresAt: recordString(leakEnvelope, 'cache_expires_at'),
+    complianceReport,
   }
 }
 
@@ -393,6 +426,43 @@ export interface IncidentAdapterOptions {
   assignee?: Pick<User, 'id' | 'name'>
   commentCount?: number
   now?: DateInput
+}
+
+const checkStatuses = new Set(['ok', 'failed', 'degraded', 'skipped'] as const)
+
+function incidentLocationQuorum(details: JsonObject | undefined): IncidentLocationQuorum | undefined {
+  const quorum = childRecord(details, 'location_quorum')
+  if (!quorum) return undefined
+
+  const observations = Array.isArray(quorum.observations)
+    ? quorum.observations.flatMap((value) => {
+      if (!isRecord(value)) return []
+      const region = recordString(value, 'region')
+      const status = recordString(value, 'status')
+      if (!region || !status || !checkStatuses.has(status as 'ok' | 'failed' | 'degraded' | 'skipped')) return []
+      return [{
+        region,
+        status: status as 'ok' | 'failed' | 'degraded' | 'skipped',
+        rootCause: recordString(value, 'root_cause'),
+        latencyMs: recordNonNegativeNumber(value, 'latency_ms'),
+        finishedAt: recordString(value, 'finished_at'),
+      }]
+    })
+    : []
+
+  const expectedLocations = recordNonNegativeNumber(quorum, 'expected_locations')
+  const requiredFailures = recordNonNegativeNumber(quorum, 'required_failures')
+  const requiredRecoveries = recordNonNegativeNumber(quorum, 'required_recoveries')
+  if (expectedLocations === undefined || requiredFailures === undefined || requiredRecoveries === undefined) return undefined
+
+  return {
+    policy: recordString(quorum, 'policy') ?? 'two-location-confirmation',
+    expectedLocations: Math.round(expectedLocations),
+    requiredFailures: Math.round(requiredFailures),
+    requiredRecoveries: Math.round(requiredRecoveries),
+    evaluatedAt: recordString(quorum, 'evaluated_at'),
+    observations,
+  }
 }
 
 export function toIncidentViewModel(
@@ -423,6 +493,13 @@ export function toIncidentViewModel(
       (typeof incident.assigned_to === 'string' && incident.assigned_to.trim()
         ? incident.assigned_to.trim()
         : undefined),
+    locationQuorum: incidentLocationQuorum(incident.details),
+    leakReport: isRecord(incident.details?.leakcheck_report)
+      ? incident.details?.leakcheck_report as unknown as import('../api/types').LeakCheckReport
+      : undefined,
+    complianceReport: isRecord(incident.details?.compliance_report)
+      ? incident.details?.compliance_report as unknown as import('../api/types').ComplianceReport
+      : undefined,
   }
 }
 
@@ -554,7 +631,7 @@ export function toStatusPageViewModel(
   const page: StatusPage = isStatusPageDetail(source) ? source.page : source
   const detailComponents = isStatusPageDetail(source) ? source.components : undefined
   const components = options.components ?? detailComponents
-  const baseUrl = nonEmpty(options.publicBaseUrl, 'https://status.sslping.local').replace(/\/$/, '')
+  const baseUrl = nonEmpty(options.publicBaseUrl, 'https://status.sslping.io/status').replace(/\/$/, '')
   const customDomain = page.custom_domain?.trim() || undefined
   const customDomainVerified = Boolean(customDomain && page.custom_domain_verified_at)
 

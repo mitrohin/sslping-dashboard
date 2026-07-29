@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 import type { ApiClient } from '../api/client'
 import type {
   Announcement,
@@ -11,7 +11,7 @@ import type {
   StatusPageCreateRequest,
   StatusPageUpdateRequest,
 } from '../api/types'
-import { Button, FeedbackBanner, Panel } from '../components/ui'
+import { Button, FeedbackBanner, PageLoadingSkeleton, Panel } from '../components/ui'
 import { formatStatus } from '../lib/format'
 import {
   demoStatusPages,
@@ -92,7 +92,7 @@ function useRemoteData<T>(
 function LoadingOperations({ label }: { label: string }) {
   return (
     <main className="page page--wide ops-page" aria-busy="true">
-      <Panel><p role="status">Loading {label}…</p></Panel>
+      <PageLoadingSkeleton label={`Loading ${label}`} />
     </main>
   )
 }
@@ -181,10 +181,10 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
       monitors={state.data.monitors}
       members={state.data.members}
       initialComments={state.data.comments}
-      onAcknowledge={(incidentId) => api.acknowledgeIncident(requireWorkspace(), incidentId).then(() => undefined)}
       onAssign={(incidentId, memberId) => api.assignIncident(requireWorkspace(), incidentId, memberId).then(() => undefined)}
       onComment={(incidentId, message) => api.addIncidentComment(requireWorkspace(), incidentId, message).then(() => undefined)}
       onResolve={(incidentId) => api.resolveIncident(requireWorkspace(), incidentId).then(() => undefined)}
+      onDownloadComplianceReport={(incidentId) => api.downloadComplianceIncidentPdf(requireWorkspace(), incidentId)}
     />
   )
 }
@@ -215,7 +215,7 @@ function maintenanceRequest(input: MaintenanceWindowInput): MaintenanceWindowWri
   }
 }
 
-function LiveMaintenanceContent({ api, workspaceId, initialMonitorId }: { api: ApiClient; workspaceId?: string; initialMonitorId?: string }) {
+function LiveMaintenanceContent({ api, workspaceId, workspaceTimezone, initialMonitorId }: { api: ApiClient; workspaceId?: string; workspaceTimezone?: string; initialMonitorId?: string }) {
   const load = useCallback(async (activeWorkspaceId: string): Promise<MaintenanceData> => {
     const [monitorPage, windowList] = await Promise.all([
       api.listMonitors(activeWorkspaceId, { limit: 100 }),
@@ -247,6 +247,7 @@ function LiveMaintenanceContent({ api, workspaceId, initialMonitorId }: { api: A
       windows={state.data.windows}
       monitors={state.data.monitors}
       initialCreateMonitorId={initialMonitorId}
+      defaultTimezone={workspaceTimezone}
       onCreate={async (input) =>
         adapt(await api.createMaintenanceWindow(requireWorkspace(), maintenanceRequest(input)))}
       onUpdate={async (windowId, input) =>
@@ -261,7 +262,7 @@ export function LiveMaintenancePage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialMonitorId = searchParams.get('create') === '1' ? searchParams.get('monitor') ?? undefined : undefined
   if (isDemoSession()) return <MaintenancePage initialCreateMonitorId={initialMonitorId} />
-  return <LiveMaintenanceContent api={api} workspaceId={workspace?.id} initialMonitorId={initialMonitorId} />
+  return <LiveMaintenanceContent api={api} workspaceId={workspace?.id} workspaceTimezone={workspace?.timezone} initialMonitorId={initialMonitorId} />
 }
 
 interface StatusPageData {
@@ -488,7 +489,7 @@ function editorUpdateRequest(value: StatusPageEditorValue): StatusPageUpdateRequ
         enable_details_page: value.features.enableDetailsPage,
         show_monitor_url: value.features.showMonitorUrl,
         hide_paused_monitors: value.features.hidePausedMonitors,
-        enable_subscribe: value.features.enableSubscribe,
+        enable_subscribe: false,
         show_latest_downtime: value.features.showLatestDowntime,
         small_cookie_dialog: value.features.smallCookieDialog,
         share_analytics: value.features.shareAnalytics,

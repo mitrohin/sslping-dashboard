@@ -194,6 +194,44 @@ describe('ApiClient', () => {
     })
   })
 
+  it('uses the check-location administration contract and omits a blank rotation key', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse({ items: [] }))
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+    const fields = {
+      code: 'ams-1',
+      name: 'Amsterdam',
+      ip_address: '203.0.113.10',
+      port: 8443,
+      active: true,
+      enforce_ip: true,
+      concurrency: 16,
+    }
+
+    await client.adminListCheckLocations()
+    await client.adminCreateCheckLocation({ ...fields, key: '0123456789abcdef0123456789abcdef' })
+    await client.adminUpdateCheckLocation('location/1', { ...fields, key: '   ' })
+    await client.adminUpdateCheckLocation('location/1', { ...fields, key: '  fedcba9876543210fedcba9876543210  ' })
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/admin/check-locations',
+      '/api/v1/admin/check-locations',
+      '/api/v1/admin/check-locations/location%2F1',
+      '/api/v1/admin/check-locations/location%2F1',
+    ])
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ ...fields, key: '0123456789abcdef0123456789abcdef' }),
+    })
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify(fields),
+    })
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ ...fields, key: 'fedcba9876543210fedcba9876543210' }),
+    })
+  })
+
   it('uses the billing and invoice administration contract', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)

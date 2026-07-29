@@ -7,7 +7,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams } from 'react-router'
 import {
   Activity,
   Bell,
@@ -36,7 +36,7 @@ import {
 import { formatDate, formatRelativeTime, formatStatus, formatUptime } from '../../lib/format'
 import './public-status.css'
 
-export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'subscribeStatusPage'>
+export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'accessPublicStatusPage' | 'subscribeStatusPage'>
 
 export interface PublicStatusPageProps {
   api?: PublicStatusApi
@@ -297,7 +297,12 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
     setFailure(null)
     if (password) setPasswordError('')
     try {
-      const result = await api.getPublicStatusPage(slug, password)
+      // Submit passwords to the dedicated POST endpoint. This keeps the
+      // browser flow on simple CORS headers and avoids varying caches on a
+      // secret request header.
+      const result = password
+        ? await api.accessPublicStatusPage(slug, password)
+        : await api.getPublicStatusPage(slug)
       setSnapshot(result)
       const locked = result.password_protected && result.components === null
       setPasswordRequired(locked)

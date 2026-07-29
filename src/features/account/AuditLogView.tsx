@@ -3,6 +3,7 @@ import { Download, FileClock, Filter, ShieldCheck } from 'lucide-react'
 import { formatDate } from '../../lib/format'
 import { Badge, Button, EmptyState, Panel, SearchInput, Select } from '../../components/ui'
 import type { AuditEntry } from './types'
+import { useI18n } from '../../app/I18nProvider'
 
 export const demoAuditEntries: readonly AuditEntry[] = [
   {
@@ -124,6 +125,7 @@ export interface AuditLogViewProps {
 }
 
 export function AuditLogView({ entries = demoAuditEntries, onExport }: AuditLogViewProps) {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<'all' | AuditEntry['category']>('all')
   const [outcome, setOutcome] = useState<'all' | AuditEntry['outcome']>('all')
@@ -148,7 +150,7 @@ export function AuditLogView({ entries = demoAuditEntries, onExport }: AuditLogV
         await onExport(filtered)
         return
       }
-      const header = ['Time', 'Actor', 'Action', 'Category', 'Target', 'Outcome', 'IP address']
+      const header = [t('audit.when'), t('audit.actor'), t('audit.action'), t('audit.category'), t('audit.target'), t('audit.outcome'), t('audit.ip')]
       const escape = (value: string) => `"${value.replaceAll('"', '""')}"`
       const csv = [
         header.map(escape).join(','),
@@ -176,42 +178,42 @@ export function AuditLogView({ entries = demoAuditEntries, onExport }: AuditLogV
   }
 
   return (
-    <section className="account-tab-panel" role="tabpanel" aria-label="Audit log">
+    <section className="account-tab-panel" role="tabpanel" aria-label={t('audit.title')}>
       <div className="account-section-heading">
-        <div><h2>Audit log<span className="title-dot">.</span></h2><p>Review security-sensitive changes and activity across this workspace.</p></div>
-        <Button variant="secondary" onClick={exportLog} disabled={exporting || filtered.length === 0}><Download size={17} />{exporting ? 'Exporting…' : 'Export CSV'}</Button>
+        <div><h2>{t('audit.title')}<span className="title-dot">.</span></h2><p>{t('audit.description')}</p></div>
+        <Button variant="secondary" onClick={exportLog} disabled={exporting || filtered.length === 0}><Download size={17} />{exporting ? t('audit.exporting') : t('audit.export')}</Button>
       </div>
 
       <div className="audit-toolbar">
-        <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search actor, action, or resource" aria-label="Search audit log" />
-        <label><Filter size={16} /><span className="sr-only">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}><option value="all">All categories</option>{categories.map((item) => <option key={item} value={item}>{item.replace('-', ' ')}</option>)}</Select></label>
-        <label><ShieldCheck size={16} /><span className="sr-only">Outcome</span><Select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)}><option value="all">All outcomes</option><option value="success">Success</option><option value="warning">Warning</option><option value="failure">Failure</option></Select></label>
+        <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('audit.search')} aria-label={t('audit.searchLabel')} />
+        <label><Filter size={16} /><span className="sr-only">{t('audit.category')}</span><Select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}><option value="all">{t('audit.allCategories')}</option>{categories.map((item) => <option key={item} value={item}>{t(`audit.category.${item}`)}</option>)}</Select></label>
+        <label><ShieldCheck size={16} /><span className="sr-only">{t('audit.outcome')}</span><Select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)}><option value="all">{t('audit.allOutcomes')}</option><option value="success">{t('audit.outcome.success')}</option><option value="warning">{t('audit.outcome.warning')}</option><option value="failure">{t('audit.outcome.failure')}</option></Select></label>
       </div>
 
       <Panel className="account-table-panel">
         {filtered.length === 0 ? (
-          <EmptyState icon={<FileClock size={35} />} title="No matching activity" description="Try a different search or filter." />
+          <EmptyState icon={<FileClock size={35} />} title={t('audit.empty')} description={t('audit.emptyHint')} />
         ) : (
           <div className="account-table-wrap">
             <table className="account-table audit-table">
-              <caption className="sr-only">Workspace audit log</caption>
-              <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Outcome</th><th>IP address</th></tr></thead>
+              <caption className="sr-only">{t('audit.workspaceLog')}</caption>
+              <thead><tr><th>{t('audit.when')}</th><th>{t('audit.actor')}</th><th>{t('audit.action')}</th><th>{t('audit.target')}</th><th>{t('audit.outcome')}</th><th>{t('audit.ip')}</th></tr></thead>
               <tbody>
                 {filtered.map((entry) => (
                   <tr key={entry.id}>
-                    <td data-label="When"><time dateTime={entry.occurredAt}>{formatDate(entry.occurredAt, { includeSeconds: true })}</time></td>
-                    <td data-label="Actor"><strong>{entry.actorName}</strong>{entry.actorEmail && <small>{entry.actorEmail}</small>}</td>
-                    <td data-label="Action"><code>{formatAction(entry.action)}</code><small>{entry.category}</small></td>
-                    <td data-label="Target"><strong>{entry.target}</strong>{entry.detail && <small>{entry.detail}</small>}</td>
-                    <td data-label="Outcome"><Badge tone={outcomeTone(entry.outcome)}>{entry.outcome}</Badge></td>
-                    <td data-label="IP"><code>{entry.ipAddress ?? 'Internal'}</code></td>
+                    <td data-label={t('audit.when')}><time dateTime={entry.occurredAt}>{formatDate(entry.occurredAt, { includeSeconds: true })}</time></td>
+                    <td data-label={t('audit.actor')}><strong>{entry.actorName}</strong>{entry.actorEmail && <small>{entry.actorEmail}</small>}</td>
+                    <td data-label={t('audit.action')}><code>{formatAction(entry.action)}</code><small>{t(`audit.category.${entry.category}`)}</small></td>
+                    <td data-label={t('audit.target')}><strong>{entry.target}</strong>{entry.detail && <small>{entry.detail}</small>}</td>
+                    <td data-label={t('audit.outcome')}><Badge tone={outcomeTone(entry.outcome)}>{t(`audit.outcome.${entry.outcome}`)}</Badge></td>
+                    <td data-label={t('audit.ip')}><code>{entry.ipAddress ?? t('audit.internal')}</code></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        <footer className="account-table-footer"><span>{filtered.length} of {entries.length} events</span><span className="muted">Audit history is append-only.</span></footer>
+        <footer className="account-table-footer"><span>{t('audit.eventsCount', { visible: filtered.length, total: entries.length })}</span><span className="muted">{t('audit.appendOnly')}</span></footer>
       </Panel>
     </section>
   )

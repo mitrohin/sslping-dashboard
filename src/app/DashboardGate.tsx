@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router'
 import { useAuth } from './AuthProvider'
+import { useI18n } from './I18nProvider'
 
 const demoStorageKey = 'sslping.dashboard.demo'
 
@@ -24,13 +25,14 @@ export function DemoEntry() {
 
 export function DashboardGate() {
   const { authenticated, loading } = useAuth()
+  const { t } = useI18n()
   const location = useLocation()
 
   if (loading) {
     return (
       <main className="preparing" aria-live="polite">
         <div className="preparing__mark">S<span>.</span></div>
-        <div><p>SSLPing</p><h1>Restoring your dashboard</h1></div>
+        <div><p>SSLPing</p><h1>{t('app.restoring')}</h1></div>
       </main>
     )
   }

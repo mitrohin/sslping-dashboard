@@ -7,6 +7,7 @@ import type {
   Monitor,
   MonitorCreateRequest,
   MonitorUpdateRequest,
+  Region,
   UptimeStats,
 } from '../../api/types'
 import { toIncidentViewModel, toMonitorViewModel } from '../../app/viewAdapters'
@@ -164,6 +165,19 @@ function draftConfig(draft: MonitorDraft): MonitorCreateRequest['config'] {
           grace_seconds: Math.max(0, Math.round(draft.heartbeatGraceSeconds)),
         },
       }
+    case 'leakcheck':
+      return { leakcheck: { query_type: draft.leakQueryType, query: draft.target.trim() } }
+    case 'compliance': {
+      const url = draft.target.trim()
+      try {
+        const parsed = new URL(url)
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error()
+      } catch {
+        throw new Error('Enter a valid HTTP or HTTPS URL.')
+      }
+      if (draft.intervalSeconds < 86400) throw new Error('Compliance checks cannot run more often than every 24 hours.')
+      return { compliance: { url, framework: draft.complianceFramework } }
+    }
   }
 }
 
@@ -230,6 +244,12 @@ export function monitorToDraft(monitor: Monitor): MonitorDraft {
     case 'heartbeat':
       target = String(monitor.config.heartbeat?.period_seconds ?? monitor.interval_seconds)
       break
+    case 'leakcheck':
+      target = monitor.config.leakcheck?.query ?? ''
+      break
+    case 'compliance':
+      target = monitor.config.compliance?.url ?? ''
+      break
   }
 
   return {
@@ -262,11 +282,14 @@ export function monitorToDraft(monitor: Monitor): MonitorDraft {
     dnsRecordType: dns?.record_type ?? 'A',
     dnsExpected: dns?.expected?.join(', ') ?? '',
     heartbeatGraceSeconds: monitor.config.heartbeat?.grace_seconds ?? 0,
+    leakQueryType: monitor.config.leakcheck?.query_type ?? 'email',
+    complianceFramework: monitor.config.compliance?.framework ?? 'ru_152_fz',
   }
 }
 
-export function toResponseTimeSeries(checks: readonly CheckResult[]): readonly ResponseTimeSeries[] {
+export function toResponseTimeSeries(checks: readonly CheckResult[], locations: readonly Pick<Region, 'id' | 'name'>[] = []): readonly ResponseTimeSeries[] {
   const grouped = new Map<string, CheckResult[]>()
+  const locationNames = new Map(locations.map((location) => [location.id, location.name] as const))
   for (const check of checks) {
     const region = check.region || 'default'
     const values = grouped.get(region) ?? []
@@ -279,7 +302,7 @@ export function toResponseTimeSeries(checks: readonly CheckResult[]): readonly R
     const latencies = sorted.map((check) => Math.max(0, check.latency_ms))
     return {
       regionId: region,
-      regionLabel: region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase()),
+      regionLabel: locationNames.get(region) ?? region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase()),
       color: seriesColors[index % seriesColors.length],
       points: sorted.map((check) => ({
         timestamp: check.started_at,
@@ -316,6 +339,7 @@ export function toLiveMonitorDetail(options: {
   dnsEvidence?: readonly CheckResult[]
   incidents: readonly Incident[]
   stats: Readonly<Record<UptimePeriodSummary['period'], UptimeStats>>
+  locations?: readonly Pick<Region, 'id' | 'name'>[]
 }): MonitorDetailData {
   const openIncident = options.incidents.find((incident) => incident.status !== 'resolved')
   const base = toMonitorViewModel(options.monitor, {
@@ -336,7 +360,7 @@ export function toLiveMonitorDetail(options: {
       sslCertificate: certificate ?? base.sslCertificate,
       domainRegistration: domain ?? base.domainRegistration,
     },
-    responseTime: toResponseTimeSeries(options.responseChecks ?? options.checks),
+    responseTime: toResponseTimeSeries(options.responseChecks ?? options.checks, options.locations),
     uptimePeriods: (['24h', '7d', '30d', '365d'] as const).map((period) =>
       toUptimePeriod(period, options.stats[period]),
     ),

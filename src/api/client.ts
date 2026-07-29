@@ -282,6 +282,10 @@ export class ApiClient {
     return this.#request('/v1/me')
   }
 
+  updateMe(input: { locale: Api.Locale }): Promise<Api.User> {
+    return this.#request('/v1/me', { method: 'PATCH', body: input })
+  }
+
   async changePassword(input: Api.PasswordChangeRequest): Promise<void> {
     await this.#request<void>('/v1/auth/password/change', { method: 'POST', body: input })
     this.session.clear()
@@ -311,6 +315,10 @@ export class ApiClient {
 
   listRegions(): Promise<Api.ItemList<Api.Region>> {
     return this.#request('/v1/regions', { auth: false })
+  }
+
+  listCustomerRegions(): Promise<Api.ItemList<Api.CustomerRegion>> {
+    return this.#request('/v1/customer-regions', { auth: false })
   }
 
   listTenants(): Promise<Api.ItemList<Api.Workspace>> {
@@ -400,6 +408,13 @@ export class ApiClient {
   testMonitor(tenantId: Api.UUID, monitorId: Api.UUID, region?: string): Promise<Api.CheckResult> {
     return this.#request(
       withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/actions/test`, { region }),
+      { method: 'POST' },
+    )
+  }
+
+  scanLeakCheckMonitor(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.LeakCheckScanResponse> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/actions/scan`,
       { method: 'POST' },
     )
   }
@@ -755,6 +770,13 @@ export class ApiClient {
     return this.#request(`/v1/billing/invoices/${encodePath(invoiceId)}/pdf`, { responseType: 'blob' })
   }
 
+  downloadComplianceIncidentPdf(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Blob> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}/compliance-report.pdf`,
+      { responseType: 'blob' },
+    )
+  }
+
   emailBillingInvoicePdf(invoiceId: Api.UUID): Promise<{ message: string; recipient: string }> {
     return this.#request(`/v1/billing/invoices/${encodePath(invoiceId)}/actions/email`, { method: 'POST' })
   }
@@ -775,7 +797,7 @@ export class ApiClient {
     return this.#request('/v1/support/tickets/summary')
   }
 
-  createSupportTicket(input: { subject: string; priority: Api.SupportTicketPriority; message: string }): Promise<Api.SupportTicketDetail> {
+  createSupportTicket(input: { subject: string; message: string }): Promise<Api.SupportTicketDetail> {
     return this.#request('/v1/support/tickets', { method: 'POST', body: input })
   }
 
@@ -812,7 +834,7 @@ export class ApiClient {
     return this.#request(`/v1/admin/users/${encodePath(userId)}`)
   }
 
-  adminUpdateUser(userId: Api.UUID, input: Partial<Pick<Api.User, 'name' | 'locale' | 'timezone' | 'system_role'>> & { email_verified?: boolean; revoke_sessions?: boolean }): Promise<Api.User> {
+  adminUpdateUser(userId: Api.UUID, input: Partial<Pick<Api.User, 'name' | 'locale' | 'region_id' | 'timezone' | 'system_role'>> & { email_verified?: boolean; revoke_sessions?: boolean }): Promise<Api.AdminUser> {
     return this.#request(`/v1/admin/users/${encodePath(userId)}`, { method: 'PATCH', body: input })
   }
 
@@ -829,7 +851,34 @@ export class ApiClient {
     return this.#request('/v1/admin/plans')
   }
 
-  adminCreatePlan(plan: Omit<Api.Plan, 'id' | 'created_at' | 'updated_at'>): Promise<Api.Plan> {
+  adminListRegions(): Promise<Api.ItemList<Api.CustomerRegion>> {
+    return this.#request('/v1/admin/regions')
+  }
+
+  adminCreateRegion(region: Omit<Api.CustomerRegion, 'id' | 'created_at' | 'updated_at'>): Promise<Api.CustomerRegion> {
+    return this.#request('/v1/admin/regions', { method: 'POST', body: region })
+  }
+
+  adminUpdateRegion(region: Api.CustomerRegion): Promise<Api.CustomerRegion> {
+    return this.#request(`/v1/admin/regions/${encodePath(region.id)}`, { method: 'PATCH', body: region })
+  }
+
+  adminListCheckLocations(): Promise<Api.ItemList<Api.CheckLocation>> {
+    return this.#request('/v1/admin/check-locations')
+  }
+
+  adminCreateCheckLocation(input: Api.CheckLocationCreateInput): Promise<Api.CheckLocation> {
+    return this.#request('/v1/admin/check-locations', { method: 'POST', body: input })
+  }
+
+  adminUpdateCheckLocation(locationId: Api.UUID, input: Api.CheckLocationUpdateInput): Promise<Api.CheckLocation> {
+    const body = { ...input }
+    if (body.key?.trim()) body.key = body.key.trim()
+    else delete body.key
+    return this.#request(`/v1/admin/check-locations/${encodePath(locationId)}`, { method: 'PATCH', body })
+  }
+
+  adminCreatePlan(plan: Omit<Api.Plan, 'id' | 'created_at' | 'updated_at' | 'region_id'> & { region_id: Api.UUID }): Promise<Api.Plan> {
     return this.#request('/v1/admin/plans', { method: 'POST', body: plan })
   }
 

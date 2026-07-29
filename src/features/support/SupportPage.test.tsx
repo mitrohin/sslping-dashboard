@@ -67,6 +67,25 @@ afterEach(() => {
 })
 
 describe('customer support unread state', () => {
+  it('creates a ticket without exposing or accepting a customer priority', async () => {
+    mocks.list.mockResolvedValue({ items: [] })
+    const created: SupportTicketDetail = {
+      ticket: { ...unreadTicket, id: 'ticket-new', subject: 'New support request', priority: 'normal', unread_count: 0 },
+      messages: [{ id: 'message-new', ticket_id: 'ticket-new', author_id: 'customer-1', author_role: 'user', body: 'Details for support', internal: false, created_at: '2026-07-26T17:00:00Z', attachments: [] }],
+    }
+    mocks.create.mockResolvedValue(created)
+    render(<SupportPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New ticket' }))
+    expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Monitoring alert does not arrive'), { target: { value: 'New support request' } })
+    fireEvent.change(screen.getByPlaceholderText('Describe the problem, what you expected and what happened…'), { target: { value: 'Details for support' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
+
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ subject: 'New support request', message: 'Details for support' }))
+  })
+
   it('highlights an unread ticket and clears it after marking the latest staff reply', async () => {
     const refresh = vi.fn()
     window.addEventListener(SUPPORT_UNREAD_REFRESH_EVENT, refresh)
