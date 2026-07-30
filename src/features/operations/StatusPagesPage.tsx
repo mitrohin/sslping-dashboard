@@ -125,6 +125,12 @@ export function StatusPagesPage({
     value: StatusPageCreateInput[Key],
   ) => setCreateDraft((current) => ({ ...current, [key]: value }))
 
+  const openCreate = () => {
+    setError('')
+    setCreateDraft((current) => ({ ...current, language: locale === 'ka' || locale === 'tr' ? 'en' : locale }))
+    setCreateOpen(true)
+  }
+
   const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const name = createDraft.name.trim()
@@ -150,6 +156,7 @@ export function StatusPagesPage({
       accessLevel: input.accessLevel,
       status: input.published ? 'published' : 'draft',
       language: languageLabel,
+      languageCode: input.language,
       customDomainVerified: false,
       announcementCount: 0,
       subscribers: 0,
@@ -222,7 +229,7 @@ export function StatusPagesPage({
       <PageHeader
         title={t('statusPages.title')}
         description={t('statusPages.description')}
-        actions={<Button type="button" onClick={() => { setError(''); setCreateDraft((current) => ({ ...current, language: locale === 'ka' || locale === 'tr' ? 'en' : locale })); setCreateOpen(true) }}><Plus size={18} /> {t('statusPages.create')}</Button>}
+        actions={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button>}
       />
 
       {pages.length === 0 ? (
@@ -231,7 +238,7 @@ export function StatusPagesPage({
             icon={<Radio size={36} />}
             title={t('statusPages.create')}
             description={t('statusPages.emptyHint')}
-            action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> {t('statusPages.create')}</Button>}
+            action={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button>}
           />
         </Panel>
       ) : (

@@ -527,6 +527,7 @@ describe('LiveStatusPageEditorPage', () => {
       homepageUrl: statusPage.homepage_url,
       customDomain: statusPage.custom_domain,
       googleAnalyticsId: 'G-EXAMPLE01',
+      language: statusPage.language,
       passwordEnabled: true,
       monitorIds: [monitor.id, 'monitor-2'],
       branding: expect.objectContaining({ colorScheme: 'dark', removeProductLogo: true }),
@@ -537,6 +538,7 @@ describe('LiveStatusPageEditorPage', () => {
     const changed = {
       ...props.initialValue!,
       name: 'Updated health',
+      language: 'ru' as const,
       password: 'replacement-password',
       monitorIds: [monitor.id],
       features: { ...props.initialValue!.features, showBarCharts: false },
@@ -558,6 +560,7 @@ describe('LiveStatusPageEditorPage', () => {
       expect.objectContaining({
         page: expect.objectContaining({
           name: 'Updated health',
+          language: 'ru',
           branding: expect.objectContaining({ password_enabled: true }),
           settings: expect.objectContaining({ show_bar_charts: false }),
         }),

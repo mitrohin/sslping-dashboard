@@ -85,7 +85,7 @@ function makeDefaultValue(page: StatusPageViewModel, monitors: readonly MonitorV
     homepageUrl: 'https://example.com',
     customDomain: page.customDomain ?? '',
     googleAnalyticsId: '',
-    language: 'en',
+    language: page.languageCode ?? 'en',
     robots: 'noindex,nofollow',
     published: page.status === 'published',
     passwordEnabled: page.accessLevel === 'password',
@@ -350,6 +350,15 @@ export function StatusPageEditorPage({
 
           {tab === 'global' && (
             <>
+              <EditorSection title="Language & search engines" icon={<Globe2 size={20} />}>
+                <div className="form-grid">
+                  <Field label="Public page language" hint="Controls all system text, dates and status labels on the public page.">
+                    <Select value={value.language} onChange={(event) => update('language', event.target.value as StatusPageLanguageCode)}>{languages.map((language) => <option key={language.code} value={language.code}>{language.label}</option>)}</Select>
+                  </Field>
+                  <Field label="Robots meta tag"><Select value={value.robots} onChange={(event) => update('robots', event.target.value as RobotsPolicy)}><option value="index,follow">index, follow</option><option value="noindex,nofollow">noindex, nofollow</option><option value="noindex,follow">noindex, follow</option></Select></Field>
+                </div>
+              </EditorSection>
+
               <EditorSection title="White-label" icon={<ShieldCheck size={20} />}>
                 <div className="form-grid">
                   {customStatusDomainsAvailable ? (
@@ -380,10 +389,6 @@ export function StatusPageEditorPage({
               <EditorSection title="Access">
                 <SettingsToggle checked={value.passwordEnabled} onChange={(next) => update('passwordEnabled', next)} title="Password" description="Restrict this status page to visitors with a password." />
                 {value.passwordEnabled && <Field label="Status page password" hint="Leave empty to preserve the current password."><input type="password" value={value.password} onChange={(event) => update('password', event.target.value)} minLength={12} maxLength={72} autoComplete="new-password" placeholder="••••••••••••" /></Field>}
-                <div className="form-grid">
-                  <Field label="Language"><Select value={value.language} onChange={(event) => update('language', event.target.value as StatusPageLanguageCode)}>{languages.map((language) => <option key={language.code} value={language.code}>{language.label}</option>)}</Select></Field>
-                  <Field label="Robots meta tag"><Select value={value.robots} onChange={(event) => update('robots', event.target.value as RobotsPolicy)}><option value="index,follow">index, follow</option><option value="noindex,nofollow">noindex, nofollow</option><option value="noindex,follow">noindex, follow</option></Select></Field>
-                </div>
                 <SettingsToggle checked={value.published} onChange={(next) => update('published', next)} title="Published" description="Make this page reachable through its public URL." />
               </EditorSection>
 

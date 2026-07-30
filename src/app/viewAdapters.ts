@@ -651,6 +651,7 @@ export function toStatusPageViewModel(
         : 'public',
     status: page.published ? 'published' : 'draft',
     language: languageLabels[page.language] ?? nonEmpty(page.language, 'English'),
+    languageCode: page.language,
     customDomain,
     customDomainVerified,
     announcementCount: Math.round(nonNegativeNumber(options.announcementCount)),

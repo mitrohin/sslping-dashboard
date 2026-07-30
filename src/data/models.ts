@@ -161,6 +161,7 @@ export interface StatusPageViewModel {
   accessLevel: 'public' | 'password' | 'private'
   status: 'published' | 'draft'
   language: string
+  languageCode?: import('../api/types').StatusPageLanguage
   customDomain?: string
   customDomainVerified: boolean
   announcementCount: number

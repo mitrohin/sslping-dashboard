@@ -80,6 +80,18 @@ describe('PublicStatusPage', () => {
     expect(api.getPublicStatusPage).toHaveBeenCalledWith('example-cloud')
   })
 
+  it('renders public interface text and metadata in the page language', async () => {
+    const api = createApi({ ...snapshot, page: { ...snapshot.page, language: 'ru' } })
+    renderRoute(api)
+
+    expect(await screen.findByRole('heading', { name: 'Все системы работают' })).toBeInTheDocument()
+    expect(screen.getByText('Текущий статус')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Подписаться на обновления' })).toBeInTheDocument()
+    expect(screen.getAllByText('Работает').length).toBeGreaterThan(0)
+    expect(document.documentElement.lang).toBe('ru')
+    expect(document.title).toContain('Текущий статус')
+  })
+
   it('unlocks password-protected pages without storing the password', async () => {
     const locked: PublicStatusSnapshot = {
       ...snapshot,
