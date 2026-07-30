@@ -649,10 +649,10 @@ export class ApiClient {
     })
   }
 
-  accessPublicStatusPage(slug: string, password: string): Promise<Api.PublicStatusSnapshot> {
+  accessPublicStatusPage(slug: string, password: string, turnstileToken?: string): Promise<Api.PublicStatusSnapshot> {
     return this.#request(`/v1/public/status-pages/${encodePath(slug)}/access`, {
       method: 'POST',
-      body: { password },
+      body: { password, turnstile_token: turnstileToken },
       auth: false,
     })
   }
@@ -664,10 +664,10 @@ export class ApiClient {
     })
   }
 
-  accessPublicStatusPageByDomain(customDomain: string, password: string): Promise<Api.PublicStatusSnapshot> {
+  accessPublicStatusPageByDomain(customDomain: string, password: string, turnstileToken?: string): Promise<Api.PublicStatusSnapshot> {
     return this.#request(`/v1/public/status-pages/by-domain/${encodePath(customDomain)}/access`, {
       method: 'POST',
-      body: { password },
+      body: { password, turnstile_token: turnstileToken },
       auth: false,
     })
   }

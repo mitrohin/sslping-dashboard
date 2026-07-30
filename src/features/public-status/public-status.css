@@ -102,11 +102,19 @@
 .ps-component-copy .ps-response-issue { display: flex; align-items: center; gap: 4px; margin-top: 7px; color: var(--ps-amber); font-weight: 700; }
 .ps-component-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ps-details-toggle { margin-top: 6px; padding: 0; border: 0; color: var(--ps-green-dark); background: transparent; font-size: 10px; font-weight: 700; cursor: pointer; }
-.ps-component-details { grid-column: 2 / -1; display: flex; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px dashed var(--ps-line); color: var(--ps-muted); font-size: 11px; }
+.ps-component-details { grid-column: 2 / -1; display: grid; grid-template-columns: minmax(150px, .35fr) minmax(300px, 1fr); align-items: start; gap: 24px; padding-top: 16px; border-top: 1px dashed var(--ps-line); color: var(--ps-muted); font-size: 11px; }
+.ps-component-details > div:first-child { display: grid; gap: 5px; }
 .ps-response-chart { min-width: 130px; display: grid; gap: 3px; }
 .ps-response-chart svg { width: 100%; height: 34px; overflow: visible; }
 .ps-response-chart polyline { fill: none; stroke: var(--ps-green); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.ps-response-chart svg line { stroke: var(--ps-line); stroke-width: .6; vector-effect: non-scaling-stroke; }
 .ps-response-chart span { color: var(--ps-muted); font-size: 9px; text-align: right; }
+.ps-response-chart.is-detailed { min-width: 0; gap: 10px; }
+.ps-response-chart.is-detailed svg { height: 105px; }
+.ps-response-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ps-response-stats > span { display: grid; gap: 3px; text-align: left; }
+.ps-response-stats small { color: var(--ps-muted); }
+.ps-response-stats strong { color: var(--ps-ink); font-size: 14px; }
 .ps-uptime-bars { height: 28px; display: flex; align-items: stretch; gap: 3px; }
 .ps-uptime-bars span { min-width: 2px; flex: 1; border-radius: 2px; background: #dce4ee; }
 .ps-uptime-bars span.is-up { background: #30c680; }
@@ -250,6 +258,7 @@
   .ps-metrics article:first-child { border-top: 0; }
   .ps-section { margin-top: 39px; }
   .ps-component-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; padding: 17px; }
+  .ps-component-details { grid-column: 1 / -1; grid-template-columns: 1fr; }
   .ps-uptime-bars { grid-column: 2 / -1; height: 20px; }
   .ps-uptime-value { display: none; }
   .ps-component-copy p { white-space: normal; }

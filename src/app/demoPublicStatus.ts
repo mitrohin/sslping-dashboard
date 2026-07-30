@@ -15,6 +15,9 @@ export const demoPublicStatusApi: PublicStatusApi = {
   async getPublicStatusPage(slug, password) {
     const page = demoStatusPages.find((item) => item.slug === slug)
     if (!page) throw missingPage()
+    if (page.accessLevel === 'password' && password && password !== 'status-demo') {
+      throw new ApiError({ type: 'about:blank', title: 'Unauthorized', status: 401, detail: 'Incorrect status-page password.', instance: '', code: 'unauthorized' })
+    }
     const locked = page.accessLevel === 'password' && !password
 
     const snapshot: PublicStatusSnapshot = {

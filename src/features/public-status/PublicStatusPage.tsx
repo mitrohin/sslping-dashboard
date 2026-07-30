@@ -37,6 +37,7 @@ import {
 } from '../../api'
 import { formatDate, formatRelativeTime, formatStatus, formatUptime } from '../../lib/format'
 import { publicStatusCopy, statusPageLocale, type PublicStatusCopy } from './i18n'
+import { TurnstileWidget } from '../auth/TurnstileWidget'
 import './public-status.css'
 
 export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'accessPublicStatusPage' | 'subscribeStatusPage'> & Partial<Pick<ApiClient, 'getPublicStatusPageByDomain' | 'accessPublicStatusPageByDomain'>>
@@ -50,6 +51,7 @@ type ConsentChoice = 'necessary' | 'all'
 
 const defaultApi = new ApiClient()
 const consentStorageKey = 'sslping.public-status.cookie-consent.v1'
+const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
 
 const statusPriority: Readonly<Record<MonitorStatus, number>> = {
   down: 5,
@@ -123,12 +125,14 @@ function publicBranding(value: unknown): PublicBranding {
   }
 }
 
-function ResponseChart({ points }: { points: NonNullable<PublicStatusComponent['response_time']> }) {
+function ResponseChart({ points, detailed = false }: { points: NonNullable<PublicStatusComponent['response_time']>; detailed?: boolean }) {
   if (points.length < 2) return null
   const max = Math.max(...points.map((point) => point.average_ms), 1)
   const coordinates = points.map((point, index) => `${(index / (points.length - 1)) * 180},${34 - (point.average_ms / max) * 30}`).join(' ')
   const average = Math.round(points.reduce((sum, point) => sum + point.average_ms, 0) / points.length)
-  return <div className="ps-response-chart" aria-label={`Average response time ${average} ms`}><svg viewBox="0 0 180 38" preserveAspectRatio="none" role="img"><polyline points={coordinates} /></svg><span>{average} ms avg</span></div>
+  const fastest = Math.round(Math.min(...points.map((point) => point.average_ms)))
+  const slowest = Math.round(max)
+  return <div className={`ps-response-chart ${detailed ? 'is-detailed' : ''}`} aria-label={`Average response time ${average} ms`}><svg viewBox="0 0 180 38" preserveAspectRatio="none" role="img"><line x1="0" y1="34" x2="180" y2="34" /><line x1="0" y1="19" x2="180" y2="19" /><line x1="0" y1="4" x2="180" y2="4" /><polyline points={coordinates} /></svg>{detailed ? <div className="ps-response-stats"><span><small>Average</small><strong>{average} ms</strong></span><span><small>Fastest</small><strong>{fastest} ms</strong></span><span><small>Slowest</small><strong>{slowest} ms</strong></span></div> : <span>{average} ms avg · 24h</span>}</div>
 }
 
 function statusIcon(status: MonitorStatus, size = 24) {
@@ -234,17 +238,22 @@ function PasswordView({
   error,
   onSubmit,
   copy,
+  captchaRequired,
+  captchaReset,
 }: {
   pageName: string
   busy: boolean
   error: string
-  onSubmit: (password: string) => void
+  onSubmit: (password: string, turnstileToken?: string) => void
   copy: PublicStatusCopy
+  captchaRequired: boolean
+  captchaReset: number
 }) {
   const [password, setPassword] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState('')
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (password) onSubmit(password)
+    if (password) onSubmit(password, turnstileToken || undefined)
   }
   return (
     <main className="public-status-page ps-state-page">
@@ -257,7 +266,8 @@ function PasswordView({
           <label htmlFor="status-page-password">{copy.password}</label>
           <div className="ps-input-with-icon"><KeyRound size={18} /><input id="status-page-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={copy.passwordPlaceholder} required /></div>
           {error && <div className="ps-form-error" role="alert">{error}</div>}
-          <button type="submit" className="ps-button ps-button--primary" disabled={busy}>{busy ? copy.unlocking : copy.viewStatusPage}</button>
+          {captchaRequired && TURNSTILE_SITE_KEY && <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} action="status-page-access" resetSignal={captchaReset} onToken={setTurnstileToken} />}
+          <button type="submit" className="ps-button ps-button--primary" disabled={busy || captchaRequired && Boolean(TURNSTILE_SITE_KEY) && !turnstileToken}>{busy ? copy.unlocking : copy.viewStatusPage}</button>
         </form>
         <small><ShieldCheck size={14} /> {copy.passwordSecurity}</small>
       </section>
@@ -276,7 +286,7 @@ function ComponentRow({ component, showBars, showPercentage, showResponseTime, s
       {showResponseTime && <ResponseChart points={component.response_time ?? []} />}
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
-      {expanded && <div className="ps-component-details"><strong>24-hour checks</strong><span>{bars.filter((status) => status === 'up').length} healthy · {bars.filter((status) => status === 'warning').length} slow · {bars.filter((status) => status === 'down').length} failed</span></div>}
+      {expanded && <div className="ps-component-details"><div><strong>Average response time · all locations</strong><span>Last 24 hours</span></div><ResponseChart points={component.response_time ?? []} detailed /></div>}
     </article>
   )
 }
@@ -303,6 +313,8 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const [failure, setFailure] = useState<Failure | null>(null)
   const [passwordRequired, setPasswordRequired] = useState(false)
   const [passwordError, setPasswordError] = useState('')
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+  const [captchaReset, setCaptchaReset] = useState(0)
   const [subscriptionOpen, setSubscriptionOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [consent, setConsent] = useState<ConsentChoice | null>(readConsent)
@@ -312,7 +324,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const copy = publicStatusCopy(language)
   const locale = statusPageLocale(language)
 
-  const load = useCallback(async (password?: string, background = false) => {
+  const load = useCallback(async (password?: string, background = false, turnstileToken?: string) => {
     if (!slug && !customDomain) {
       setFailure({ kind: 'not-found', message: 'The status page address is incomplete.' })
       setLoading(false)
@@ -326,12 +338,13 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       // browser flow on simple CORS headers and avoids varying caches on a
       // secret request header.
       const result = customDomain
-        ? password ? await api.accessPublicStatusPageByDomain?.(customDomain, password) : await api.getPublicStatusPageByDomain?.(customDomain)
-        : password ? await api.accessPublicStatusPage(slug, password) : await api.getPublicStatusPage(slug)
+        ? password ? await api.accessPublicStatusPageByDomain?.(customDomain, password, turnstileToken) : await api.getPublicStatusPageByDomain?.(customDomain)
+        : password ? await api.accessPublicStatusPage(slug, password, turnstileToken) : await api.getPublicStatusPage(slug)
       if (!result) throw new Error('Custom-domain status pages are not available.')
       languageRef.current = result.page.language
       if (password) passwordRef.current = password
       setSnapshot(result)
+      setCaptchaRequired(false)
       const locked = result.password_protected && result.components === null
       setPasswordRequired(locked)
       if (password && locked) setPasswordError(publicStatusCopy(result.page.language).passwordRejected)
@@ -339,7 +352,11 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       const status = errorStatus(error)
       if (status === 401 || status === 403) {
         setPasswordRequired(true)
-        if (password) setPasswordError(publicStatusCopy(languageRef.current).incorrectPassword)
+        if (password) {
+          setPasswordError(publicStatusCopy(languageRef.current).incorrectPassword)
+          setCaptchaRequired(true)
+          setCaptchaReset((value) => value + 1)
+        }
       } else if (status === 404) {
         setFailure({ kind: 'not-found', message: 'Check the address or ask the service owner for an updated link.' })
       } else {
@@ -385,7 +402,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   if (loading && !passwordRequired) return <LoadingView />
   if (failure) return <FailureView failure={failure} onRetry={() => void load()} />
   if (passwordRequired) {
-    return <PasswordView pageName={snapshot?.page.name ?? copy.protectedPage} busy={loading} error={passwordError} copy={copy} onSubmit={(password) => void load(password)} />
+    return <PasswordView pageName={snapshot?.page.name ?? copy.protectedPage} busy={loading} error={passwordError} copy={copy} captchaRequired={captchaRequired} captchaReset={captchaReset} onSubmit={(password, token) => void load(password, false, token)} />
   }
   if (!snapshot) return <LoadingView />
 

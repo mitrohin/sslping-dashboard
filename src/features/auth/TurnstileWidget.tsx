@@ -45,10 +45,12 @@ export function TurnstileWidget({
   siteKey,
   resetSignal,
   onToken,
+  action = 'register',
 }: {
   siteKey: string
   resetSignal: number
   onToken: (token: string) => void
+  action?: string
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const apiRef = useRef<TurnstileAPI | null>(null)
@@ -63,7 +65,7 @@ export function TurnstileWidget({
         apiRef.current = api
         widgetIDRef.current = api.render(containerRef.current, {
           sitekey: siteKey,
-          action: 'register',
+          action,
           appearance: 'always',
           theme: 'auto',
           callback: (token: string) => {
@@ -88,7 +90,7 @@ export function TurnstileWidget({
       widgetIDRef.current = null
       onToken('')
     }
-  }, [onToken, siteKey])
+  }, [action, onToken, siteKey])
 
   useEffect(() => {
     if (resetSignal === 0 || !apiRef.current || !widgetIDRef.current) return

@@ -11,6 +11,7 @@ export type ProblemCode =
   | 'unauthorized'
   | 'two_factor_required'
   | 'forbidden'
+  | 'captcha_required'
   | 'not_found'
   | 'conflict'
   | 'invoice_expired'
@@ -84,6 +85,7 @@ export interface LoginRequest {
   email: string
   password: string
   tenant_id?: UUID
+  turnstile_token?: string
 }
 
 export type LoginResult =

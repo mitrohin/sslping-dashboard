@@ -110,6 +110,7 @@ export function authErrorMessage(error: unknown, translate?: (key: string) => st
   }
   if (error instanceof ApiError) {
     if (error.code === 'rate_limited') return message('authError.rateLimited', 'Too many attempts. Please wait a moment and try again.')
+    if (error.code === 'captcha_required') return message('authError.captchaRequired', 'Complete the security verification and try again.')
     if (error.code === 'unauthorized') return message('authError.unauthorized', 'The email, password, or security code is incorrect.')
     if (error.code === 'forbidden') return message('authError.forbidden', 'This action is not available for this account.')
     if (error.code === 'not_found') return message('authError.notFound', 'This link is invalid, expired, or has already been used.')
@@ -133,14 +134,16 @@ export function LoginController() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+  const [challengeReset, setChallengeReset] = useState(0)
   const state = isRecord(location.state) ? location.state : {}
   const success = state.emailVerified === true ? t('authFlow.emailVerifiedMessage') : undefined
 
-  const submit = async (values: { email: string; password: string }) => {
+  const submit = async (values: { email: string; password: string; turnstileToken?: string }) => {
     setBusy(true)
     setError(undefined)
     try {
-      const outcome = await auth.login(values)
+      const outcome = await auth.login({ email: values.email, password: values.password, turnstile_token: values.turnstileToken })
       if (outcome.status === 'authenticated') {
         const destination = authReturnDestination(location.state)
         navigate(destination.to, { replace: true, state: destination.state })
@@ -152,13 +155,17 @@ export function LoginController() {
         })
       }
     } catch (cause) {
+      if (cause instanceof ApiError && (cause.code === 'unauthorized' || cause.code === 'captcha_required')) {
+        setCaptchaRequired(true)
+        setChallengeReset((value) => value + 1)
+      }
       setError(authErrorMessage(cause, t))
     } finally {
       setBusy(false)
     }
   }
 
-  return <AuthPage mode="login" busy={busy} error={error} success={success} onSubmit={submit} />
+  return <AuthPage mode="login" busy={busy} error={error} success={success} captchaRequired={captchaRequired} challengeReset={challengeReset} onSubmit={submit} />
 }
 
 export function RegisterController() {

@@ -9,7 +9,7 @@ import { TurnstileWidget } from './TurnstileWidget'
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
 
-type LoginValues = { email: string; password: string }
+type LoginValues = { email: string; password: string; turnstileToken?: string }
 export type RegisterValues = LoginValues & { name: string; workspaceName: string; regionCode: string; locale: Locale; turnstileToken?: string }
 
 export type AuthPageProps =
@@ -18,6 +18,8 @@ export type AuthPageProps =
       busy?: boolean
       error?: string
       success?: string
+      captchaRequired?: boolean
+      challengeReset?: number
       onSubmit: (values: LoginValues) => Promise<void> | void
     }
   | {
@@ -57,7 +59,7 @@ export function AuthPage(props: AuthPageProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (props.mode === 'login') await props.onSubmit({ email, password })
+    if (props.mode === 'login') await props.onSubmit({ email, password, turnstileToken: turnstileToken || undefined })
     if (props.mode === 'register') await props.onSubmit({ email, password, name, workspaceName, regionCode, locale, turnstileToken: turnstileToken || undefined })
     if (props.mode === 'forgot') await props.onSubmit({ email })
   }
@@ -167,12 +169,12 @@ export function AuthPage(props: AuthPageProps) {
             {props.error && <div className="auth-message auth-message--error">{props.error}</div>}
             {'success' in props && props.success && <div className="auth-message auth-message--success">{props.success}</div>}
 
-            {props.mode === 'register' && TURNSTILE_SITE_KEY && (
-              <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} resetSignal={props.challengeReset ?? 0} onToken={setTurnstileToken} />
+            {((props.mode === 'register') || (props.mode === 'login' && props.captchaRequired)) && TURNSTILE_SITE_KEY && (
+              <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} action={props.mode === 'login' ? 'login' : 'register'} resetSignal={props.challengeReset ?? 0} onToken={setTurnstileToken} />
             )}
 
             {props.mode === 'login' && <div className="auth-form__meta"><Link to="/forgot-password" state={location.state}>{t('auth.forgot')}</Link></div>}
-            <Button type="submit" size="lg" disabled={props.busy || (props.mode === 'register' && Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)}>
+            <Button type="submit" size="lg" disabled={props.busy || Boolean(TURNSTILE_SITE_KEY) && ((props.mode === 'register') || (props.mode === 'login' && props.captchaRequired)) && !turnstileToken}>
               {props.busy ? t('auth.wait') : props.mode === 'login' ? t('auth.signIn') : props.mode === 'register' ? t('auth.createAccount') : t('auth.sendReset')}
               {!props.busy && <ArrowRight size={18} />}
             </Button>

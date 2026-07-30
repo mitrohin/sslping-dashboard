@@ -116,7 +116,7 @@ describe('PublicStatusPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /view status page/i }))
 
     expect(await screen.findByRole('heading', { name: 'All systems operational' })).toBeInTheDocument()
-    expect(accessPublicStatusPage).toHaveBeenLastCalledWith('example-cloud', 'correct horse')
+    expect(accessPublicStatusPage).toHaveBeenLastCalledWith('example-cloud', 'correct horse', undefined)
     expect(getPublicStatusPage).toHaveBeenCalledWith('example-cloud')
     expect(localStorage.getItem('correct horse')).toBeNull()
     expect(window.location.search).not.toContain('correct')
