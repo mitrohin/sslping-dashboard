@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ExternalLink,
   Globe2,
   LockKeyhole,
   Megaphone,
   MoreHorizontal,
+  MonitorCog,
+  Palette,
   Plus,
   Radio,
+  Settings2,
 } from 'lucide-react'
 import {
   DEMO_NOW,
@@ -18,6 +21,7 @@ import {
 import { formatDate, formatStatus } from '../../lib/format'
 import { Badge, Button, EmptyState, FeedbackBanner, Field, IconButton, Modal, PageHeader, Panel, SearchInput, Select, Toggle } from '../../components/ui'
 import type { StatusPageAnnouncementInput, StatusPageCreateInput, StatusPageLanguageCode } from './types'
+import type { StatusPageEditorTab } from './StatusPageEditorPage'
 import './operations.css'
 import { useI18n } from '../../app/I18nProvider'
 
@@ -29,7 +33,7 @@ export interface StatusPagesPageProps {
   initialCreateMonitorId?: string
   onCreate?: (input: StatusPageCreateInput) => MaybePromise<StatusPageViewModel | void>
   onAnnouncement?: (pageId: string, input: StatusPageAnnouncementInput) => MaybePromise<void>
-  onEdit?: (pageId: string) => void
+  onEdit?: (pageId: string, tab: StatusPageEditorTab) => void
   onDelete?: (pageId: string) => MaybePromise<void>
 }
 
@@ -94,7 +98,32 @@ export function StatusPagesPage({
   const [announcementDraft, setAnnouncementDraft] = useState<StatusPageAnnouncementInput>(emptyAnnouncement)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+	const [editMenuPageId, setEditMenuPageId] = useState<string | null>(null)
+	const editMenuRef = useRef<HTMLDivElement>(null)
 	const publishableMonitors = useMemo(() => monitors.filter((monitor) => monitor.type !== 'leakcheck' && monitor.type !== 'compliance'), [monitors])
+
+  useEffect(() => {
+    if (!editMenuPageId) return
+    const close = (event: MouseEvent) => {
+      if (!editMenuRef.current?.contains(event.target as Node)) setEditMenuPageId(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEditMenuPageId(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [editMenuPageId])
+
+  const editSections: ReadonlyArray<{ id: StatusPageEditorTab; label: string; icon: typeof MonitorCog }> = [
+    { id: 'monitors', label: 'Monitors', icon: MonitorCog },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'global', label: 'Global settings', icon: Settings2 },
+    { id: 'announcements', label: 'Announcements', icon: Megaphone },
+  ]
 
   useEffect(() => {
 	if (!initialCreateMonitorId || !publishableMonitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
@@ -151,7 +180,7 @@ export function StatusPagesPage({
       id: makeId(),
       name,
       slug,
-      url: `https://status.sslping.io/status/${slug}`,
+      url: `https://status.sslping.io/${slug}`,
       monitorCount: input.monitorIds.length,
       accessLevel: input.accessLevel,
       status: input.published ? 'published' : 'draft',
@@ -265,7 +294,22 @@ export function StatusPagesPage({
                         <div className="ops-row-actions">
                           <Button size="sm" type="button" onClick={() => { setAnnouncementPageId(page.id); setError('') }}><Megaphone size={16} /> {t('statusPages.addAnnouncement')}</Button>
                           <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={t('monitors.open', { name: page.name })} title={t('statusPages.openPublic')}><ExternalLink size={17} /></a>
-                          <IconButton label={t('maintenance.editNamed', { name: page.name })} onClick={() => onEdit?.(page.id)}><MoreHorizontal size={18} /></IconButton>
+                          <div className="ops-status-edit-menu-wrap" ref={editMenuPageId === page.id ? editMenuRef : undefined}>
+                            <IconButton
+                              label={t('maintenance.editNamed', { name: page.name })}
+                              aria-haspopup="menu"
+                              aria-expanded={editMenuPageId === page.id}
+                              onClick={() => setEditMenuPageId((current) => current === page.id ? null : page.id)}
+                            ><MoreHorizontal size={18} /></IconButton>
+                            {editMenuPageId === page.id && (
+                              <div className="ops-status-edit-menu" role="menu" aria-label={`Edit ${page.name}`}>
+                                {editSections.map((section) => {
+                                  const Icon = section.icon
+                                  return <button key={section.id} type="button" role="menuitem" onClick={() => onEdit?.(page.id, section.id)}><Icon size={18} />{section.label}</button>
+                                })}
+                              </div>
+                            )}
+                          </div>
                           {onDelete && <Button variant="ghost" size="sm" type="button" onClick={() => void deletePage(page)}>{t('common.delete')}</Button>}
                         </div>
                       </td>
@@ -283,7 +327,7 @@ export function StatusPagesPage({
                   <p>{t('statusPages.mobileStats', { monitors: page.monitorCount, access: t(`statusPages.access.${page.accessLevel}`), subscribers: page.subscribers })}</p>
                   <div className="ops-card-actions">
                     <Button size="sm" type="button" onClick={() => setAnnouncementPageId(page.id)}><Megaphone size={16} /> {t('statusPages.announce')}</Button>
-                    <Button size="sm" variant="secondary" type="button" onClick={() => onEdit?.(page.id)}>{t('common.edit')}</Button>
+                    <Button size="sm" variant="secondary" type="button" onClick={() => onEdit?.(page.id, 'global')}>{t('common.edit')}</Button>
                     <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={t('monitors.open', { name: page.name })}><ExternalLink size={17} /></a>
                   </div>
                 </article>

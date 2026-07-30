@@ -68,6 +68,12 @@
 .ops-assignee-badge svg, .ops-card-assignee svg { color: var(--green); }
 .ops-card-assignee { width: max-content; font-size: 12px; }
 .ops-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; white-space: nowrap; }
+.ops-status-edit-menu-wrap { position: relative; }
+.ops-status-edit-menu { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: 220px; padding: 7px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: 0 18px 45px rgba(0, 0, 0, .28); }
+.ops-status-edit-menu button { display: flex; width: 100%; align-items: center; gap: 11px; padding: 11px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.ops-status-edit-menu button:hover, .ops-status-edit-menu button:focus-visible { outline: none; background: rgba(52, 215, 123, .13); color: var(--success); }
+.ops-table-panel:has(.ops-status-edit-menu) { overflow: visible; }
+.ops-table-panel:has(.ops-status-edit-menu) .ops-table-scroll { overflow: visible; }
 .ops-name-cell { min-width: 210px; display: flex; align-items: center; gap: 12px; }
 .ops-name-cell > span:last-child { min-width: 0; display: grid; gap: 4px; }
 .ops-name-cell small { max-width: 310px; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }

@@ -47,6 +47,7 @@ export interface StatusPageEditorPageProps {
   monitors?: readonly MonitorViewModel[]
   initialValue?: StatusPageEditorValue
   announcements?: readonly StatusPageAnnouncementViewModel[]
+  initialTab?: StatusPageEditorTab
   onBack?: () => void
   onPreview?: (page: StatusPageViewModel) => void
   onSave?: (value: StatusPageEditorValue) => MaybePromise<void>
@@ -137,6 +138,7 @@ export function StatusPageEditorPage({
   monitors = demoMonitors,
   initialValue,
   announcements: initialAnnouncements = [],
+  initialTab = 'global',
   onBack,
   onPreview,
   onSave,
@@ -144,7 +146,7 @@ export function StatusPageEditorPage({
   onVerifyDomain,
   onAnnouncement,
 }: StatusPageEditorPageProps) {
-  const [tab, setTab] = useState<StatusPageEditorTab>('global')
+  const [tab, setTab] = useState<StatusPageEditorTab>(initialTab)
   const [value, setValue] = useState<StatusPageEditorValue>(() => initialValue ?? makeDefaultValue(page, monitors))
   const [monitorQuery, setMonitorQuery] = useState('')
   const [announcements, setAnnouncements] = useState<StatusPageAnnouncementViewModel[]>(() => [...initialAnnouncements])

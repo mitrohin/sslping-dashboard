@@ -60,7 +60,7 @@ Desktop-композиция как на референсе:
 `/app/:tenantId/api-keys` | API keys | key list/create/revoke
 `/app/:tenantId/audit` | Audit log | `GET /audit-logs`
 `/app/:tenantId/settings/security` | Пароль и 2FA | protected auth lifecycle endpoints
-`/status/:slug` | Public status preview/runtime | public status page/access/subscriber endpoints
+`/:slug` on `status.sslping.io` | Public status preview/runtime | public status page/access/subscriber endpoints
 
 Tenant API prefix в таблице сокращён до `/v1/tenants/{tenant_id}`.
 

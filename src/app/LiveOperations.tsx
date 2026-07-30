@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type { ApiClient } from '../api/client'
 import type {
   Announcement,
@@ -32,6 +32,7 @@ import {
   type StatusPageAnnouncementViewModel,
   type StatusPageCreateInput,
   type StatusPageEditorValue,
+  type StatusPageEditorTab,
 } from '../features/operations'
 import { useAuth } from './AuthProvider'
 import { isDemoSession } from './DashboardGate'
@@ -312,7 +313,7 @@ function LiveStatusPagesContent({
 }: {
   api: ApiClient
   workspaceId?: string
-  onEdit: (pageId: string) => void
+  onEdit: (pageId: string, tab: StatusPageEditorTab) => void
   initialMonitorId?: string
 }) {
   const load = useCallback(async (activeWorkspaceId: string): Promise<StatusPageData> => {
@@ -382,7 +383,7 @@ export function LiveStatusPagesPage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialMonitorId = searchParams.get('create') === '1' ? searchParams.get('monitor') ?? undefined : undefined
   const onEdit = useCallback(
-    (pageId: string) => navigate(`/status-pages/${pageId}/edit`),
+    (pageId: string, tab: StatusPageEditorTab) => navigate(`/status-pages/${pageId}/edit?tab=${tab}`),
     [navigate],
   )
   if (isDemoSession()) return <StatusPagesPage onEdit={onEdit} initialCreateMonitorId={initialMonitorId} />
@@ -504,11 +505,13 @@ function LiveStatusPageEditorContent({
   api,
   workspaceId,
   statusPageId,
+  initialTab,
   onBack,
 }: {
   api: ApiClient
   workspaceId?: string
   statusPageId?: string
+  initialTab: StatusPageEditorTab
   onBack: () => void
 }) {
   const load = useCallback(async (activeWorkspaceId: string): Promise<StatusPageEditorData> => {
@@ -551,8 +554,9 @@ function LiveStatusPageEditorContent({
       monitors={state.data.monitors}
       initialValue={state.data.initialValue}
       announcements={state.data.announcements}
+      initialTab={initialTab}
       onBack={onBack}
-      onPreview={(page) => window.open(`/status/${page.slug}`, '_blank', 'noopener,noreferrer')}
+      onPreview={(page) => window.open(`https://status.sslping.io/${page.slug}`, '_blank', 'noopener,noreferrer')}
       onSave={async (value) => {
         await api.updateStatusPage(
           requireWorkspace(),
@@ -579,6 +583,9 @@ export function LiveStatusPageEditorPage() {
   const { api, workspace } = useAuth()
   const navigate = useNavigate()
   const { statusPageId } = useParams()
+  const [searchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const initialTab: StatusPageEditorTab = requestedTab === 'monitors' || requestedTab === 'appearance' || requestedTab === 'announcements' ? requestedTab : 'global'
   const onBack = useCallback(() => navigate('/status-pages'), [navigate])
 
   if (isDemoSession()) {
@@ -586,8 +593,9 @@ export function LiveStatusPageEditorPage() {
     return (
       <StatusPageEditorPage
         page={page}
+        initialTab={initialTab}
         onBack={onBack}
-        onPreview={(value) => window.open(`/status/${value.slug}`, '_blank', 'noopener,noreferrer')}
+        onPreview={(value) => window.open(`https://status.sslping.io/${value.slug}`, '_blank', 'noopener,noreferrer')}
       />
     )
   }
@@ -597,6 +605,7 @@ export function LiveStatusPageEditorPage() {
       api={api}
       workspaceId={workspace?.id}
       statusPageId={statusPageId}
+      initialTab={initialTab}
       onBack={onBack}
     />
   )

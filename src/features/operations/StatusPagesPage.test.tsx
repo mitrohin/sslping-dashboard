@@ -1,12 +1,24 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { demoMonitors, type MonitorViewModel } from '../../data'
+import { demoMonitors, demoStatusPages, type MonitorViewModel } from '../../data'
 import { StatusPagesPage } from './StatusPagesPage'
 
 afterEach(cleanup)
 
 describe('StatusPagesPage monitor eligibility', () => {
+  it('opens editable sections from the row menu', () => {
+    const onEdit = vi.fn()
+    render(<MemoryRouter><StatusPagesPage pages={[demoStatusPages[0]]} onEdit={onEdit} /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: /Edit .*status/i }))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(4)
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Appearance' }))
+
+    expect(onEdit).toHaveBeenCalledWith(demoStatusPages[0].id, 'appearance')
+  })
+
   it('does not offer evidence-only monitors as public status components', () => {
     const leakMonitor: MonitorViewModel = {
       ...demoMonitors[0], id: 'leak-monitor', name: 'Account exposure', type: 'leakcheck',

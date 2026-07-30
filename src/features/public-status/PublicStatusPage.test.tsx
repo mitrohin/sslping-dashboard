@@ -50,10 +50,10 @@ const snapshot: PublicStatusSnapshot = {
   generated_at: '2026-07-25T13:00:00.000Z',
 }
 
-function renderRoute(api: PublicStatusApi, path = '/status/example-cloud') {
+function renderRoute(api: PublicStatusApi, path = '/example-cloud') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes><Route path="/status/:slug" element={<PublicStatusPage api={api} />} /></Routes>
+      <Routes><Route path="/:slug" element={<PublicStatusPage api={api} />} /></Routes>
     </MemoryRouter>,
   )
 }

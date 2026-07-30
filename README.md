@@ -77,7 +77,7 @@ The test suite covers API/session behavior, auth flows, monitor mappings, live d
 - `/maintenance`, `/team`, `/integrations`
 - `/support` for customer tickets
 - `/admin` for system administrators only
-- `/status/:slug` for public status pages
+- `/:slug` on `status.sslping.io` for public status pages (`/status/:slug` redirects for compatibility)
 - `/demo` for the local product preview
 
 This directory is its own local Git repository and has no GitHub remote configured.

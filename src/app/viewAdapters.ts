@@ -632,7 +632,7 @@ export function toStatusPageViewModel(
   const page: StatusPage = isStatusPageDetail(source) ? source.page : source
   const detailComponents = isStatusPageDetail(source) ? source.components : undefined
   const components = options.components ?? detailComponents
-  const baseUrl = nonEmpty(options.publicBaseUrl, 'https://status.sslping.io/status').replace(/\/$/, '')
+  const baseUrl = nonEmpty(options.publicBaseUrl, 'https://status.sslping.io').replace(/\/$/, '')
   const customDomain = page.custom_domain?.trim() || undefined
   const customDomainVerified = Boolean(customDomain && page.custom_domain_verified_at)
 

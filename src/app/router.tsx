@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router'
+import { createBrowserRouter, Navigate, useParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
 import { PageLoadingSkeleton } from '../components/ui'
 import {
@@ -54,6 +54,11 @@ function PublicStatusRoute() {
   return <RouteSuspense><PublicStatusPageRoute api={import.meta.env.DEV ? demoPublicStatusApi : undefined} /></RouteSuspense>
 }
 
+function LegacyPublicStatusRoute() {
+  const { slug = '' } = useParams()
+  return <Navigate to={`/${slug}`} replace />
+}
+
 const workspaceChildren = [
   { path: 'monitors', element: <RouteSuspense><LiveMonitorsPage /></RouteSuspense> },
   { path: 'monitors/:monitorId', element: <RouteSuspense><LiveMonitorDetailPage /></RouteSuspense> },
@@ -87,7 +92,8 @@ export const router = createBrowserRouter([
   { path: '/verify-email', element: <EmailVerificationController /> },
   { path: '/reset-password', element: <ResetPasswordController /> },
   { path: '/accept-invite', element: <AcceptInvitationController /> },
-  { path: '/status/:slug', element: <PublicStatusRoute /> },
+  { path: '/status/:slug', element: <LegacyPublicStatusRoute /> },
+  { path: '/:slug', element: <PublicStatusRoute /> },
   {
     path: '/',
     element: <DashboardGate />,
