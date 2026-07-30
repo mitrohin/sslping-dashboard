@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AppShell } from './AppShell'
+import { OPEN_BILLING_EVENT } from '../features/billing/events'
 
 const mocks = vi.hoisted(() => {
   const supportSummary = vi.fn().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => {
     supportSummary,
     adminSummary,
     listIncidents,
+    billingPlans,
     auth: {
       api: { getSupportTicketSummary: supportSummary, adminGetSupportTicketSummary: adminSummary, listBillingPlans: billingPlans, getBillingSubscription: billingSubscription, listBillingInvoices: billingInvoices, listIncidents },
     user: { id: 'user-1', name: 'Jordan Lee', system_role: 'user' },
@@ -42,10 +44,12 @@ afterEach(() => {
   mocks.supportSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
   mocks.adminSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
   mocks.listIncidents.mockReset().mockResolvedValue({ items: [] })
+  mocks.billingPlans.mockReset().mockResolvedValue({ annual_discount_percent: 20, items: [{ id: 'plan-free', code: 'free', name: 'Free', description: 'Free monitoring', price_monthly_cents: 0, price_yearly_cents: 0, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 5, min_interval_seconds: 300, max_team_members: 1, max_status_pages: 1, max_integrations: 1, max_locations: 1, data_retention_days: 7, allow_manual_tests: false }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }, { id: 'plan-pro', code: 'pro', name: 'Pro', description: 'Production monitoring', price_monthly_cents: 2000, price_yearly_cents: 19200, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 100, min_interval_seconds: 30, max_team_members: 10, max_status_pages: 10, max_integrations: 20, max_locations: 5, data_retention_days: 365, allow_manual_tests: false }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }] })
   mocks.auth.user = { id: 'user-1', name: 'Jordan Lee', system_role: 'user' }
   mocks.auth.authenticated = true
   mocks.auth.workspaceRole = 'owner'
   mocks.auth.impersonation = null
+  mocks.auth.workspace = { id: 'workspace-1', name: 'Production workspace', plan: 'free' }
   mocks.demoSession = false
 })
 
@@ -103,11 +107,41 @@ describe('AppShell actions', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('opens billing when another feature requests a plan upgrade', async () => {
+    renderShell()
+
+    window.dispatchEvent(new CustomEvent(OPEN_BILLING_EVENT))
+
+    expect(await screen.findByRole('dialog', { name: /workspace plans & billing/i })).toBeInTheDocument()
+  })
+
   it.each(['owner', 'admin'] as const)('shows billing management to a %s workspace member', (role) => {
     mocks.auth.workspaceRole = role
     renderShell()
 
     expect(screen.getByRole('button', { name: 'Plans & billing' })).toBeInTheDocument()
+  })
+
+  it('shows the current paid plan name on the billing button', async () => {
+    mocks.auth.workspace = { ...mocks.auth.workspace, plan: 'pro' }
+    renderShell()
+
+    const button = await screen.findByRole('button', { name: 'Pro · Plans & billing' })
+    expect(button).toHaveTextContent('Pro')
+    expect(button).not.toHaveClass('upgrade-button--premium')
+  })
+
+  it('gives plans with manual tests a premium billing button', async () => {
+    mocks.auth.workspace = { ...mocks.auth.workspace, plan: 'black' }
+    mocks.billingPlans.mockResolvedValue({
+      annual_discount_percent: 20,
+      items: [{ id: 'plan-black', code: 'black', name: 'Black', description: 'Premium monitoring', price_monthly_cents: 10000, price_yearly_cents: 96000, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 500, min_interval_seconds: 15, max_team_members: 50, max_status_pages: 50, max_integrations: 100, max_locations: 20, data_retention_days: 730, allow_manual_tests: true }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+    })
+    renderShell()
+
+    const button = await screen.findByRole('button', { name: 'Black · Plans & billing' })
+    expect(button).toHaveTextContent('Black')
+    expect(button).toHaveClass('upgrade-button--premium')
   })
 
   it.each(['editor', 'viewer', 'notifier'] as const)('hides billing management from a %s workspace member', (role) => {

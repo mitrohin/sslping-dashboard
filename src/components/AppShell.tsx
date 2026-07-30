@@ -24,6 +24,8 @@ import { SUPPORT_UNREAD_REFRESH_EVENT } from '../features/support/unread'
 import { WorkspaceBillingModal } from '../features/billing/WorkspaceBillingModal'
 import { LanguageSelect, useI18n } from '../app/I18nProvider'
 import { INCIDENT_ASSIGNMENT_REFRESH_EVENT } from '../features/operations/events'
+import type { BillingPlan } from '../api/types'
+import { OPEN_BILLING_EVENT } from '../features/billing/events'
 
 const navItems = [
   { to: '/monitors', labelKey: 'nav.monitoring', icon: CircleGauge },
@@ -52,6 +54,7 @@ export function AppShell() {
   const [supportUnread, setSupportUnread] = useState(0)
   const [adminUnread, setAdminUnread] = useState(0)
   const [assignedIncidentCount, setAssignedIncidentCount] = useState(0)
+  const [activeBillingPlan, setActiveBillingPlan] = useState<BillingPlan>()
   const { api, user, workspace, workspaceRole, authenticated, logout, impersonation } = useAuth()
   const { locale, t } = useI18n()
   const navigate = useNavigate()
@@ -69,6 +72,9 @@ export function AppShell() {
   const isSystemAdministrator = user?.system_role === 'superadmin' && !impersonation
   const isAccountant = user?.system_role === 'accountant' && !impersonation
   const canManageBilling = authenticated && !demo && !impersonation && !isAccountant && (workspaceRole === 'owner' || workspaceRole === 'admin')
+  const freePlan = activeBillingPlan ? activeBillingPlan.price_monthly_cents === 0 : currentPlan === 'free'
+  const premiumPlan = activeBillingPlan?.limits.allow_manual_tests === true
+  const billingButtonLabel = freePlan ? t('shell.plansBilling') : activeBillingPlan?.name || planLabel
   const adminNavigation = { to: '/admin', labelKey: isAccountant ? 'nav.billingAdmin' : 'nav.admin', icon: Shield }
   const availableNavItems = isAccountant ? [adminNavigation] : isSystemAdministrator ? [...navItems, adminNavigation] : navItems
 
@@ -107,6 +113,30 @@ export function AppShell() {
       window.removeEventListener(INCIDENT_ASSIGNMENT_REFRESH_EVENT, refresh)
     }
   }, [location.pathname, refreshSupportUnread])
+
+  const refreshActiveBillingPlan = useCallback(async () => {
+    if (!canManageBilling) {
+      setActiveBillingPlan(undefined)
+      return
+    }
+    try {
+      const catalog = await api.listBillingPlans()
+      setActiveBillingPlan(catalog.items.find((plan) => plan.code === currentPlan))
+    } catch {
+      setActiveBillingPlan(undefined)
+    }
+  }, [api, canManageBilling, currentPlan])
+
+  useEffect(() => {
+    void refreshActiveBillingPlan()
+  }, [refreshActiveBillingPlan])
+
+  useEffect(() => {
+    if (!canManageBilling) return
+    const openBilling = () => setUpgradeOpen(true)
+    window.addEventListener(OPEN_BILLING_EVENT, openBilling)
+    return () => window.removeEventListener(OPEN_BILLING_EVENT, openBilling)
+  }, [canManageBilling])
 
   const openSupportRoute = (path: string) => {
     setSupportOpen(false)
@@ -181,9 +211,15 @@ export function AppShell() {
           </div>
           <LanguageSelect showIcon className="sidebar-language-select" />
           {canManageBilling && (
-            <button className="upgrade-button" type="button" onClick={() => setUpgradeOpen(true)} aria-label={t('shell.plansBilling')} title={collapsed ? t('shell.plansBilling') : undefined}>
+            <button
+              className={`upgrade-button ${premiumPlan ? 'upgrade-button--premium' : ''}`}
+              type="button"
+              onClick={() => setUpgradeOpen(true)}
+              aria-label={freePlan ? t('shell.plansBilling') : `${billingButtonLabel} · ${t('shell.plansBilling')}`}
+              title={collapsed ? billingButtonLabel : undefined}
+            >
               <CreditCard size={21} />
-              <span>{t('shell.plansBilling')}</span>
+              <span>{billingButtonLabel}</span>
             </button>
           )}
           <button
@@ -260,7 +296,7 @@ export function AppShell() {
         </div>
       </Modal>
 
-      {canManageBilling && <WorkspaceBillingModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />}
+      {canManageBilling && <WorkspaceBillingModal open={upgradeOpen} onClose={() => { setUpgradeOpen(false); void refreshActiveBillingPlan() }} />}
     </div>
   )
 }

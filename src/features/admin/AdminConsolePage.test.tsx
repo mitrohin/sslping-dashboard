@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AdminBillingWorkspace, AdminUser, CustomerRegion, Invoice, SupportTicketDetail } from '../../api/types'
 import { I18nProvider, LanguageSelect } from '../../app/I18nProvider'
-import { AdminConsolePage, PlanModal, TicketModal } from './AdminConsolePage'
+import { AdminConsolePage, ChannelModal, PlanModal, TicketModal } from './AdminConsolePage'
 
 const mocks = vi.hoisted(() => {
   const users = vi.fn()
@@ -98,6 +98,21 @@ afterEach(() => {
   mocks.createCheckLocation.mockReset()
   mocks.updateCheckLocation.mockReset()
   mocks.auth.user = { id: 'admin-1', name: 'Administrator', system_role: 'superadmin' }
+})
+
+describe('support notification channels', () => {
+  it('creates an ntfy.sh channel with a topic URL and title', () => {
+    const onSave = vi.fn()
+    render(<ChannelModal open busy={false} onClose={() => undefined} onSave={onSave} />)
+
+    fireEvent.change(screen.getByLabelText('Friendly name'), { target: { value: 'Phone alerts' } })
+    fireEvent.change(screen.getByLabelText('Channel'), { target: { value: 'ntfy' } })
+    fireEvent.change(screen.getByLabelText(/^ntfy\.sh topic URL/), { target: { value: 'https://ntfy.sh/private-support-topic' } })
+    fireEvent.change(screen.getByLabelText('Notification title'), { target: { value: 'Alex Robot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create channel' }))
+
+    expect(onSave).toHaveBeenCalledWith({ name: 'Phone alerts', type: 'ntfy', config: { url: 'https://ntfy.sh/private-support-topic', title: 'Alex Robot' } })
+  })
 })
 
 describe('administrator localization', () => {

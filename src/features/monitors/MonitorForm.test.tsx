@@ -1,12 +1,30 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MonitorForm, defaultMonitorDraft, type MonitorDraft } from './MonitorForm'
+import { ApiError } from '../../api/client'
+import { OPEN_BILLING_EVENT } from '../billing/events'
 
 afterEach(() => {
   cleanup()
 })
 
 describe('MonitorForm legacy monitor compatibility', () => {
+  it('offers a billing upgrade when the active plan limit is exceeded', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new ApiError({
+      type: 'about:blank', title: 'Resource limit exceeded', status: 409,
+      detail: 'Free plan monitor limit (5) reached', instance: '/v1/monitors', code: 'limit_exceeded',
+    }))
+    const openBilling = vi.fn()
+    window.addEventListener(OPEN_BILLING_EVENT, openBilling, { once: true })
+    render(<MonitorForm initialValue={{ ...defaultMonitorDraft, name: 'API', target: 'https://example.com' }} onSubmit={onSubmit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create monitor' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Free plan monitor limit (5) reached')
+    fireEvent.click(screen.getByRole('button', { name: 'Plans & billing' }))
+    expect(openBilling).toHaveBeenCalledOnce()
+  })
+
   it.each([
     ['tls', 'SSL / TLS', 'example.com:443'],
     ['domain', 'Domain expiry', 'example.com'],

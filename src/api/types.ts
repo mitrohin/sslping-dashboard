@@ -15,6 +15,7 @@ export type ProblemCode =
   | 'conflict'
   | 'invoice_expired'
   | 'payment_required'
+  | 'limit_exceeded'
   | 'rate_limited'
   | 'payload_too_large'
   | 'internal_error'
@@ -1228,7 +1229,7 @@ export interface SupportTicketDetail {
 export interface SupportNotificationChannel {
   id: UUID
   name: string
-  type: 'slack' | 'telegram' | 'webhook'
+  type: 'slack' | 'telegram' | 'webhook' | 'ntfy'
   config?: JsonObject
   active: boolean
   created_by: UUID

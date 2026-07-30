@@ -22,6 +22,8 @@ import { Button, Field, Select, Toggle } from '../../components/ui'
 import type { DNSConfig } from '../../api/types'
 import type { MonitorType } from '../../data'
 import { useI18n } from '../../app/I18nProvider'
+import { ApiError } from '../../api/client'
+import { openWorkspaceBilling } from '../billing/events'
 
 export interface MonitorDraft {
   name: string
@@ -143,6 +145,7 @@ export function MonitorForm({
 }) {
   const { t } = useI18n()
   const [draft, setDraft] = useState<MonitorDraft>(initialValue)
+  const [planLimitReached, setPlanLimitReached] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
   const [selectedTagValues, setSelectedTagValues] = useState<string[]>([...draft.tags])
@@ -219,10 +222,12 @@ export function MonitorForm({
     event.preventDefault()
     setSaving(true)
     setSubmitError(null)
+    setPlanLimitReached(false)
     try {
       await onSubmit({ ...draft, tags: selectedTagValues })
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : t('monitorForm.saveFailed'))
+      setPlanLimitReached(error instanceof ApiError && error.code === 'limit_exceeded')
     } finally {
       setSaving(false)
     }
@@ -463,7 +468,12 @@ export function MonitorForm({
       </section>}
 
       <div className="form-actions">
-        {submitError && <span className="field__error" role="alert">{submitError}</span>}
+        {submitError && (
+          <span className={`field__error ${planLimitReached ? 'monitor-form__plan-limit' : ''}`} role="alert">
+            <span>{submitError}</span>
+            {planLimitReached && <Button type="button" onClick={openWorkspaceBilling}>{t('shell.plansBilling')}</Button>}
+          </span>
+        )}
         {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>}
         <Button type="submit" disabled={saving}><Clock3 size={17} />{saving ? t('common.saving') : submitLabel === 'Create monitor' ? t('monitors.create') : submitLabel === 'Save changes' ? t('common.saveChanges') : submitLabel}</Button>
       </div>

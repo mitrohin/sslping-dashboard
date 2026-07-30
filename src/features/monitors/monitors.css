@@ -387,3 +387,7 @@
 .compliance-incident-link:hover{border-color:rgb(53 214 123 / 60%);background:rgb(53 214 123 / 12%);transform:translateY(-1px)}
 @media(max-width:720px){.leakcheck-report__summary,.leakcheck-report__sources article{align-items:flex-start;flex-direction:column}.compliance-scan-progress__steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){.monitor-detail-header__state--checking .status-dot,.monitor-row__compliance-result.is-pending svg,.checking-text svg,.compliance-scan-spinner,.compliance-scan-progress__icon svg,.compliance-scan-progress__track span{animation:none}.compliance-scan-progress__track span{width:55%}}
+.monitor-form__plan-limit { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1px solid rgb(244 165 43 / 28%); border-radius: var(--radius-sm); color: #ffd79a; background: rgb(244 165 43 / 8%); font-size: 13px; line-height: 1.45; }
+.monitor-form__plan-limit > span { min-width: 0; }
+.monitor-form__plan-limit .button { flex: 0 0 auto; min-height: 36px; }
+@media (max-width: 640px) { .monitor-form__plan-limit { align-items: stretch; flex-direction: column; } .monitor-form__plan-limit .button { width: 100%; } }
