@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type CSSProperties,
   type ReactNode,
 } from 'react'
 import { useParams } from 'react-router'
@@ -38,7 +39,7 @@ import { formatDate, formatRelativeTime, formatStatus, formatUptime } from '../.
 import { publicStatusCopy, statusPageLocale, type PublicStatusCopy } from './i18n'
 import './public-status.css'
 
-export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'accessPublicStatusPage' | 'subscribeStatusPage'>
+export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'accessPublicStatusPage' | 'subscribeStatusPage'> & Partial<Pick<ApiClient, 'getPublicStatusPageByDomain' | 'accessPublicStatusPageByDomain'>>
 
 export interface PublicStatusPageProps {
   api?: PublicStatusApi
@@ -105,6 +106,29 @@ function uptimeBars(uptime: number | undefined): readonly ('up' | 'down' | 'warn
     if (index < 30 - lost) return 'up' as const
     return uptime >= 99 ? 'warning' as const : 'down' as const
   })
+}
+
+type PublicBranding = { logoUrl: string; accentColor: string; backgroundColor: string; colorScheme: 'system' | 'light' | 'dark'; removeProductLogo: boolean; removeCookieConsent: boolean; floatingStatusBar: boolean }
+function publicBranding(value: unknown): PublicBranding {
+  const source = typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const scheme = source.color_scheme
+  return {
+    logoUrl: typeof source.logo_url === 'string' ? source.logo_url : '',
+    accentColor: typeof source.accent_color === 'string' ? source.accent_color : '#1eb873',
+    backgroundColor: typeof source.background_color === 'string' ? source.background_color : '',
+    colorScheme: scheme === 'dark' || scheme === 'light' ? scheme : 'system',
+    removeProductLogo: source.remove_product_logo === true,
+    removeCookieConsent: source.remove_cookie_consent === true,
+    floatingStatusBar: source.enable_floating_status_bar === true,
+  }
+}
+
+function ResponseChart({ points }: { points: NonNullable<PublicStatusComponent['response_time']> }) {
+  if (points.length < 2) return null
+  const max = Math.max(...points.map((point) => point.average_ms), 1)
+  const coordinates = points.map((point, index) => `${(index / (points.length - 1)) * 180},${34 - (point.average_ms / max) * 30}`).join(' ')
+  const average = Math.round(points.reduce((sum, point) => sum + point.average_ms, 0) / points.length)
+  return <div className="ps-response-chart" aria-label={`Average response time ${average} ms`}><svg viewBox="0 0 180 38" preserveAspectRatio="none" role="img"><polyline points={coordinates} /></svg><span>{average} ms avg</span></div>
 }
 
 function statusIcon(status: MonitorStatus, size = 24) {
@@ -241,15 +265,18 @@ function PasswordView({
   )
 }
 
-function ComponentRow({ component, showBars, showPercentage, copy, locale }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; copy: PublicStatusCopy; locale: string }) {
-  const bars = uptimeBars(component.uptime_24h)
+function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, enableDetails, copy, locale }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; enableDetails: boolean; copy: PublicStatusCopy; locale: string }) {
+  const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
+  const [expanded, setExpanded] = useState(false)
   return (
     <article className="ps-component-row">
       <div className={`ps-component-state ps-component-state--${component.status}`}>{statusIcon(component.status, 18)}</div>
-      <div className="ps-component-copy"><h3>{component.name}</h3><p>{component.last_checked_at ? `${copy.lastChecked} ${formatRelativeTime(component.last_checked_at, new Date(), { locale })}` : copy.waitingForFirstCheck}</p></div>
+      <div className="ps-component-copy"><h3>{component.name}</h3><p>{component.last_checked_at ? `${copy.lastChecked} ${formatRelativeTime(component.last_checked_at, new Date(), { locale })}` : copy.waitingForFirstCheck}</p>{component.target && <p className="ps-component-target">{component.target}</p>}{showOutageDetails && Boolean(component.response_issues?.length) && <p className="ps-response-issue"><TriangleAlert size={13} /> High response time: {component.response_issues?.join(', ')}</p>}{enableDetails && <button className="ps-details-toggle" type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? 'Hide details' : 'Details'}</button>}</div>
       {showBars && <div className="ps-uptime-bars" aria-label={`${copy.uptime24h}: ${formatUptime(component.uptime_24h, 3, locale)}`}>{bars.map((status, index) => <span key={index} className={`is-${status}`} />)}</div>}
+      {showResponseTime && <ResponseChart points={component.response_time ?? []} />}
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
+      {expanded && <div className="ps-component-details"><strong>24-hour checks</strong><span>{bars.filter((status) => status === 'up').length} healthy · {bars.filter((status) => status === 'warning').length} slow · {bars.filter((status) => status === 'down').length} failed</span></div>}
     </article>
   )
 }
@@ -269,6 +296,8 @@ function AnnouncementCard({ announcement, copy, locale }: { announcement: Public
 
 export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const { slug = '' } = useParams<{ slug: string }>()
+  const hostname = window.location.hostname.toLowerCase()
+  const customDomain = !['status.sslping.io', 'dashboard.sslping.io', 'localhost', '127.0.0.1'].includes(hostname) ? hostname : ''
   const [snapshot, setSnapshot] = useState<PublicStatusSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [failure, setFailure] = useState<Failure | null>(null)
@@ -278,27 +307,30 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [consent, setConsent] = useState<ConsentChoice | null>(readConsent)
   const languageRef = useRef<StatusPageLanguage>('en')
+  const passwordRef = useRef('')
   const language = (snapshot?.page.language ?? 'en') as StatusPageLanguage
   const copy = publicStatusCopy(language)
   const locale = statusPageLocale(language)
 
-  const load = useCallback(async (password?: string) => {
-    if (!slug) {
+  const load = useCallback(async (password?: string, background = false) => {
+    if (!slug && !customDomain) {
       setFailure({ kind: 'not-found', message: 'The status page address is incomplete.' })
       setLoading(false)
       return
     }
-    setLoading(true)
+    if (!background) setLoading(true)
     setFailure(null)
     if (password) setPasswordError('')
     try {
       // Submit passwords to the dedicated POST endpoint. This keeps the
       // browser flow on simple CORS headers and avoids varying caches on a
       // secret request header.
-      const result = password
-        ? await api.accessPublicStatusPage(slug, password)
-        : await api.getPublicStatusPage(slug)
+      const result = customDomain
+        ? password ? await api.accessPublicStatusPageByDomain?.(customDomain, password) : await api.getPublicStatusPageByDomain?.(customDomain)
+        : password ? await api.accessPublicStatusPage(slug, password) : await api.getPublicStatusPage(slug)
+      if (!result) throw new Error('Custom-domain status pages are not available.')
       languageRef.current = result.page.language
+      if (password) passwordRef.current = password
       setSnapshot(result)
       const locked = result.password_protected && result.components === null
       setPasswordRequired(locked)
@@ -314,11 +346,15 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         setFailure({ kind: 'error', message: errorMessage(error, 'The monitoring service did not respond. Please try again shortly.') })
       }
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
-  }, [api, slug])
+  }, [api, customDomain, slug])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    const timer = window.setInterval(() => void load(passwordRef.current || undefined, true), 60_000)
+    return () => window.clearInterval(timer)
+  }, [load])
 
   useEffect(() => {
     if (!snapshot) return
@@ -361,6 +397,12 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const uptimeValues = visibleComponents.map((component) => component.uptime_24h).filter((value): value is number => value !== undefined)
   const overallUptime = uptimeValues.length > 0 ? uptimeValues.reduce((total, value) => total + value, 0) / uptimeValues.length : undefined
   const smallConsent = settings.small_cookie_dialog
+  const branding = publicBranding(snapshot.page.branding)
+  const pageStyle = {
+    '--ps-green': branding.accentColor,
+    '--ps-green-dark': branding.accentColor,
+    ...(branding.backgroundColor ? { '--ps-page-background': branding.backgroundColor } : {}),
+  } as CSSProperties
 
   const chooseConsent = (choice: ConsentChoice) => {
     saveConsent(choice)
@@ -368,13 +410,13 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   }
 
   return (
-    <div className="public-status-page">
+    <div className="public-status-page" data-color-scheme={branding.colorScheme} style={pageStyle}>
       <header className="ps-header">
         <div className="ps-container ps-header__inner">
           {snapshot.page.homepage_url ? (
-            <a className="ps-brand" href={snapshot.page.homepage_url} target="_blank" rel="noreferrer"><span className="ps-brand__mark"><Activity size={20} /></span><span>{snapshot.page.name}</span><ExternalLink size={14} /></a>
+            <a className="ps-brand" href={snapshot.page.homepage_url} target="_blank" rel="noreferrer"><span className="ps-brand__mark">{branding.logoUrl ? <img src={branding.logoUrl} alt="" /> : <Activity size={20} />}</span><span>{snapshot.page.name}</span><ExternalLink size={14} /></a>
           ) : (
-            <div className="ps-brand"><span className="ps-brand__mark"><Activity size={20} /></span><span>{snapshot.page.name}</span></div>
+            <div className="ps-brand"><span className="ps-brand__mark">{branding.logoUrl ? <img src={branding.logoUrl} alt="" /> : <Activity size={20} />}</span><span>{snapshot.page.name}</span></div>
           )}
           {settings.enable_subscribe && <button type="button" className="ps-button ps-button--outline" onClick={() => setSubscriptionOpen(true)}><Bell size={16} /> {copy.subscribeToUpdates}</button>}
         </div>
@@ -398,7 +440,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         <section className="ps-section">
           <div className="ps-section-heading"><div><p className="ps-kicker">{copy.liveMonitoring}</p><h2>{copy.services}</h2></div><span>{visibleComponents.length} {copy.components}</span></div>
           <div className="ps-components-card">
-            {visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} copy={copy} locale={locale} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
+            {visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} enableDetails={settings.enable_details_page} copy={copy} locale={locale} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
           </div>
         </section>
 
@@ -421,15 +463,17 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       </main>
 
       <footer className="ps-footer">
-        <div className="ps-container"><span>Powered by <strong>SSLPing</strong></span><nav aria-label={copy.footerLabel}><button type="button" onClick={() => setPrivacyOpen(true)}>{copy.privacy}</button><button type="button" onClick={() => setConsent(null)}>{copy.cookieSettings}</button><span>{copy.generated} {formatDate(snapshot.generated_at, { includeSeconds: true, locale })}</span></nav></div>
+        <div className="ps-container">{!branding.removeProductLogo && <span>Powered by <strong>SSLPing</strong></span>}<nav aria-label={copy.footerLabel}><button type="button" onClick={() => setPrivacyOpen(true)}>{copy.privacy}</button>{!branding.removeCookieConsent && <button type="button" onClick={() => setConsent(null)}>{copy.cookieSettings}</button>}<span>{copy.generated} {formatDate(snapshot.generated_at, { includeSeconds: true, locale })}</span></nav></div>
       </footer>
 
-      <SubscriptionDialog open={subscriptionOpen} slug={slug} api={api} copy={copy} onClose={() => setSubscriptionOpen(false)} onPrivacy={() => setPrivacyOpen(true)} />
+      {branding.floatingStatusBar && <div className={`ps-floating-status ps-floating-status--${overallStatus}`}>{statusIcon(overallStatus, 16)}<strong>{overall.title}</strong><span>{copy.updated} {formatRelativeTime(snapshot.generated_at, new Date(), { locale })}</span></div>}
+
+      <SubscriptionDialog open={subscriptionOpen} slug={snapshot.page.slug} api={api} copy={copy} onClose={() => setSubscriptionOpen(false)} onPrivacy={() => setPrivacyOpen(true)} />
       <StatusDialog open={privacyOpen} title={copy.privacyNotice} closeLabel={copy.close} onClose={() => setPrivacyOpen(false)}>
         <div className="ps-privacy-copy"><p>{copy.privacyBody}</p><h3>{copy.emailSubscriptions}</h3><p>{copy.emailSubscriptionsBody}</p><h3>{copy.cookies}</h3><p>{copy.cookiesBody}</p><button type="button" className="ps-button ps-button--primary" onClick={() => setPrivacyOpen(false)}>{copy.understood}</button></div>
       </StatusDialog>
 
-      {consent === null && (
+      {!branding.removeCookieConsent && consent === null && (
         <aside className={`ps-cookie-banner ${smallConsent ? 'is-compact' : ''}`} aria-label={copy.cookieConsent}>
           <span className="ps-cookie-icon"><Cookie size={22} /></span>
           <div><strong>{copy.privacyChoice}</strong><p>{copy.privacyChoiceBody}</p><button type="button" onClick={() => setPrivacyOpen(true)}>{copy.readPrivacyNotice}</button></div>

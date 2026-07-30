@@ -28,6 +28,7 @@ export interface StatusPageAnnouncementViewModel extends StatusPageAnnouncementI
 
 export interface StatusPageFeatureSettings {
   showBarCharts: boolean
+  showResponseTime: boolean
   showUptimePercentage: boolean
   showOverallPercentage: boolean
   showOutageDetails: boolean

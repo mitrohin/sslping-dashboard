@@ -27,6 +27,7 @@ export const demoPublicStatusApi: PublicStatusApi = {
         branding: { accent_color: '#266f52' },
         settings: {
           show_bar_charts: true,
+          show_response_time: true,
           show_uptime_percentage: true,
           show_overall_percentage: true,
           show_outage_details: true,
@@ -43,9 +44,13 @@ export const demoPublicStatusApi: PublicStatusApi = {
       overall_status: demoMonitors.some((monitor) => monitor.status === 'down') ? 'degraded' : 'up',
       components: locked ? null : demoMonitors.slice(0, page.monitorCount).map((monitor) => ({
         name: monitor.name,
+        target: monitor.target,
         status: monitor.status,
         uptime_24h: monitor.uptime24h,
         last_checked_at: monitor.lastCheckedAt,
+        history_24h: monitor.last24Hours.slice(-30).map((bar) => bar.status === 'degraded' ? 'warning' as const : bar.status === 'no-data' ? 'empty' as const : bar.status === 'maintenance' ? 'empty' as const : bar.status),
+        response_time: monitor.last24Hours.slice(-30).flatMap((bar) => bar.responseTimeMs === undefined ? [] : [{ at: bar.startedAt, average_ms: bar.responseTimeMs }]),
+        response_issues: monitor.status === 'degraded' ? monitor.regions.slice(0, 2) as string[] : [],
       })),
       announcements: locked ? null : demoIncidents.slice(0, 3).map((incident) => ({
         id: incident.id,
@@ -62,6 +67,8 @@ export const demoPublicStatusApi: PublicStatusApi = {
   async accessPublicStatusPage(slug, password) {
     return demoPublicStatusApi.getPublicStatusPage(slug, password)
   },
+  async getPublicStatusPageByDomain() { throw missingPage() },
+  async accessPublicStatusPageByDomain() { throw missingPage() },
   async subscribeStatusPage() {
     return { message: 'If the address can be subscribed, a confirmation email has been sent.' }
   },

@@ -59,6 +59,12 @@ function LegacyPublicStatusRoute() {
   return <Navigate to={`/${slug}`} replace />
 }
 
+function RootRoute() {
+  const hostname = window.location.hostname.toLowerCase()
+  const dashboardHost = hostname === 'dashboard.sslping.io' || hostname === 'localhost' || hostname === '127.0.0.1'
+  return dashboardHost ? <DashboardGate /> : <PublicStatusRoute />
+}
+
 const workspaceChildren = [
   { path: 'monitors', element: <RouteSuspense><LiveMonitorsPage /></RouteSuspense> },
   { path: 'monitors/:monitorId', element: <RouteSuspense><LiveMonitorDetailPage /></RouteSuspense> },
@@ -96,7 +102,7 @@ export const router = createBrowserRouter([
   { path: '/:slug', element: <PublicStatusRoute /> },
   {
     path: '/',
-    element: <DashboardGate />,
+    element: <RootRoute />,
     children: [{ element: <AppShell />, children: dashboardChildren }],
   },
   { path: '*', element: <NotFoundPage /> },

@@ -433,6 +433,7 @@ function editorValue(
     },
     features: {
       showBarCharts: page.settings.show_bar_charts,
+      showResponseTime: page.settings.show_response_time,
       showUptimePercentage: page.settings.show_uptime_percentage,
       showOverallPercentage: page.settings.show_overall_percentage,
       showOutageDetails: page.settings.show_outage_details,
@@ -484,6 +485,7 @@ function editorUpdateRequest(value: StatusPageEditorValue): StatusPageUpdateRequ
       },
       settings: {
         show_bar_charts: value.features.showBarCharts,
+        show_response_time: value.features.showResponseTime,
         show_uptime_percentage: value.features.showUptimePercentage,
         show_overall_percentage: value.features.showOverallPercentage,
         show_outage_details: value.features.showOutageDetails,
@@ -565,7 +567,7 @@ function LiveStatusPageEditorContent({
         )
       }}
       onClaimDomain={(domain) =>
-        api.claimStatusPageCustomDomain(requireWorkspace(), requireStatusPage(), domain).then(() => undefined)}
+        api.claimStatusPageCustomDomain(requireWorkspace(), requireStatusPage(), domain)}
       onVerifyDomain={() =>
         api.verifyStatusPageCustomDomain(requireWorkspace(), requireStatusPage()).then(() => undefined)}
       onAnnouncement={(input: StatusPageAnnouncementInput) =>

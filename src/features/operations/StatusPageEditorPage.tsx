@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
@@ -39,7 +39,7 @@ export type StatusPageEditorTab = 'monitors' | 'appearance' | 'global' | 'announ
 // Dynamic customer-host TLS and routing are deliberately disabled for the
 // first production release. Keep the inactive controls visible so the roadmap
 // is clear without letting a customer verify a domain that cannot be served.
-const customStatusDomainsAvailable = false
+const customStatusDomainsAvailable = true
 const statusSubscriptionsAvailable = false
 
 export interface StatusPageEditorPageProps {
@@ -51,7 +51,7 @@ export interface StatusPageEditorPageProps {
   onBack?: () => void
   onPreview?: (page: StatusPageViewModel) => void
   onSave?: (value: StatusPageEditorValue) => MaybePromise<void>
-  onClaimDomain?: (domain: string) => MaybePromise<void>
+  onClaimDomain?: (domain: string) => MaybePromise<{ challenge: { dns_record: { name: string; value: string } } } | void>
   onVerifyDomain?: (domain: string) => MaybePromise<void>
   onAnnouncement?: (input: StatusPageAnnouncementInput) => MaybePromise<void>
 }
@@ -65,6 +65,7 @@ const languages: ReadonlyArray<{ code: StatusPageLanguageCode; label: string }> 
 
 const defaultFeatures: StatusPageFeatureSettings = {
   showBarCharts: true,
+  showResponseTime: true,
   showUptimePercentage: true,
   showOverallPercentage: true,
   showOutageDetails: true,
@@ -153,11 +154,17 @@ export function StatusPageEditorPage({
   const [announcementOpen, setAnnouncementOpen] = useState(false)
   const [announcementDraft, setAnnouncementDraft] = useState<StatusPageAnnouncementInput>({ title: '', body: '', status: 'investigating' })
   const [domainState, setDomainState] = useState<'idle' | 'pending' | 'verified'>(page.customDomainVerified ? 'verified' : page.customDomain ? 'pending' : 'idle')
+  const [domainDNS, setDomainDNS] = useState<{ name: string; value: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+	const feedbackRef = useRef<HTMLDivElement>(null)
 	const publishableMonitors = useMemo(() => monitors.filter((monitor) => monitor.type !== 'leakcheck' && monitor.type !== 'compliance'), [monitors])
 	const publishableMonitorIds = useMemo(() => new Set(publishableMonitors.map((monitor) => monitor.id)), [publishableMonitors])
+
+  useEffect(() => {
+    if (message || error) feedbackRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }, [error, message])
 
   const selectedMonitors = useMemo(
 	() => value.monitorIds.map((id) => publishableMonitors.find((monitor) => monitor.id === id)).filter((monitor): monitor is MonitorViewModel => Boolean(monitor)),
@@ -210,7 +217,8 @@ export function StatusPageEditorPage({
     setError('')
     setDomainState('pending')
     try {
-      await onClaimDomain?.(value.customDomain.trim())
+      const result = await onClaimDomain?.(value.customDomain.trim())
+      if (result) setDomainDNS(result.challenge.dns_record)
       setMessage('Domain claimed. Add the TXT record, then verify it.')
     } catch (caught) {
       setDomainState('idle')
@@ -282,6 +290,7 @@ export function StatusPageEditorPage({
 
       <div className="ops-editor-layout">
         <main className="ops-editor-content">
+          {(message || error) && <div ref={feedbackRef} className="ops-editor-feedback"><FeedbackBanner tone={error ? 'error' : 'success'} onDismiss={() => { setError(''); setMessage('') }}>{error || message}</FeedbackBanner></div>}
           {tab === 'monitors' && (
             <>
               <EditorSection title="Visible monitors" icon={<MonitorCog size={20} />}>
@@ -376,8 +385,10 @@ export function StatusPageEditorPage({
                 </div>
                 {customStatusDomainsAvailable && domainState === 'pending' && (
                   <div className="ops-domain-challenge">
-                    <div><span>TXT name</span><code>_sslping-verification.{value.customDomain}</code></div>
-                    <div><span>TXT value</span><code>sslping-verification=••••••••••••••••</code></div>
+                    <div><span>CNAME name</span><code>{value.customDomain}</code></div>
+                    <div><span>CNAME value</span><code>status.sslping.io</code></div>
+                    <div><span>TXT name</span><code>{domainDNS?.name ?? `_sslping-verification.${value.customDomain}`}</code></div>
+                    <div><span>TXT value</span><code>{domainDNS?.value ?? 'Claim the domain again to display the verification value'}</code></div>
                     <Button size="sm" type="button" disabled={busy !== null} onClick={() => void verifyDomain()}>Verify DNS</Button>
                   </div>
                 )}
@@ -397,6 +408,7 @@ export function StatusPageEditorPage({
               <EditorSection title="Features">
                 <div className="ops-settings-grid">
                   <SettingsToggle checked={value.features.showBarCharts} onChange={(next) => updateFeature('showBarCharts', next)} title="Show bar charts" description="Display recent monitor uptime bars." />
+                  <SettingsToggle checked={value.features.showResponseTime} onChange={(next) => updateFeature('showResponseTime', next)} title="Show response time" description="Display a compact 24-hour average response-time chart for every service." />
                   <SettingsToggle checked={value.features.showOutageDetails} onChange={(next) => updateFeature('showOutageDetails', next)} title="Show outage details" description="Explain outage reasons and status codes." />
                   <SettingsToggle checked={value.features.showUptimePercentage} onChange={(next) => updateFeature('showUptimePercentage', next)} title="Show uptime percentage" description="Display uptime beside each monitor." />
                   <SettingsToggle checked={value.features.enableDetailsPage} onChange={(next) => updateFeature('enableDetailsPage', next)} title="Enable details page" description="Let visitors inspect monitor history." />
@@ -411,7 +423,6 @@ export function StatusPageEditorPage({
 
               <EditorSection title="Privacy">
                 <div className="ops-settings-grid">
-                  <SettingsToggle checked={value.features.shareAnalytics} onChange={(next) => updateFeature('shareAnalytics', next)} title="Help us improve" description="Share anonymous status-page analytics." />
                   <SettingsToggle checked={value.features.smallCookieDialog} onChange={(next) => updateFeature('smallCookieDialog', next)} title="Use small cookie dialog" description="Use the compact visitor consent experience." />
                 </div>
               </EditorSection>
@@ -431,7 +442,6 @@ export function StatusPageEditorPage({
             </EditorSection>
           )}
 
-          {(message || error) && <FeedbackBanner tone={error ? 'error' : 'success'} onDismiss={() => { setError(''); setMessage('') }}>{error || message}</FeedbackBanner>}
           <div className="ops-sticky-save"><Button size="lg" type="button" disabled={busy !== null} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save changes'}</Button></div>
         </main>
 

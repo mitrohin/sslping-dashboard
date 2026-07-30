@@ -188,6 +188,7 @@ const statusPage: StatusPage = {
   },
   settings: {
     show_bar_charts: true,
+    show_response_time: true,
     show_uptime_percentage: true,
     show_overall_percentage: true,
     show_outage_details: true,

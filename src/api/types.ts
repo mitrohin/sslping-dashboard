@@ -671,6 +671,7 @@ export type StatusPageRobotsPolicy = 'index,follow' | 'noindex,nofollow' | 'noin
 
 export interface StatusPageSettings {
   show_bar_charts?: boolean
+  show_response_time?: boolean
   show_uptime_percentage?: boolean
   show_overall_percentage?: boolean
   show_outage_details?: boolean
@@ -801,9 +802,13 @@ export interface PublicStatusPage {
 
 export interface PublicStatusComponent {
   name: string
+  target?: string
   status: MonitorStatus
   uptime_24h?: number
   last_checked_at?: ISODateTime
+  history_24h?: Array<'up' | 'down' | 'warning' | 'empty'>
+  response_time?: Array<{ at: ISODateTime; average_ms: number }>
+  response_issues?: string[]
 }
 
 export interface PublicStatusAnnouncement {
