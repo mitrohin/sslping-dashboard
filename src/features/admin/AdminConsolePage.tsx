@@ -10,7 +10,7 @@ import { requestSupportUnreadRefresh } from '../support/unread'
 import { CheckLocationsSection } from './CheckLocationsSection'
 import './admin.css'
 
-const supportAttachmentsAvailable = false
+const supportAttachmentsAvailable = true
 import { localeOptions, useI18n } from '../../app/I18nProvider'
 
 type Section = 'users' | 'regions' | 'locations' | 'plans' | 'invoices' | 'tickets' | 'notifications'

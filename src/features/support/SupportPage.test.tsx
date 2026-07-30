@@ -74,16 +74,22 @@ describe('customer support unread state', () => {
       messages: [{ id: 'message-new', ticket_id: 'ticket-new', author_id: 'customer-1', author_role: 'user', body: 'Details for support', internal: false, created_at: '2026-07-26T17:00:00Z', attachments: [] }],
     }
     mocks.create.mockResolvedValue(created)
-    render(<SupportPage />)
+    const { container } = render(<SupportPage />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'New ticket' }))
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /attach files/i })).toBeInTheDocument()
+    const screenshot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'screenshot.png', { type: 'image/png' })
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
+    expect(fileInput).not.toBeNull()
+    fireEvent.change(fileInput!, { target: { files: [screenshot] } })
     fireEvent.change(screen.getByPlaceholderText('Monitoring alert does not arrive'), { target: { value: 'New support request' } })
     fireEvent.change(screen.getByPlaceholderText('Describe the problem, what you expected and what happened…'), { target: { value: 'Details for support' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
 
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ subject: 'New support request', message: 'Details for support' }))
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledWith('ticket-new', 'message-new', screenshot))
   })
 
   it('highlights an unread ticket and clears it after marking the latest staff reply', async () => {

@@ -9,9 +9,9 @@ import { requestSupportUnreadRefresh } from './unread'
 import { useI18n } from '../../app/I18nProvider'
 import './support.css'
 
-// Binary support uploads remain disabled until object storage, quotas,
-// retention and malware scanning are in place. Text support is available.
-const supportAttachmentsAvailable = false
+// The API stores bounded, content-validated support attachments with the
+// ticket record. Keep the customer and administrator experiences aligned.
+const supportAttachmentsAvailable = true
 
 function ticketTone(status: SupportTicket['status']) {
   if (status === 'resolved' || status === 'closed') return 'success' as const
