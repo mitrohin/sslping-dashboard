@@ -230,6 +230,7 @@ export interface Region {
   id: string
   display_code?: string
   name: string
+  color?: string
   capabilities: Array<'http' | 'keyword' | 'tcp' | 'udp' | 'tls' | 'dns' | 'domain' | 'reachability' | 'compliance'>
   status: 'available' | 'connecting'
   system?: boolean
@@ -256,6 +257,7 @@ export interface CheckLocation {
   code: string
   display_code?: string
   name: string
+  color: string
   ip_address: string
   port: number
   key_fingerprint: string

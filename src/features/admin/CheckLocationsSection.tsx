@@ -183,7 +183,7 @@ export function CheckLocationsSection({ api }: { api: CheckLocationsApi }) {
               const observedMismatch = location.enforce_ip && Boolean(location.last_observed_ip) && normalizedIPAddress(location.last_observed_ip ?? '') !== normalizedIPAddress(location.ip_address)
               return <article className={`admin-location-row ${location.state === 'inactive' ? 'is-inactive' : ''} ${location.state === 'provisioning' || location.state === 'draining' ? 'is-transitioning' : ''}`} role="listitem" key={location.id}>
                 <div className="admin-location-identity">
-                  <span className="admin-location-icon"><ServerCog size={20} /></span>
+                  <span className="admin-location-icon" style={{ color: location.color, borderColor: `${location.color}55`, background: `${location.color}18` }}><ServerCog size={20} /></span>
                   <span><strong>{location.name}</strong><code>{location.display_code ?? location.code}</code></span>
                 </div>
                 <div className="admin-location-cell admin-location-endpoint" data-label={t('admin.location.endpoint')}>

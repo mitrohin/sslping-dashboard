@@ -216,8 +216,18 @@ describe('monitor edit and chart adapters', () => {
     const series = toResponseTimeSeries([
       { id: 'a', workspace_id: 'w', monitor_id: 'm', region: 'eu-west', status: 'ok', latency_ms: 100, started_at: '2026-07-26T10:00:00.000Z', finished_at: '2026-07-26T10:00:01.000Z' },
       { id: 'b', workspace_id: 'w', monitor_id: 'm', region: 'eu-west', status: 'degraded', latency_ms: 300, started_at: '2026-07-26T10:01:00.000Z', finished_at: '2026-07-26T10:01:01.000Z' },
-    ], [{ id: 'eu-west', name: 'Amsterdam' }])
+    ], [{ id: 'eu-west', name: 'Amsterdam', color: '#c084fc' }])
     expect(series).toHaveLength(1)
-    expect(series[0]).toMatchObject({ regionId: 'eu-west', regionLabel: 'Amsterdam', averageMs: 200, minimumMs: 100, maximumMs: 300 })
+    expect(series[0]).toMatchObject({ regionId: 'eu-west', regionLabel: 'Amsterdam', color: '#c084fc', averageMs: 200, minimumMs: 100, maximumMs: 300 })
+  })
+
+  it('keeps fallback colors stable when the check response order changes', () => {
+    const eu = { id: 'eu', workspace_id: 'w', monitor_id: 'm', region: 'eu-west', status: 'ok' as const, latency_ms: 100, started_at: '2026-07-26T10:00:00.000Z', finished_at: '2026-07-26T10:00:01.000Z' }
+    const us = { id: 'us', workspace_id: 'w', monitor_id: 'm', region: 'us-east', status: 'ok' as const, latency_ms: 120, started_at: '2026-07-26T10:00:00.000Z', finished_at: '2026-07-26T10:00:01.000Z' }
+
+    const first = Object.fromEntries(toResponseTimeSeries([eu, us]).map((series) => [series.regionId, series.color]))
+    const refreshed = Object.fromEntries(toResponseTimeSeries([us, eu]).map((series) => [series.regionId, series.color]))
+
+    expect(refreshed).toEqual(first)
   })
 })

@@ -20,7 +20,22 @@ import type {
 import type { MonitorDraft } from './MonitorForm'
 
 const sslReminderDays = [30, 14, 7, 0]
-const seriesColors = ['#35d67b', '#6558f5', '#f5a742', '#43b7e8', '#ed6aa5']
+const seriesColors = [
+  '#35d67b', '#6558f5', '#f5a742', '#43b7e8', '#ed6aa5',
+  '#ef5b5b', '#a66cff', '#2dd4bf', '#f97316', '#84cc16',
+  '#e879f9', '#38bdf8', '#facc15', '#fb7185', '#22c55e',
+  '#818cf8', '#14b8a6', '#c084fc', '#f59e0b', '#06b6d4',
+] as const
+
+function stableSeriesColor(region: string): string {
+  if (region === 'local') return seriesColors[0]
+  let hash = 2_166_136_261
+  for (let index = 0; index < region.length; index += 1) {
+    hash ^= region.charCodeAt(index)
+    hash = Math.imul(hash, 16_777_619)
+  }
+  return seriesColors[(hash >>> 0) % seriesColors.length]
+}
 
 export interface MonitorDetailData {
   monitor: MonitorViewModel
@@ -287,9 +302,10 @@ export function monitorToDraft(monitor: Monitor): MonitorDraft {
   }
 }
 
-export function toResponseTimeSeries(checks: readonly CheckResult[], locations: readonly Pick<Region, 'id' | 'name'>[] = []): readonly ResponseTimeSeries[] {
+export function toResponseTimeSeries(checks: readonly CheckResult[], locations: readonly Pick<Region, 'id' | 'name' | 'color'>[] = []): readonly ResponseTimeSeries[] {
   const grouped = new Map<string, CheckResult[]>()
   const locationNames = new Map(locations.map((location) => [location.id, location.name] as const))
+  const locationColors = new Map(locations.flatMap((location) => location.color ? [[location.id, location.color] as const] : []))
   for (const check of checks) {
     const region = check.region || 'default'
     const values = grouped.get(region) ?? []
@@ -297,13 +313,13 @@ export function toResponseTimeSeries(checks: readonly CheckResult[], locations: 
     grouped.set(region, values)
   }
 
-  return [...grouped.entries()].map(([region, values], index) => {
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([region, values]) => {
     const sorted = [...values].sort((left, right) => Date.parse(left.started_at) - Date.parse(right.started_at))
     const latencies = sorted.map((check) => Math.max(0, check.latency_ms))
     return {
       regionId: region,
       regionLabel: locationNames.get(region) ?? (region === 'local' ? 'Frankfurt' : region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())),
-      color: seriesColors[index % seriesColors.length],
+      color: locationColors.get(region) ?? stableSeriesColor(region),
       points: sorted.map((check) => ({
         timestamp: check.started_at,
         valueMs: Math.max(0, check.latency_ms),
