@@ -181,6 +181,7 @@ describe('auth UI controllers', () => {
       <>
         <Route path="/register" element={<RegisterController />} />
         <Route path="/verify-email" element={<EmailVerificationController />} />
+        <Route path="/login" element={<LoginController />} />
       </>,
     )
 
@@ -190,11 +191,23 @@ describe('auth UI controllers', () => {
     fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'Password1234' } })
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
 
-    expect(await screen.findByRole('heading', { name: /verify your email/i })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    fireEvent.click(screen.getByRole('button', { name: /confirm email/i }))
+    expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
+    expect(screen.getByText('Your email address has been verified. You can now sign in.')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
 
-    expect(await screen.findByRole('status')).toHaveTextContent('Your email address has been verified')
+  it('keeps the registered address fixed while waiting for email verification', () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const api = new ApiClient({ fetch: fetchMock, sessionStore: new SessionStore(localStorage) })
+    renderWithAuth(
+      api,
+      { pathname: '/verify-email', state: { email: user.email } },
+      <Route path="/verify-email" element={<EmailVerificationController />} />,
+    )
+
+    expect(screen.getByText(user.email)).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /resend verification email/i })).toBeEnabled()
   })
 
   it('submits the anti-enumeration forgot-password flow', async () => {

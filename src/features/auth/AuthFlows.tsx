@@ -133,6 +133,8 @@ export function LoginController() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const state = isRecord(location.state) ? location.state : {}
+  const success = state.emailVerified === true ? t('authFlow.emailVerifiedMessage') : undefined
 
   const submit = async (values: { email: string; password: string }) => {
     setBusy(true)
@@ -156,7 +158,7 @@ export function LoginController() {
     }
   }
 
-  return <AuthPage mode="login" busy={busy} error={error} onSubmit={submit} />
+  return <AuthPage mode="login" busy={busy} error={error} success={success} onSubmit={submit} />
 }
 
 export function RegisterController() {
@@ -476,6 +478,8 @@ export function TwoFactorController() {
 export function EmailVerificationController() {
   const { t } = useI18n()
   const auth = useAuth()
+  const confirmEmailVerification = auth.confirmEmailVerification
+  const requestEmailVerification = auth.requestEmailVerification
   const location = useLocation()
   const navigate = useNavigate()
   const state = (isRecord(location.state) ? location.state : {}) as LocationState
@@ -484,35 +488,37 @@ export function EmailVerificationController() {
     if (typeof state.email === 'string') return state.email
     return auth.pendingVerificationEmail ?? auth.user?.email ?? ''
   }, [auth.pendingVerificationEmail, auth.user?.email, state.email])
-  const [email, setEmail] = useState(initialEmail)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [message, setMessage] = useState<string>()
-  const [confirmed, setConfirmed] = useState(false)
 
-  const confirm = async () => {
+  useEffect(() => {
     if (!token) return
+    let cancelled = false
     setBusy(true)
     setError(undefined)
     setMessage(undefined)
-    try {
-      await auth.confirmEmailVerification(token)
-      setConfirmed(true)
-      setMessage(t('authFlow.emailVerifiedMessage'))
-    } catch (cause) {
-      setError(authErrorMessage(cause, t))
-    } finally {
-      setBusy(false)
-    }
-  }
+    confirmEmailVerification(token)
+      .then(() => {
+        if (!cancelled) {
+          navigate('/login', {
+            replace: true,
+            state: { from: forwardedFrom(location.state), emailVerified: true },
+          })
+        }
+      })
+      .catch((cause) => { if (!cancelled) setError(authErrorMessage(cause, t)) })
+      .finally(() => { if (!cancelled) setBusy(false) })
+    return () => { cancelled = true }
+  }, [confirmEmailVerification, location.state, navigate, t, token])
 
-  const resend = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const resend = async () => {
+    if (!initialEmail) return
     setBusy(true)
     setError(undefined)
     setMessage(undefined)
     try {
-      await auth.requestEmailVerification(email)
+      await requestEmailVerification(initialEmail)
       setMessage(t('authFlow.verificationSent'))
     } catch (cause) {
       setError(authErrorMessage(cause, t))
@@ -524,7 +530,7 @@ export function EmailVerificationController() {
   return (
     <SecureAuthFrame
       icon={<MailCheck size={27} />}
-      title={confirmed ? t('authFlow.emailVerified') : t('authFlow.verifyEmail')}
+      title={t('authFlow.verifyEmail')}
       description={token
         ? t('authFlow.confirmLinkHint')
         : t('authFlow.checkInbox')}
@@ -532,36 +538,19 @@ export function EmailVerificationController() {
       {error && <div className="auth-message auth-message--error" role="alert">{error}</div>}
       {message && <div className="auth-message auth-message--success" role="status">{message}</div>}
 
-      {confirmed ? (
+      {token ? (
         <div className="auth-form">
-          <Button type="button" size="lg" onClick={() => navigate('/login', { replace: true, state: { from: forwardedFrom(location.state) } })}>
-            {t('authFlow.continueSignIn')} <ArrowRight size={18} aria-hidden="true" />
-          </Button>
-        </div>
-      ) : token ? (
-        <div className="auth-form">
-          <Button type="button" size="lg" onClick={confirm} disabled={busy}>
-            {busy ? t('authFlow.confirming') : t('authFlow.confirmEmail')}
-            {!busy && <ArrowRight size={18} aria-hidden="true" />}
-          </Button>
+          {busy && <div className="auth-message" role="status">{t('authFlow.confirming')}</div>}
         </div>
       ) : (
-        <form className="auth-form" onSubmit={resend}>
-          <Field label={t('auth.email')} hint={t('authFlow.sameEmail')}>
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              required
-            />
-          </Field>
-          <Button type="submit" size="lg" disabled={busy || email.trim().length === 0}>
+        <div className="auth-form">
+          {initialEmail && <p>{initialEmail}</p>}
+          <Button type="button" size="lg" onClick={resend} disabled={busy || !initialEmail}>
             {busy ? t('authFlow.sending') : t('authFlow.resendVerification')}
           </Button>
-        </form>
+        </div>
       )}
-      {!confirmed && <p className="auth-switch"><Link to="/login">{t('auth.backSignIn')}</Link></p>}
+      <p className="auth-switch"><Link to="/login">{t('auth.backSignIn')}</Link></p>
     </SecureAuthFrame>
   )
 }

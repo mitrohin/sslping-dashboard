@@ -17,6 +17,7 @@ export type AuthPageProps =
       mode: 'login'
       busy?: boolean
       error?: string
+      success?: string
       onSubmit: (values: LoginValues) => Promise<void> | void
     }
   | {
