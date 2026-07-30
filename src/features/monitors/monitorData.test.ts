@@ -101,7 +101,11 @@ describe('monitor request conversion', () => {
   })
 
   it('omits immutable type from update requests and rejects missing socket ports', () => {
-    expect(monitorDraftToUpdateRequest(draft({ type: 'domain', target: 'example.com' }))).not.toHaveProperty('type')
+    const create = monitorDraftToCreateRequest(draft({ type: 'domain', target: 'example.com', regions: ['local', 'ams-1'] }))
+    const update = monitorDraftToUpdateRequest(draft({ type: 'domain', target: 'example.com', regions: ['local', 'ams-1'] }))
+    expect(create).not.toHaveProperty('regions')
+    expect(update).not.toHaveProperty('regions')
+    expect(update).not.toHaveProperty('type')
     expect(() => monitorDraftToCreateRequest(draft({ type: 'tcp', target: 'example.com' }))).toThrow(/host:port/i)
   })
 })

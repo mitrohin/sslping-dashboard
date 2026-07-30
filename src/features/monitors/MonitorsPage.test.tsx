@@ -3,7 +3,6 @@ import type { ComponentProps } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { demoMonitors, type MonitorViewModel } from '../../data'
-import type { Region } from '../../api/types'
 import { MonitorsPage } from './MonitorsPage'
 
 afterEach(() => {
@@ -201,36 +200,18 @@ describe('MonitorsPage monitor creation', () => {
     expect(within(dialog).getByRole('switch', { name: 'Domain expiry reminders' })).toBeInTheDocument()
   })
 
-  it('uses the live location catalog and enforces the plan location limit', async () => {
-    const availableLocations: Region[] = [
-      { id: 'ams-1', name: 'Amsterdam', capabilities: ['http'], status: 'available' },
-      { id: 'lon-1', name: 'London', capabilities: ['http'], status: 'available' },
-      { id: 'sin-1', name: 'Singapore', capabilities: ['http'], status: 'connecting' },
-    ]
+  it('does not let the customer choose monitoring infrastructure', async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined)
-    renderPage({ data: [], availableLocations, maxLocations: 2, onCreate })
+    renderPage({ data: [], onCreate })
 
     fireEvent.click(screen.getByRole('button', { name: 'New monitor' }))
     const dialog = screen.getByRole('dialog', { name: 'Create monitor' })
-    const amsterdam = within(dialog).getByRole('checkbox', { name: /Amsterdam/ })
-    const local = within(dialog).getByRole('checkbox', { name: /fra-1.*permanent system location/i })
-    const london = within(dialog).getByRole('checkbox', { name: /lon-1/ })
-    const singapore = within(dialog).getByRole('checkbox', { name: /Singapore/ })
-    expect(amsterdam).toBeChecked()
-    expect(local).toBeChecked()
-    expect(local).toBeDisabled()
-    expect(london).not.toBeChecked()
-    expect(london).toBeDisabled()
-    expect(singapore).toBeDisabled()
-
-    fireEvent.click(amsterdam)
-    expect(london).toBeEnabled()
-    expect(singapore).toBeEnabled()
-    fireEvent.click(singapore)
+    expect(within(dialog).queryByRole('group', { name: /monitoring locations/i })).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Location')).not.toBeInTheDocument()
     fireEvent.change(within(dialog).getByPlaceholderText('Website / API monitor'), { target: { value: 'Distributed API' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create monitor' }))
 
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ regions: ['local', 'sin-1'] })))
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce())
   })
 })
 

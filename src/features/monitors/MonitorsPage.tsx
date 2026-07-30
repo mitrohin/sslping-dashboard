@@ -25,7 +25,6 @@ import {
   X,
 } from 'lucide-react'
 import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
-import type { Region } from '../../api/types'
 import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
 import { Badge, Button, EmptyState, FeedbackBanner, IconButton, Modal, PageHeader, PageLoadingSkeleton, Panel, SearchInput, Select, StatusDot, Toggle } from '../../components/ui'
@@ -50,8 +49,6 @@ export interface MonitorsPageProps {
   onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void>
   onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void>
   manualTestEnabled?: boolean
-  availableLocations?: readonly Region[]
-  maxLocations?: number
 }
 
 type MonitorRowAction = 'pause' | 'resume' | 'test' | 'delete'
@@ -70,18 +67,11 @@ export function MonitorsPage({
   onBulkAction,
   onBulkTags,
   manualTestEnabled = true,
-  availableLocations = [],
-  maxLocations = 20,
 }: MonitorsPageProps = {}) {
   const { locale, t } = useI18n()
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
   const availableTags = useMemo(() => [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(), [monitors])
-  const createInitialDraft = useMemo<MonitorDraft>(() => {
-    const limit = Math.max(1, Math.min(20, Math.floor(maxLocations) || 1))
-    const remote = availableLocations.filter((location) => location.id !== 'local').map((location) => location.id)
-    return { ...defaultMonitorDraft, regions: ['local', ...remote].slice(0, limit) }
-  }, [availableLocations, maxLocations])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MonitorStatus>('all')
   const [tagFilter, setTagFilter] = useState('all')
@@ -517,10 +507,8 @@ export function MonitorsPage({
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={t('monitors.create')} icon={<Activity size={31} />} width="xl">
         <MonitorForm
-          initialValue={createInitialDraft}
+          initialValue={defaultMonitorDraft}
           availableTags={availableTags}
-          availableLocations={availableLocations}
-          maxLocations={maxLocations}
           onSubmit={createMonitor}
           onCancel={() => setCreateOpen(false)}
         />

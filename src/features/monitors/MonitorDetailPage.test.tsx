@@ -72,6 +72,19 @@ describe('MonitorDetailPage heartbeat token rotation', () => {
 })
 
 describe('MonitorDetailPage live controls', () => {
+  it('shows assigned location names instead of infrastructure codes', () => {
+    const monitor = { ...demoMonitors[0], regions: ['local', 'blr-1'] }
+    render(
+      <MemoryRouter>
+        <MonitorDetailPage monitor={monitor} locationNames={{ local: 'Frankfurt', 'blr-1': 'Bangalore' }} responseTime={[]} uptimePeriods={[]} incidents={[]} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Frankfurt')).toBeInTheDocument()
+    expect(screen.getByText('Bangalore')).toBeInTheDocument()
+    expect(screen.queryByText('blr-1')).not.toBeInTheDocument()
+  })
+
   it('shows an in-progress first compliance scan instead of a false violation', () => {
     const monitor = {
       ...demoMonitors[0],

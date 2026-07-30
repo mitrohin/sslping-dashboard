@@ -25,7 +25,7 @@ const systemLocation: CheckLocation = {
   id: '00000000-0000-4000-8000-000000000001',
   code: 'local',
   display_code: 'fra-1',
-  name: 'Frankfurt, Germany',
+  name: 'Frankfurt',
   ip_address: '',
   port: 0,
   key_fingerprint: 'managed by cluster',
@@ -84,16 +84,16 @@ describe('check location helpers', () => {
 })
 
 describe('check location administration', () => {
-  it('shows Frankfurt, Germany with its public code as a permanent cluster-managed location', async () => {
+  it('shows Frankfurt with its public code as a permanent cluster-managed location', async () => {
     render(<CheckLocationsSection api={makeApi([systemLocation, location])} />)
 
-    expect(await screen.findByText('Frankfurt, Germany')).toBeInTheDocument()
+    expect(await screen.findByText('Frankfurt')).toBeInTheDocument()
     expect(screen.getByText('fra-1')).toBeInTheDocument()
     expect(screen.getByText('In-cluster worker')).toBeInTheDocument()
     expect(screen.getByText('Always enabled for every monitor')).toBeInTheDocument()
     expect(screen.getByText('System location')).toBeInTheDocument()
     expect(screen.getByText('Permanent')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit Frankfurt, Germany' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Frankfurt' })).not.toBeInTheDocument()
   })
 
   it('shows operational metadata and only the stored key fingerprint', async () => {

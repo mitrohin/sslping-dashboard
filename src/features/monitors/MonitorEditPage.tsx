@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { demoMonitors, type MonitorViewModel } from '../../data'
 import { Button, EmptyState, PageHeader, PageLoadingSkeleton, Panel } from '../../components/ui'
 import { defaultMonitorDraft, MonitorForm, type MonitorDraft } from './MonitorForm'
-import type { Region } from '../../api/types'
 
 export interface MonitorEditPageProps {
   monitor?: MonitorViewModel
@@ -13,8 +12,6 @@ export interface MonitorEditPageProps {
   onRetry?: () => void
   onSubmit?: (draft: MonitorDraft) => Promise<void>
   availableTags?: readonly string[]
-  availableLocations?: readonly Region[]
-  maxLocations?: number
 }
 
 export function MonitorEditPage({
@@ -25,8 +22,6 @@ export function MonitorEditPage({
   onRetry,
   onSubmit,
   availableTags = [],
-  availableLocations = [],
-  maxLocations = 20,
 }: MonitorEditPageProps = {}) {
   const { monitorId } = useParams()
   const navigate = useNavigate()
@@ -62,7 +57,7 @@ export function MonitorEditPage({
       <Link to={`/monitors/${monitor.id}`} className="back-link"><ArrowLeft size={17} /> Monitor detail</Link>
       <PageHeader title={<>Edit <span className="success-text">{monitor.name}</span></>} description="Monitor type cannot be changed after creation. Update the target, timing and alert behavior below." />
       <Panel className="monitor-edit-panel">
-        <MonitorForm initialValue={initialValue} availableTags={availableTags} availableLocations={availableLocations} maxLocations={maxLocations} lockType submitLabel="Save changes" onSubmit={save} onCancel={() => navigate(`/monitors/${monitor.id}`)} />
+        <MonitorForm initialValue={initialValue} availableTags={availableTags} lockType submitLabel="Save changes" onSubmit={save} onCancel={() => navigate(`/monitors/${monitor.id}`)} />
       </Panel>
     </div>
   )

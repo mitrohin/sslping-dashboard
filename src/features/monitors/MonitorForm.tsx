@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button, Field, Select, Toggle } from '../../components/ui'
-import type { DNSConfig, Region } from '../../api/types'
+import type { DNSConfig } from '../../api/types'
 import type { MonitorType } from '../../data'
 import { useI18n } from '../../app/I18nProvider'
 
@@ -133,8 +133,6 @@ export function MonitorForm({
   onCancel,
   lockType = false,
   availableTags = [],
-  availableLocations = [],
-  maxLocations = 20,
 }: {
   initialValue?: MonitorDraft
   submitLabel?: string
@@ -142,8 +140,6 @@ export function MonitorForm({
   onCancel?: () => void
   lockType?: boolean
   availableTags?: readonly string[]
-  availableLocations?: readonly Region[]
-  maxLocations?: number
 }) {
   const { t } = useI18n()
   const [draft, setDraft] = useState<MonitorDraft>(initialValue)
@@ -194,63 +190,11 @@ export function MonitorForm({
     return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
   }, [statusPickerOpen])
 
-  const locationLimit = Math.max(1, Math.min(20, Math.floor(maxLocations) || 1))
-
-  useEffect(() => {
-    if ((draft.type === 'heartbeat' || draft.type === 'compliance') && (draft.regions.length !== 1 || draft.regions[0] !== 'local')) {
-      setDraft((current) => ({ ...current, regions: ['local'] }))
-      return
-    }
-    if (draft.type !== 'heartbeat' && draft.type !== 'compliance' && draft.type !== 'leakcheck') {
-      const regions = ['local', ...draft.regions.filter((region, index, all) => region !== 'local' && all.indexOf(region) === index)].slice(0, locationLimit)
-      if (regions.length !== draft.regions.length || regions.some((region, index) => region !== draft.regions[index])) {
-        setDraft((current) => ({ ...current, regions }))
-      }
-    }
-  }, [draft.regions, draft.type, locationLimit])
-
   const selectedType = useMemo(() => monitorTypes.find((item) => item.value === draft.type)!, [draft.type])
-  const locationOptions = useMemo(() => {
-    const selected = new Set(draft.regions)
-    const items = availableLocations
-      .filter((location) => selected.has(location.id) || location.capabilities.includes(draft.type as Region['capabilities'][number]))
-      .map((location) => ({ ...location, legacy: false }))
-    const known = new Set(items.map((location) => location.id))
-    for (const region of draft.regions) {
-      if (!known.has(region)) {
-        items.push({
-          id: region as Region['id'],
-          name: region === 'local' ? 'Frankfurt, Germany' : region,
-          capabilities: [],
-          status: region === 'local' ? 'available' : 'connecting',
-          system: region === 'local',
-          display_code: region === 'local' ? 'fra-1' : undefined,
-          legacy: true,
-        })
-      }
-    }
-    if (items.length === 0) {
-      items.push({ id: 'local', display_code: 'fra-1', name: 'Frankfurt, Germany', capabilities: [], status: 'available', system: true, legacy: true })
-    }
-    return items
-  }, [availableLocations, draft.regions, draft.type, t])
   const visibleMonitorTypes = lockType
     ? monitorTypes.filter((item) => item.value === draft.type)
     : creatableMonitorTypes
   const set = <K extends keyof MonitorDraft>(key: K, value: MonitorDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
-
-  const toggleLocation = (location: string) => {
-    if (location === 'local') return
-    setDraft((current) => {
-      const selected = current.regions.includes(location)
-      if (selected) {
-        if (current.regions.length === 1) return current
-        return { ...current, regions: current.regions.filter((region) => region !== location) }
-      }
-      if (current.regions.length >= locationLimit) return current
-      return { ...current, regions: [...current.regions, location] }
-    })
-  }
 
   const addTag = (tag: string) => {
     const value = tag.trim()
@@ -426,25 +370,9 @@ export function MonitorForm({
 
       {draft.type !== 'leakcheck' && <section className="form-section">
         <h3 className="form-section__title">{t('monitorForm.schedule')}</h3>
-        <div className="form-grid form-grid--three">
+        <div className="form-grid">
           <Field label={t('monitorForm.interval')}><Select value={draft.intervalSeconds} onChange={(event) => set('intervalSeconds', Number(event.target.value))}>{draft.type === 'compliance' ? <><option value={86400}>{t('time.24h')}</option><option value={604800}>{t('monitorForm.everyWeek')}</option><option value={2592000}>{t('monitorForm.every30d')}</option></> : <><option value={30}>{t('time.30s')}</option><option value={60}>{t('time.1m')}</option><option value={300}>{t('time.5m')}</option><option value={1800}>{t('time.30m')}</option><option value={3600}>{t('time.1h')}</option><option value={43200}>{t('time.12h')}</option><option value={86400}>{t('time.24h')}</option></>}</Select></Field>
           <Field label={t('monitorForm.timeout')}><Select value={draft.timeoutSeconds} onChange={(event) => set('timeoutSeconds', Number(event.target.value))}><option value={5}>{t('time.5s')}</option><option value={10}>{t('time.10s')}</option><option value={15}>{t('time.15s')}</option><option value={30}>{t('time.30s')}</option><option value={60}>{t('time.60s')}</option></Select></Field>
-          <Field label={t('monitorForm.location')} hint={t('monitorForm.locationLimit', { count: locationLimit })}>
-            {draft.type === 'compliance' || draft.type === 'heartbeat' ? (
-              <div className="monitor-location-fixed">{t(draft.type === 'compliance' ? 'monitorForm.complianceCrawler' : 'monitorForm.heartbeatProcessor')}</div>
-            ) : (
-              <div className="monitor-location-picker" role="group" aria-label={t('monitorForm.locations')}>
-                {locationOptions.map((location) => {
-                  const checked = draft.regions.includes(location.id)
-                  const atLimit = !checked && draft.regions.length >= locationLimit
-                  return <label className={checked ? 'is-selected' : ''} key={location.id}>
-                    <input type="checkbox" checked={checked} disabled={location.id === 'local' || atLimit} onChange={() => toggleLocation(location.id)} />
-                    <span><strong>{location.name}</strong><small>{location.display_code ?? location.id} · {location.id === 'local' ? t('monitorForm.locationPermanent') : t(`monitorForm.locationStatus.${location.status}`)}</small></span>
-                  </label>
-                })}
-              </div>
-            )}
-          </Field>
         </div>
       </section>}
 

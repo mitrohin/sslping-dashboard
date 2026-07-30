@@ -27,6 +27,7 @@ export interface MonitorDetailData {
   responseTime: readonly ResponseTimeSeries[]
   uptimePeriods: readonly UptimePeriodSummary[]
   incidents: readonly IncidentViewModel[]
+  locationNames: Readonly<Record<string, string>>
   mtbfSeconds?: number
 }
 
@@ -192,7 +193,6 @@ export function monitorDraftToCreateRequest(draft: MonitorDraft): MonitorCreateR
     config: draftConfig(draft),
     interval_seconds: positiveInteger(draft.intervalSeconds, 'Monitor interval'),
     timeout_seconds: positiveInteger(draft.timeoutSeconds, 'Request timeout'),
-    regions: [...draft.regions],
     tags: [...draft.tags],
     group_name: draft.group.trim() || 'Monitors',
     retry_policy: {
@@ -302,7 +302,7 @@ export function toResponseTimeSeries(checks: readonly CheckResult[], locations: 
     const latencies = sorted.map((check) => Math.max(0, check.latency_ms))
     return {
       regionId: region,
-      regionLabel: locationNames.get(region) ?? (region === 'local' ? 'Frankfurt, Germany' : region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())),
+      regionLabel: locationNames.get(region) ?? (region === 'local' ? 'Frankfurt' : region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())),
       color: seriesColors[index % seriesColors.length],
       points: sorted.map((check) => ({
         timestamp: check.started_at,
@@ -361,6 +361,7 @@ export function toLiveMonitorDetail(options: {
       domainRegistration: domain ?? base.domainRegistration,
     },
     responseTime: toResponseTimeSeries(options.responseChecks ?? options.checks, options.locations),
+    locationNames: Object.fromEntries((options.locations ?? []).map((location) => [location.id, location.name])),
     uptimePeriods: (['24h', '7d', '30d', '365d'] as const).map((period) =>
       toUptimePeriod(period, options.stats[period]),
     ),

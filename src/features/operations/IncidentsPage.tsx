@@ -387,7 +387,7 @@ export function IncidentsPage({
                   {selected.locationQuorum.observations.map((observation) => (
                     <article key={`${observation.region}-${observation.finishedAt ?? observation.status}`}>
                       <div className="ops-location-quorum__location">
-                        <strong>{observation.region === 'local' ? 'Frankfurt, Germany' : observation.region}</strong>
+                        <strong>{observation.region === 'local' ? 'Frankfurt' : observation.region}</strong>
                         <Badge tone={observation.status === 'failed' ? 'danger' : observation.status === 'degraded' ? 'warning' : observation.status === 'ok' ? 'success' : 'neutral'}>
                           {formatStatus(observation.status)}
                         </Badge>

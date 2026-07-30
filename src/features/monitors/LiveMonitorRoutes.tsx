@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import type { ApiClient } from '../../api/client'
-import type { CheckResult, HistoryQuery, Monitor, Region, UptimeStats } from '../../api/types'
+import type { CheckResult, HistoryQuery, Monitor, UptimeStats } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
 import { isDemoSession } from '../../app/DashboardGate'
 import {
@@ -136,8 +136,6 @@ export function LiveMonitorsPage() {
   const [data, setData] = useState<readonly MonitorViewModel[]>([])
   const [rawMonitors, setRawMonitors] = useState<readonly Monitor[]>([])
   const [manualTestEnabled, setManualTestEnabled] = useState(false)
-  const [availableLocations, setAvailableLocations] = useState<readonly Region[]>([])
-  const [maxLocations, setMaxLocations] = useState(1)
   const [loading, setLoading] = useState(!demo)
   const [error, setError] = useState<string | null>(null)
   const loadedOnce = useRef(demo)
@@ -149,16 +147,13 @@ export function LiveMonitorsPage() {
     try {
       const now = new Date()
       const from = fromForPeriod('24h', now)
-      const [page, summary, incidentsPage, entitlements, regionsPage] = await Promise.all([
+      const [page, summary, incidentsPage, entitlements] = await Promise.all([
         api.listMonitors(workspace.id, { limit: 100 }),
         api.getMetricsSummary(workspace.id, { from, to: now.toISOString() }),
         api.listIncidents(workspace.id, { from, to: now.toISOString(), limit: 100 }),
         api.getWorkspaceEntitlements(workspace.id),
-        api.listRegions(),
       ])
       setManualTestEnabled(entitlements.limits.allow_manual_tests)
-      setMaxLocations(entitlements.limits.max_locations)
-      setAvailableLocations(regionsPage.items ?? [])
       const monitors = page.items ?? []
       setRawMonitors(monitors)
       const metricItems = summary.items ?? []
@@ -291,8 +286,6 @@ export function LiveMonitorsPage() {
       onBulkAction={bulkAction}
       onBulkTags={bulkTags}
       manualTestEnabled={manualTestEnabled}
-      availableLocations={availableLocations}
-      maxLocations={maxLocations}
     />
   )
 }
@@ -493,6 +486,7 @@ export function LiveMonitorDetailPage() {
     <MonitorDetailPage
       monitor={data?.monitor}
       responseTime={data?.responseTime}
+      locationNames={data?.locationNames}
       uptimePeriods={data?.uptimePeriods}
       incidents={data?.incidents}
       mtbfSeconds={data?.mtbfSeconds}
@@ -518,8 +512,6 @@ interface LiveEditState {
   monitor: Monitor
   view: MonitorViewModel
   availableTags: string[]
-  availableLocations: Region[]
-  maxLocations: number
 }
 
 export function LiveMonitorEditPage() {
@@ -535,19 +527,15 @@ export function LiveMonitorEditPage() {
     setLoading(true)
     setError(null)
     try {
-      const [monitor, page, regionsPage, entitlements] = await Promise.all([
+      const [monitor, page] = await Promise.all([
         api.getMonitor(workspace.id, monitorId),
         api.listMonitors(workspace.id, { limit: 250 }),
-        api.listRegions(),
-        api.getWorkspaceEntitlements(workspace.id),
       ])
       const availableTags = [...new Set((page.items ?? []).flatMap((item) => item.tags))].sort()
       setState({
         monitor,
         view: toMonitorViewModel(monitor),
         availableTags,
-        availableLocations: regionsPage.items ?? [],
-        maxLocations: entitlements.limits.max_locations,
       })
     } catch (loadError) {
       setError(monitorErrorMessage(loadError, 'The monitor configuration could not be loaded.'))
@@ -570,8 +558,6 @@ export function LiveMonitorEditPage() {
       monitor={state?.view}
       initialValue={state ? monitorToDraft(state.monitor) : undefined}
       availableTags={state?.availableTags}
-      availableLocations={state?.availableLocations}
-      maxLocations={state?.maxLocations}
       loading={loading && !state}
       error={error}
       onRetry={() => void reload()}
