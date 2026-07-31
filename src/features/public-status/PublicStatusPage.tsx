@@ -110,7 +110,7 @@ function uptimeBars(uptime: number | undefined): readonly ('up' | 'down' | 'warn
   })
 }
 
-type PublicBranding = { logoUrl: string; accentColor: string; backgroundColor: string; colorScheme: 'system' | 'light' | 'dark'; removeProductLogo: boolean; removeCookieConsent: boolean; floatingStatusBar: boolean }
+type PublicBranding = { logoUrl: string; accentColor: string; backgroundColor: string; colorScheme: 'system' | 'light' | 'dark'; removeProductLogo: boolean; removeCookieConsent: boolean }
 function publicBranding(value: unknown): PublicBranding {
   const source = typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
   const scheme = source.color_scheme
@@ -121,18 +121,17 @@ function publicBranding(value: unknown): PublicBranding {
     colorScheme: scheme === 'dark' || scheme === 'light' ? scheme : 'system',
     removeProductLogo: source.remove_product_logo === true,
     removeCookieConsent: source.remove_cookie_consent === true,
-    floatingStatusBar: source.enable_floating_status_bar === true,
   }
 }
 
-function ResponseChart({ points, detailed = false }: { points: NonNullable<PublicStatusComponent['response_time']>; detailed?: boolean }) {
+function ResponseChart({ points, copy }: { points: NonNullable<PublicStatusComponent['response_time']>; copy: PublicStatusCopy }) {
   if (points.length < 2) return null
   const max = Math.max(...points.map((point) => point.average_ms), 1)
   const coordinates = points.map((point, index) => `${(index / (points.length - 1)) * 180},${34 - (point.average_ms / max) * 30}`).join(' ')
   const average = Math.round(points.reduce((sum, point) => sum + point.average_ms, 0) / points.length)
   const fastest = Math.round(Math.min(...points.map((point) => point.average_ms)))
   const slowest = Math.round(max)
-  return <div className={`ps-response-chart ${detailed ? 'is-detailed' : ''}`} aria-label={`Average response time ${average} ms`}><svg viewBox="0 0 180 38" preserveAspectRatio="none" role="img"><line x1="0" y1="34" x2="180" y2="34" /><line x1="0" y1="19" x2="180" y2="19" /><line x1="0" y1="4" x2="180" y2="4" /><polyline points={coordinates} /></svg>{detailed ? <div className="ps-response-stats"><span><small>Average</small><strong>{average} ms</strong></span><span><small>Fastest</small><strong>{fastest} ms</strong></span><span><small>Slowest</small><strong>{slowest} ms</strong></span></div> : <span>{average} ms avg · 24h</span>}</div>
+  return <div className="ps-response-chart" aria-label={`${copy.averageResponseTime}: ${average} ms`}><svg viewBox="0 0 180 38" preserveAspectRatio="none" role="img"><line x1="0" y1="34" x2="180" y2="34" /><line x1="0" y1="19" x2="180" y2="19" /><line x1="0" y1="4" x2="180" y2="4" /><polyline points={coordinates} /></svg><div className="ps-response-stats"><span><small>{copy.averageShort}</small><strong>{average} ms</strong></span><span><small>{copy.fastest}</small><strong>{fastest} ms</strong></span><span><small>{copy.slowest}</small><strong>{slowest} ms</strong></span></div></div>
 }
 
 function statusIcon(status: MonitorStatus, size = 24) {
@@ -275,18 +274,16 @@ function PasswordView({
   )
 }
 
-function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, enableDetails, copy, locale }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; enableDetails: boolean; copy: PublicStatusCopy; locale: string }) {
+function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string }) {
   const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
-  const [expanded, setExpanded] = useState(false)
   return (
     <article className="ps-component-row">
       <div className={`ps-component-state ps-component-state--${component.status}`}>{statusIcon(component.status, 18)}</div>
-      <div className="ps-component-copy"><h3>{component.name}</h3><p>{component.last_checked_at ? `${copy.lastChecked} ${formatRelativeTime(component.last_checked_at, new Date(), { locale })}` : copy.waitingForFirstCheck}</p>{component.target && <p className="ps-component-target">{component.target}</p>}{showOutageDetails && Boolean(component.response_issues?.length) && <p className="ps-response-issue"><TriangleAlert size={13} /> High response time: {component.response_issues?.join(', ')}</p>}{enableDetails && <button className="ps-details-toggle" type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? 'Hide details' : 'Details'}</button>}</div>
+      <div className="ps-component-copy"><h3>{component.name}</h3><p>{component.last_checked_at ? `${copy.lastChecked} ${formatRelativeTime(component.last_checked_at, new Date(), { locale })}` : copy.waitingForFirstCheck}</p>{component.target && <p className="ps-component-target">{component.target}</p>}{showOutageDetails && Boolean(component.response_issues?.length) && <p className="ps-response-issue"><TriangleAlert size={13} /> {copy.highResponseTime}: {component.response_issues?.join(', ')}</p>}</div>
       {showBars && <div className="ps-uptime-bars" aria-label={`${copy.uptime24h}: ${formatUptime(component.uptime_24h, 3, locale)}`}>{bars.map((status, index) => <span key={index} className={`is-${status}`} />)}</div>}
-      {showResponseTime && <ResponseChart points={component.response_time ?? []} />}
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
-      {expanded && <div className="ps-component-details"><div><strong>Average response time · all locations</strong><span>Last 24 hours</span></div><ResponseChart points={component.response_time ?? []} detailed /></div>}
+      {showResponseTime && <div className="ps-component-details"><div><strong>{copy.averageResponseTime}</strong><span>{copy.last24Hours}</span></div><ResponseChart points={component.response_time ?? []} copy={copy} /></div>}
     </article>
   )
 }
@@ -457,7 +454,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         <section className="ps-section">
           <div className="ps-section-heading"><div><p className="ps-kicker">{copy.liveMonitoring}</p><h2>{copy.services}</h2></div><span>{visibleComponents.length} {copy.components}</span></div>
           <div className="ps-components-card">
-            {visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} enableDetails={settings.enable_details_page} copy={copy} locale={locale} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
+            {visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
           </div>
         </section>
 
@@ -482,8 +479,6 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       <footer className="ps-footer">
         <div className="ps-container">{!branding.removeProductLogo && <span>Powered by <strong>SSLPing</strong></span>}<nav aria-label={copy.footerLabel}><button type="button" onClick={() => setPrivacyOpen(true)}>{copy.privacy}</button>{!branding.removeCookieConsent && <button type="button" onClick={() => setConsent(null)}>{copy.cookieSettings}</button>}<span>{copy.generated} {formatDate(snapshot.generated_at, { includeSeconds: true, locale })}</span></nav></div>
       </footer>
-
-      {branding.floatingStatusBar && <div className={`ps-floating-status ps-floating-status--${overallStatus}`}>{statusIcon(overallStatus, 16)}<strong>{overall.title}</strong><span>{copy.updated} {formatRelativeTime(snapshot.generated_at, new Date(), { locale })}</span></div>}
 
       <SubscriptionDialog open={subscriptionOpen} slug={snapshot.page.slug} api={api} copy={copy} onClose={() => setSubscriptionOpen(false)} onPrivacy={() => setPrivacyOpen(true)} />
       <StatusDialog open={privacyOpen} title={copy.privacyNotice} closeLabel={copy.close} onClose={() => setPrivacyOpen(false)}>
