@@ -206,6 +206,12 @@ export function LiveMonitorsPage() {
 
   useEffect(() => { void reload() }, [reload])
 
+  useEffect(() => {
+    if (demo || !authenticated || !workspace) return
+    const timer = window.setInterval(() => void reload(), 60_000)
+    return () => window.clearInterval(timer)
+  }, [authenticated, demo, reload, workspace])
+
   if (demo) return <MonitorsPage />
 
   const create = async (draft: MonitorDraft) => {

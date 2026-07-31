@@ -124,6 +124,18 @@ function publicBranding(value: unknown): PublicBranding {
   }
 }
 
+function usePreferredColorScheme(): 'light' | 'dark' {
+  const [scheme, setScheme] = useState<'light' | 'dark'>(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  useEffect(() => {
+    const query = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!query) return
+    const update = () => setScheme(query.matches ? 'dark' : 'light')
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return scheme
+}
+
 function ResponseChart({ points, copy }: { points: NonNullable<PublicStatusComponent['response_time']>; copy: PublicStatusCopy }) {
   if (points.length < 2) return null
   const max = Math.max(...points.map((point) => point.average_ms), 1)
@@ -315,6 +327,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const [subscriptionOpen, setSubscriptionOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [consent, setConsent] = useState<ConsentChoice | null>(readConsent)
+  const preferredColorScheme = usePreferredColorScheme()
   const languageRef = useRef<StatusPageLanguage>('en')
   const passwordRef = useRef('')
   const language = (snapshot?.page.language ?? 'en') as StatusPageLanguage
@@ -412,6 +425,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const overallUptime = uptimeValues.length > 0 ? uptimeValues.reduce((total, value) => total + value, 0) / uptimeValues.length : undefined
   const smallConsent = settings.small_cookie_dialog
   const branding = publicBranding(snapshot.page.branding)
+  const resolvedColorScheme = branding.colorScheme === 'system' ? preferredColorScheme : branding.colorScheme
   const pageStyle = {
     '--ps-green': branding.accentColor,
     '--ps-green-dark': branding.accentColor,
@@ -424,7 +438,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   }
 
   return (
-    <div className="public-status-page" data-color-scheme={branding.colorScheme} style={pageStyle}>
+    <div className="public-status-page" data-color-scheme={resolvedColorScheme} style={pageStyle}>
       <header className="ps-header">
         <div className="ps-container ps-header__inner">
           {snapshot.page.homepage_url ? (

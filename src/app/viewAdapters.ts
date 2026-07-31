@@ -250,7 +250,7 @@ function toUptimeBars(monitor: Pick<Monitor, 'id' | 'type' | 'regions'>, checks:
 
   const requiresLocationConsensus = ['http', 'keyword', 'tcp', 'udp', 'tls', 'dns', 'domain', 'reachability'].includes(monitor.type)
   const requiredFailures = requiresLocationConsensus ? 2 : 1
-  return buckets.map((bucket) => {
+  const values = buckets.map((bucket) => {
     const statuses = [...bucket.latestByRegion.values()].map(({ status }) => status)
     const failures = statuses.filter((status) => status === 'down').length
     const status: UptimeBarStatus = failures >= requiredFailures
@@ -269,6 +269,7 @@ function toUptimeBars(monitor: Pick<Monitor, 'id' | 'type' | 'regions'>, checks:
         : undefined,
     }
   })
+  return values.at(-1)?.status === 'no-data' ? values.slice(0, -1) : values
 }
 
 function latestCheck(monitorId: string, checks: readonly CheckResult[]): CheckResult | undefined {

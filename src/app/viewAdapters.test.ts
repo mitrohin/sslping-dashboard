@@ -181,10 +181,9 @@ describe('toMonitorViewModel', () => {
       mtbfSeconds24h: 86_400,
       incidentId: 'incident-current',
     })
-    expect(result.last24Hours).toHaveLength(24)
-    expect(result.last24Hours.slice(0, -2).every((bar) => bar.status === 'no-data')).toBe(true)
-    expect(result.last24Hours.at(-2)?.status).toBe('up')
-    expect(result.last24Hours.at(-1)?.status).toBe('no-data')
+    expect(result.last24Hours).toHaveLength(23)
+    expect(result.last24Hours.slice(0, -1).every((bar) => bar.status === 'no-data')).toBe(true)
+    expect(result.last24Hours.at(-1)?.status).toBe('up')
     expect(result.sslCertificate).toMatchObject({
       expiresAt: '2026-09-01T00:00:00.000Z',
       issuer: 'Example Trust Services',
@@ -210,13 +209,28 @@ describe('toMonitorViewModel', () => {
       checks: [result('eu', 'failed'), result('us', 'ok'), result('ap', 'ok')],
       now,
     })
-    expect(singleFailure.last24Hours.at(-2)?.status).toBe('up')
+    expect(singleFailure.last24Hours.at(-1)?.status).toBe('up')
 
     const confirmedFailure = toMonitorViewModel(distributedMonitor, {
       checks: [result('eu', 'failed'), result('us', 'failed'), result('ap', 'ok')],
       now,
     })
-    expect(confirmedFailure.last24Hours.at(-2)?.status).toBe('down')
+    expect(confirmedFailure.last24Hours.at(-1)?.status).toBe('down')
+  })
+
+  it('adds the current-hour bar only after a check is recorded', () => {
+    const before = toMonitorViewModel(monitor, { checks, now })
+    expect(before.last24Hours).toHaveLength(23)
+
+    const currentCheck: CheckResult = {
+      ...checks[0],
+      id: 'check-current-hour',
+      started_at: '2026-07-25T12:00:10.000Z',
+      finished_at: '2026-07-25T12:00:11.000Z',
+    }
+    const after = toMonitorViewModel(monitor, { checks: [...checks, currentCheck], now: '2026-07-25T12:01:00.000Z' })
+    expect(after.last24Hours).toHaveLength(24)
+    expect(after.last24Hours.at(-1)?.status).toBe('up')
   })
 
   it('treats a lone Frankfurt network failure as location evidence rather than an outage', () => {
@@ -233,7 +247,7 @@ describe('toMonitorViewModel', () => {
     }
 
     const result = toMonitorViewModel(localMonitor, { checks: [localFailure], now })
-    expect(result.last24Hours.at(-2)?.status).toBe('up')
+    expect(result.last24Hours.at(-1)?.status).toBe('up')
   })
 
   it('uses safe defaults for incomplete runtime payloads', () => {
