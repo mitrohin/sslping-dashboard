@@ -654,7 +654,19 @@ export interface UserProblemReport {
 	 country?: string
 	 asn?: string
 	 provider?: string
+	 colo?: string
+	 as_organization?: string
+	 is_eu_country?: '1'
+	 city?: string
+	 continent?: string
+	 region?: string
+	 region_code?: string
+	 timezone?: string
+	 longitude?: string
+	 latitude?: string
+	 postal_code?: string
 	 reported_at: ISODateTime
+	 enriched_at?: ISODateTime
 }
 
 export type Recurrence = '' | 'once' | 'daily' | 'weekly'
