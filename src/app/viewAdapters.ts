@@ -485,6 +485,8 @@ export function toIncidentViewModel(
     status: incident.status ?? 'investigating',
     rootCause,
     rootCauseCode: rootCauseCode(rootCause),
+		source: incident.source === 'user_report' ? 'user_report' : 'monitor',
+		reportReasonLabel: incident.report_reason_label || undefined,
     startedAt: incident.started_at ?? '',
     resolvedAt: incident.resolved_at,
     durationSeconds,

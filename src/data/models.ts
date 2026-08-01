@@ -130,6 +130,8 @@ export interface IncidentViewModel {
   status: IncidentStatus
   rootCause: string
   rootCauseCode: string
+	source?: 'monitor' | 'user_report'
+	reportReasonLabel?: string
   startedAt: string
   resolvedAt?: string
   durationSeconds: number

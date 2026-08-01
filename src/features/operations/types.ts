@@ -11,7 +11,7 @@ export interface StatusPageCreateInput {
   password: string
   language: StatusPageLanguageCode
   published: boolean
-  monitorIds: readonly string[]
+	  monitorIds: readonly string[]
 }
 
 export interface StatusPageAnnouncementInput {
@@ -62,7 +62,9 @@ export interface StatusPageEditorValue {
   passwordEnabled: boolean
   password: string
   removeCookieConsent: boolean
-  monitorIds: readonly string[]
+	  monitorIds: readonly string[]
+	  reportReasons: Readonly<Record<string, readonly string[]>>
+	  reportThresholds: Readonly<Record<string, number>>
   branding: StatusPageBrandingSettings
   features: StatusPageFeatureSettings
 }

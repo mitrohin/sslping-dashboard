@@ -41,6 +41,7 @@ VITE_API_URL=
 # Enables the local demo entry in a production build when explicitly needed.
 VITE_DEMO_MODE=false
 VITE_TURNSTILE_SITE_KEY=
+VITE_PROBLEM_REPORT_METADATA_URL=https://report-metadata.sslping.io
 ```
 
 Do not put API keys or integration secrets in Vite environment variables: every `VITE_*` value is included in the browser bundle.

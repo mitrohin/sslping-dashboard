@@ -12,7 +12,9 @@ import {
   Palette,
   Plus,
   Settings2,
+	ShieldAlert,
   ShieldCheck,
+	Trash2,
 } from 'lucide-react'
 import {
   DEMO_NOW,
@@ -94,6 +96,8 @@ function makeDefaultValue(page: StatusPageViewModel, monitors: readonly MonitorV
     password: '',
     removeCookieConsent: false,
 	monitorIds: publishableMonitors.slice(0, page.monitorCount).map((monitor) => monitor.id),
+	reportReasons: {},
+	reportThresholds: {},
     branding: {
       logoUrl: '',
       accentColor: '#34d77b',
@@ -196,6 +200,22 @@ export function StatusPageEditorPage({
     ;[next[index], next[target]] = [next[target], next[index]]
     update('monitorIds', next)
   }
+
+	const updateReportReasons = (monitorId: string, reasons: readonly string[]) =>
+		update('reportReasons', { ...value.reportReasons, [monitorId]: reasons })
+	const addReportReason = (monitorId: string) => {
+		const reasons = value.reportReasons[monitorId] ?? []
+		if (reasons.length < 6) updateReportReasons(monitorId, [...reasons, ''])
+	}
+	const changeReportReason = (monitorId: string, index: number, reason: string) => {
+		const reasons = [...(value.reportReasons[monitorId] ?? [])]
+		reasons[index] = reason
+		updateReportReasons(monitorId, reasons)
+	}
+	const removeReportReason = (monitorId: string, index: number) =>
+		updateReportReasons(monitorId, (value.reportReasons[monitorId] ?? []).filter((_, itemIndex) => itemIndex !== index))
+	const updateReportThreshold = (monitorId: string, threshold: number) =>
+		update('reportThresholds', { ...value.reportThresholds, [monitorId]: Math.max(1, Math.min(10000, threshold || 1)) })
 
   const save = async () => {
     setBusy('save')
@@ -329,6 +349,24 @@ export function StatusPageEditorPage({
                   </ol>
                 )}
               </EditorSection>
+
+				<EditorSection title="Visitor problem reports" icon={<ShieldAlert size={20} />}>
+					<p className="muted">Every monitor always includes “Not working completely” and “Working, but slowly”. Add up to six service-specific reasons.</p>
+					<div className="ops-report-reason-list">
+						{selectedMonitors.map((monitor) => {
+							const reasons = value.reportReasons[monitor.id] ?? []
+							const threshold = value.reportThresholds[monitor.id] ?? 1
+							return (
+								<article key={monitor.id}>
+									<header><div><strong>{monitor.name}</strong><span>{monitor.target}</span></div><Button size="sm" variant="secondary" type="button" disabled={reasons.length >= 6} onClick={() => addReportReason(monitor.id)}><Plus size={15} /> Add button</Button></header>
+									<div className="ops-report-reason-defaults"><span>Not working completely</span><span>Working, but slowly</span></div>
+									<label className="ops-report-threshold"><span>Signals required in 24 hours</span><input type="number" min={1} max={10000} value={threshold} onChange={(event) => updateReportThreshold(monitor.id, event.currentTarget.valueAsNumber)} /><small>Every accepted signal is logged. An incident is created only when this total is reached for the same reason.</small></label>
+									{reasons.map((reason, index) => <div className="ops-report-reason-field" key={`${monitor.id}-${index}`}><input value={reason} onChange={(event) => changeReportReason(monitor.id, index, event.target.value)} placeholder="For example: Payments are unavailable" maxLength={80} aria-label={`Custom report reason ${index + 1} for ${monitor.name}`} /><button type="button" onClick={() => removeReportReason(monitor.id, index)} aria-label={`Remove custom reason ${index + 1}`}><Trash2 size={16} /></button></div>)}
+								</article>
+							)
+						})}
+					</div>
+				</EditorSection>
             </>
           )}
 

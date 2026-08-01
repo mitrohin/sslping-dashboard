@@ -21,6 +21,7 @@ import {
   type TeamMemberViewModel,
 } from '../../data'
 import { formatDate, formatDuration, formatStatus } from '../../lib/format'
+import type { UserProblemReport } from '../../api'
 import { Badge, Button, FeedbackBanner, Field, Modal, PageHeader, Panel, SearchInput, Select } from '../../components/ui'
 import './operations.css'
 import { useI18n } from '../../app/I18nProvider'
@@ -42,6 +43,7 @@ export interface IncidentsPageProps {
   monitors?: readonly MonitorViewModel[]
   members?: readonly TeamMemberViewModel[]
   initialComments?: Readonly<Record<string, readonly IncidentCommentViewModel[]>>
+	initialReports?: Readonly<Record<string, readonly UserProblemReport[]>>
   onAssign?: (incidentId: string, memberId: string) => MaybePromise<void>
   onComment?: (incidentId: string, message: string) => MaybePromise<void>
   onResolve?: (incidentId: string) => MaybePromise<void>
@@ -62,17 +64,48 @@ const makeId = (): string =>
     ? crypto.randomUUID()
     : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+function IncidentActivityChart({ incident, comments, reports, translate }: { incident: IncidentViewModel; comments: readonly IncidentCommentViewModel[]; reports: readonly UserProblemReport[]; translate: (key: string, variables?: Record<string, string | number>) => string }) {
+  const startedAt = Date.parse(incident.startedAt) || Date.now()
+  const endedAt = Date.parse(incident.resolvedAt ?? '') || Math.max(Date.now(), startedAt + 1)
+  const span = Math.max(endedAt - startedAt, 1)
+  const width = 640
+  const chartTop = 18
+  const chartBottom = 122
+
+  if (incident.source === 'user_report') {
+    const bucketCount = 24
+    const buckets = Array.from({ length: bucketCount }, () => 0)
+    for (const report of reports) {
+      const at = Date.parse(report.reported_at)
+      const index = Math.max(0, Math.min(bucketCount - 1, Math.floor(((at - startedAt) / span) * bucketCount)))
+      buckets[index] += 1
+    }
+    const max = Math.max(...buckets, 1)
+    const points = buckets.map((count, index) => `${(index / (bucketCount - 1)) * width},${chartBottom - (count / max) * (chartBottom - chartTop)}`).join(' ')
+    return <section className="ops-incident-activity"><header><div><span>{translate('incidents.visitorReports')}</span><h3>{translate('incidents.reportActivity')}</h3></div><strong>{translate('incidents.reportCount', { count: reports.length })}</strong></header><svg viewBox={`0 0 ${width} 140`} preserveAspectRatio="none" role="img" aria-label={translate('incidents.reportActivity')}><line x1="0" y1={chartBottom} x2={width} y2={chartBottom} /><line x1="0" y1="70" x2={width} y2="70" /><polyline points={points} /></svg><footer><span>{formatDate(incident.startedAt, { includeSeconds: true })}</span><span>{incident.resolvedAt ? formatDate(incident.resolvedAt, { includeSeconds: true }) : translate('incidents.now')}</span></footer></section>
+  }
+
+  const statusY: Record<IncidentStatus, number> = { investigating: 24, identified: 52, monitoring: 82, resolved: 120 }
+  const events = [{ at: startedAt, status: comments[0]?.status ?? 'investigating' as IncidentStatus }, ...comments.map((comment) => ({ at: Date.parse(comment.createdAt), status: comment.status ?? incident.status }))]
+  if (incident.resolvedAt) events.push({ at: Date.parse(incident.resolvedAt), status: 'resolved' })
+  else events.push({ at: endedAt, status: incident.status })
+  const points = events.sort((left, right) => left.at - right.at).map((event) => `${Math.max(0, Math.min(width, ((event.at - startedAt) / span) * width))},${statusY[event.status]}`).join(' ')
+  return <section className="ops-incident-activity"><header><div><span>{translate('incidents.lifecycle')}</span><h3>{translate('incidents.statusDynamics')}</h3></div><strong>{formatDuration(incident.durationSeconds)}</strong></header><svg viewBox={`0 0 ${width} 140`} preserveAspectRatio="none" role="img" aria-label={translate('incidents.statusDynamics')}><line x1="0" y1={chartBottom} x2={width} y2={chartBottom} /><line x1="0" y1="70" x2={width} y2="70" /><polyline points={points} /></svg><footer><span>{formatDate(incident.startedAt, { includeSeconds: true })}</span><span>{incident.resolvedAt ? formatDate(incident.resolvedAt, { includeSeconds: true }) : translate('incidents.now')}</span></footer></section>
+}
+
 export function IncidentsPage({
   incidents: initialIncidents = demoIncidents,
   monitors = demoMonitors,
   members = demoTeamMembers,
   initialComments = {},
+	initialReports = {},
   onAssign,
   onComment,
   onResolve,
   onDownloadComplianceReport,
 }: IncidentsPageProps) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+	const countryNames = useMemo(() => new Intl.DisplayNames([locale], { type: 'region' }), [locale])
   const [incidents, setIncidents] = useState<IncidentViewModel[]>(() => [...initialIncidents])
   const [query, setQuery] = useState('')
   const [tag, setTag] = useState('all')
@@ -145,6 +178,7 @@ export function IncidentsPage({
 
   const selected = selectedId ? incidents.find((incident) => incident.id === selectedId) : undefined
   const selectedComments = selected ? comments[selected.id] ?? [] : []
+	const selectedReports = selected ? initialReports[selected.id] ?? [] : []
   const selectedAssignment = selected
     ? assignments[selected.id] ?? members.find((member) => member.name === selected.assignedTo)?.id ?? ''
     : ''
@@ -369,6 +403,15 @@ export function IncidentsPage({
               <p className="ops-assignment-note">{t('incidents.assignedTo', { name: memberById.get(selectedAssignment)?.name ?? t('incidents.teamMember') })}</p>
             )}
             {actionError && <FeedbackBanner tone="error">{actionError}</FeedbackBanner>}
+
+			<IncidentActivityChart incident={selected} comments={selectedComments} reports={selectedReports} translate={t} />
+
+			{selected.source === 'user_report' && (
+				<section className="ops-report-journal">
+					<header><div><span>{t('incidents.reportJournal')}</span><h3>{selected.reportReasonLabel ?? selected.rootCause}</h3></div><Badge tone="info">{t('incidents.signalCount', { count: selectedReports.length })}</Badge></header>
+					<div className="ops-report-journal__table"><table><thead><tr><th>{t('incidents.time')}</th><th>{t('incidents.country')}</th><th>{t('incidents.provider')}</th><th>{t('incidents.ipAddress')}</th></tr></thead><tbody>{[...selectedReports].reverse().map((report) => <tr key={report.id}><td>{formatDate(report.reported_at, { includeSeconds: true })}</td><td>{report.country === 'T1' ? t('incidents.torNetwork') : report.country ? countryNames.of(report.country) ?? report.country : t('incidents.unknown')}</td><td>{[report.provider, report.asn].filter(Boolean).join(' · ') || t('incidents.unknown')}</td><td><code>{report.ip_address}</code></td></tr>)}</tbody></table>{selectedReports.length === 0 && <p>{t('incidents.noVisitorReports')}</p>}</div>
+				</section>
+			)}
 
             {selected.locationQuorum && (
               <section className="ops-location-quorum">

@@ -625,6 +625,19 @@ export class ApiClient {
     )
   }
 
+	updateStatusPageComponentReportReasons(
+		tenantId: Api.UUID,
+		statusPageId: Api.UUID,
+		componentId: Api.UUID,
+		reasons: string[],
+		threshold: number,
+	): Promise<Api.StatusPageComponent> {
+		return this.#request(
+			`/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/components/${encodePath(componentId)}/report-reasons`,
+			{ method: 'PUT', body: { reasons, threshold } },
+		)
+	}
+
   listAnnouncements(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<Api.ItemList<Api.Announcement>> {
     return this.#request(
       `/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}/announcements`,
@@ -671,6 +684,14 @@ export class ApiClient {
       auth: false,
     })
   }
+
+	reportPublicStatusProblem(slug: string, componentId: Api.UUID, reasonKey: string, turnstileToken?: string): Promise<Api.ProblemReportAcceptedResponse> {
+		return this.#request(`/v1/public/status-pages/${encodePath(slug)}/components/${encodePath(componentId)}/reports`, {
+			method: 'POST',
+			body: { reason_key: reasonKey, turnstile_token: turnstileToken },
+			auth: false,
+		})
+	}
 
   subscribeStatusPage(slug: string, email: string): Promise<Api.SubscriptionAcceptedResponse> {
     return this.#request(`/v1/public/status-pages/${encodePath(slug)}/subscribers`, {

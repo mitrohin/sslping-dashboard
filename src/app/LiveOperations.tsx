@@ -7,9 +7,11 @@ import type {
   JsonValue,
   MaintenanceWindowWrite,
   Monitor,
+	StatusPageComponent,
   StatusPage,
   StatusPageCreateRequest,
   StatusPageUpdateRequest,
+	UserProblemReport,
 } from '../api/types'
 import { Button, FeedbackBanner, PageLoadingSkeleton, Panel } from '../components/ui'
 import { formatStatus } from '../lib/format'
@@ -115,6 +117,7 @@ interface IncidentData {
   monitors: readonly MonitorViewModel[]
   members: readonly TeamMemberViewModel[]
   comments: Readonly<Record<string, readonly IncidentCommentViewModel[]>>
+	reports: Readonly<Record<string, readonly UserProblemReport[]>>
 }
 
 function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceId?: string }) {
@@ -129,12 +132,16 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
     const monitorById = new Map(rawMonitors.map((monitor) => [monitor.id, monitor]))
     const memberById = new Map(memberships.map((membership) => [membership.user_id, membership]))
     const commentsByIncident = new Map<string, readonly IncidentCommentViewModel[]>()
+		const reportsByIncident = new Map<string, readonly UserProblemReport[]>()
 
     await Promise.all(
       (incidentPage.items ?? []).map(async (incident) => {
         try {
-          const response = await api.listIncidentComments(activeWorkspaceId, incident.id)
-          const updates = response.items ?? []
+					const response = typeof api.getIncident === 'function' ? await api.getIncident(activeWorkspaceId, incident.id) : undefined
+					const hasTimeline = Array.isArray(response?.timeline)
+					const fallback = hasTimeline ? undefined : await api.listIncidentComments(activeWorkspaceId, incident.id)
+					const updates = hasTimeline ? response.timeline : fallback?.items ?? []
+					reportsByIncident.set(incident.id, response?.reports ?? [])
           commentsByIncident.set(incident.id, updates.map((update, index) => {
             const author = update.created_by ? memberById.get(update.created_by)?.user?.name : undefined
             const isOpeningUpdate = index === 0 && !update.created_by
@@ -148,6 +155,7 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
           }))
         } catch {
           commentsByIncident.set(incident.id, [])
+				reportsByIncident.set(incident.id, [])
         }
       }),
     )
@@ -156,6 +164,7 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
       monitors: rawMonitors.map((monitor) => toMonitorViewModel(monitor)),
       members: memberships.map((membership) => toTeamMemberViewModel(membership)),
       comments: Object.fromEntries(commentsByIncident),
+		reports: Object.fromEntries(reportsByIncident),
       incidents: (incidentPage.items ?? []).map((incident) => {
         const membership = incident.assigned_to ? memberById.get(incident.assigned_to) : undefined
         return toIncidentViewModel(incident, {
@@ -182,6 +191,7 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
       monitors={state.data.monitors}
       members={state.data.members}
       initialComments={state.data.comments}
+		initialReports={state.data.reports}
       onAssign={(incidentId, memberId) => api.assignIncident(requireWorkspace(), incidentId, memberId).then(() => undefined)}
       onComment={(incidentId, message) => api.addIncidentComment(requireWorkspace(), incidentId, message).then(() => undefined)}
       onResolve={(incidentId) => api.resolveIncident(requireWorkspace(), incidentId).then(() => undefined)}
@@ -407,7 +417,7 @@ const defaultBranding = {
 
 function editorValue(
   page: StatusPage,
-  monitorIds: readonly string[],
+	components: readonly StatusPageComponent[],
 ): StatusPageEditorValue {
   const branding = objectValue(page.branding)
   const colorScheme = stringValue(branding, 'color_scheme', 'system')
@@ -423,7 +433,9 @@ function editorValue(
     passwordEnabled: booleanValue(branding, 'password_enabled'),
     password: '',
     removeCookieConsent: booleanValue(branding, 'remove_cookie_consent'),
-    monitorIds: [...monitorIds],
+		monitorIds: components.map((component) => component.monitor_id),
+		reportReasons: Object.fromEntries(components.map((component) => [component.monitor_id, component.report_reasons ?? []])),
+		reportThresholds: Object.fromEntries(components.map((component) => [component.monitor_id, component.report_threshold ?? 1])),
     branding: {
       logoUrl: stringValue(branding, 'logo_url', defaultBranding.logoUrl),
       accentColor: stringValue(branding, 'accent_color', defaultBranding.accentColor),
@@ -532,7 +544,7 @@ function LiveStatusPageEditorContent({
         passwordProtected: statusPagePasswordProtected(detail.page),
       }),
       monitors: (monitorPage.items ?? []).map((monitor) => toMonitorViewModel(monitor)),
-      initialValue: editorValue(detail.page, components.map((component) => component.monitor_id)),
+		initialValue: editorValue(detail.page, components),
       announcements: (announcementList.items ?? []).map(announcementViewModel),
     }
   }, [api, statusPageId])
@@ -565,6 +577,15 @@ function LiveStatusPageEditorContent({
           requireStatusPage(),
           editorUpdateRequest(value),
         )
+				const detail = await api.getStatusPage(requireWorkspace(), requireStatusPage())
+				if (typeof api.updateStatusPageComponentReportReasons !== 'function') return
+				await Promise.all((detail.components ?? []).map((component) => api.updateStatusPageComponentReportReasons(
+					requireWorkspace(),
+					requireStatusPage(),
+					component.id,
+					(value.reportReasons[component.monitor_id] ?? []).map((reason) => reason.trim()).filter(Boolean),
+					Math.max(1, Math.min(10000, value.reportThresholds[component.monitor_id] ?? 1)),
+				)))
       }}
       onClaimDomain={(domain) =>
         api.claimStatusPageCustomDomain(requireWorkspace(), requireStatusPage(), domain)}

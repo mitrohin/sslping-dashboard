@@ -90,7 +90,7 @@
 .ps-subscribe-card h2 { margin: 0; color: var(--ps-ink); font-size: clamp(22px, 3vw, 28px); letter-spacing: -.6px; }
 .ps-section-heading > span { color: var(--ps-muted); font-size: 12px; }
 .ps-components-card { overflow: hidden; border: 1px solid var(--ps-line); border-radius: 17px; background: var(--ps-panel); box-shadow: 0 9px 34px rgb(40 58 85 / 6%); }
-.ps-component-row { min-height: 106px; display: grid; grid-template-columns: auto minmax(170px, 1fr) minmax(220px, 1.2fr) 72px minmax(92px, max-content); align-items: center; gap: 17px; padding: 18px 22px; border-top: 1px solid var(--ps-line); }
+.ps-component-row { min-height: 106px; display: grid; grid-template-columns: auto minmax(170px, 1fr) minmax(220px, 1.2fr) 72px 130px; align-items: center; gap: 17px; padding: 18px 22px; border-top: 1px solid var(--ps-line); }
 .ps-component-row:first-child { border-top: 0; }
 .ps-component-state { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #4f6076; background: #eef2f6; }
 .ps-component-state--up { color: var(--ps-green-dark); background: var(--ps-green-soft); }
@@ -111,13 +111,28 @@
 .ps-response-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .ps-response-stats > span { display: grid; gap: 3px; color: var(--ps-muted); font-size: 9px; text-align: left; }
 .ps-response-stats strong { color: var(--ps-ink); font-size: 14px; }
+.ps-problem-report { grid-column: 2 / -1; display: grid; gap: 12px; padding-top: 17px; border-top: 1px dashed var(--ps-line); }
+.ps-problem-report__heading { display: flex; align-items: center; gap: 9px; color: var(--ps-amber); }
+.ps-problem-report__heading > div { display: grid; gap: 2px; }
+.ps-problem-report__heading strong { color: var(--ps-ink); font-size: 12px; }
+.ps-problem-report__heading span { color: var(--ps-muted); font-size: 10px; }
+.ps-problem-report__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ps-problem-report__actions button { min-height: 36px; padding: 7px 13px; border: 1px solid var(--ps-line); border-radius: 9px; color: var(--ps-ink); background: color-mix(in srgb, var(--ps-panel) 88%, var(--ps-green-soft)); font-size: 10px; font-weight: 750; cursor: pointer; transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
+.ps-problem-report__actions button:hover:not(:disabled),
+.ps-problem-report__actions button.is-pending { border-color: color-mix(in srgb, var(--ps-green) 60%, var(--ps-line)); background: var(--ps-green-soft); transform: translateY(-1px); }
+.ps-problem-report__actions button:disabled { opacity: .58; cursor: wait; }
+.ps-problem-report .auth-turnstile { min-height: 0; }
+.ps-problem-report__message { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--ps-muted); font-size: 10px; }
+.ps-problem-report__message span { display: grid; gap: 1px; }
+.ps-problem-report__message.is-success { color: var(--ps-green-dark); }
+.ps-problem-report__message.is-error { color: var(--ps-red); }
 .ps-uptime-bars { height: 28px; display: flex; align-items: stretch; gap: 3px; }
 .ps-uptime-bars span { min-width: 2px; flex: 1; border-radius: 2px; background: #dce4ee; }
 .ps-uptime-bars span.is-up { background: #30c680; }
 .ps-uptime-bars span.is-down { background: var(--ps-red); }
 .ps-uptime-bars span.is-warning { background: #e4a13b; }
 .ps-uptime-value { color: #354259; font-size: 12px; text-align: right; }
-.ps-status-label { min-width: 0; min-height: 27px; display: inline-flex; align-items: center; justify-content: center; padding: 4px 11px; border-radius: 999px; color: #546276; background: #edf1f5; font-size: 10px; font-weight: 800; line-height: 1.25; text-align: center; text-transform: capitalize; white-space: normal; }
+.ps-status-label { width: 100%; min-width: 0; min-height: 27px; display: inline-flex; align-items: center; justify-content: center; padding: 4px 11px; border-radius: 999px; color: #546276; background: #edf1f5; font-size: 10px; font-weight: 800; line-height: 1.25; text-align: center; text-transform: capitalize; white-space: normal; }
 .ps-status-label--up,
 .ps-status-label--resolved { color: #08784a; background: var(--ps-green-soft); }
 .ps-status-label--down,
@@ -128,6 +143,7 @@
 
 .ps-announcements { position: relative; display: grid; gap: 14px; }
 .ps-announcements::before { content: ""; position: absolute; left: 22px; top: 25px; bottom: 25px; width: 1px; background: #dfe6ef; }
+.ps-announcements.is-empty::before { display: none; }
 .ps-announcement { position: relative; padding: 22px 24px 22px 54px; border: 1px solid var(--ps-line); border-radius: 15px; background: #fff; box-shadow: 0 7px 26px rgb(40 58 85 / 5%); }
 .ps-announcement.is-active { border-color: #ecd7a9; box-shadow: 0 8px 27px rgb(185 119 22 / 7%); }
 .ps-timeline-dot { position: absolute; z-index: 1; left: 16px; top: 26px; width: 13px; height: 13px; border: 3px solid #fff; border-radius: 50%; background: var(--ps-green); box-shadow: 0 0 0 2px #bce8d2; }
@@ -251,7 +267,7 @@
   .ps-main { padding-top: 35px; }
   .ps-overall { grid-template-columns: auto minmax(0, 1fr); padding: 25px; }
   .ps-overall > time { grid-column: 2; align-self: auto; }
-  .ps-component-row { grid-template-columns: auto minmax(150px, 1fr) minmax(180px, 1fr) minmax(84px, max-content); }
+  .ps-component-row { grid-template-columns: auto minmax(150px, 1fr) minmax(180px, 1fr) 120px; }
   .ps-uptime-value { display: none; }
   .ps-subscribe-card { grid-template-columns: auto minmax(0, 1fr); }
   .ps-subscribe-card .ps-button { grid-column: 1 / -1; width: 100%; }
@@ -276,6 +292,7 @@
   .ps-section { margin-top: 39px; }
   .ps-component-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; padding: 17px; }
   .ps-component-details { grid-column: 1 / -1; grid-template-columns: 1fr; }
+  .ps-problem-report { grid-column: 1 / -1; }
   .ps-uptime-bars { grid-column: 2 / -1; height: 20px; }
   .ps-uptime-value { display: none; }
   .ps-component-copy p { white-space: normal; }

@@ -614,6 +614,9 @@ export interface Incident {
   title: string
   root_cause?: string
   details?: JsonObject
+	 source?: 'monitor' | 'user_report'
+	 report_reason_key?: string
+	 report_reason_label?: string
   started_at: ISODateTime
   acknowledged_at?: ISODateTime
   acknowledged_by?: UUID
@@ -636,6 +639,22 @@ export interface IncidentUpdate {
 export interface IncidentDetail {
   incident: Incident
   timeline: IncidentUpdate[]
+	 reports: UserProblemReport[]
+}
+
+export interface UserProblemReport {
+	 id: UUID
+	 incident_id: UUID
+	 workspace_id: UUID
+	 status_page_id: UUID
+	 monitor_id: UUID
+	 reason_key: string
+	 reason_label: string
+	 ip_address: string
+	 country?: string
+	 asn?: string
+	 provider?: string
+	 reported_at: ISODateTime
 }
 
 export type Recurrence = '' | 'once' | 'daily' | 'weekly'
@@ -765,6 +784,8 @@ export interface StatusPageComponent {
   monitor_id: UUID
   name: string
   position: number
+	 report_reasons?: string[]
+	 report_threshold?: number
   created_at: ISODateTime
 }
 
@@ -803,6 +824,7 @@ export interface PublicStatusPage {
 }
 
 export interface PublicStatusComponent {
+	 id?: UUID
   name: string
   target?: string
   status: MonitorStatus
@@ -811,6 +833,18 @@ export interface PublicStatusComponent {
   history_24h?: Array<'up' | 'down' | 'warning' | 'empty'>
   response_time?: Array<{ at: ISODateTime; average_ms: number }>
   response_issues?: string[]
+	 report_options?: PublicStatusReportOption[]
+}
+
+export interface PublicStatusReportOption {
+	 key: string
+	 label: string
+	 standard: boolean
+}
+
+export interface ProblemReportAcceptedResponse {
+	accepted: true
+	enrichment_token?: string
 }
 
 export interface PublicStatusAnnouncement {

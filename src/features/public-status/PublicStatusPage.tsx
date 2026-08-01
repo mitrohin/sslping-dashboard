@@ -40,7 +40,7 @@ import { publicStatusCopy, statusPageLocale, type PublicStatusCopy } from './i18
 import { TurnstileWidget } from '../auth/TurnstileWidget'
 import './public-status.css'
 
-export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'accessPublicStatusPage' | 'subscribeStatusPage'> & Partial<Pick<ApiClient, 'getPublicStatusPageByDomain' | 'accessPublicStatusPageByDomain'>>
+export type PublicStatusApi = Pick<ApiClient, 'getPublicStatusPage' | 'accessPublicStatusPage' | 'subscribeStatusPage'> & Partial<Pick<ApiClient, 'getPublicStatusPageByDomain' | 'accessPublicStatusPageByDomain' | 'reportPublicStatusProblem'>>
 
 export interface PublicStatusPageProps {
   api?: PublicStatusApi
@@ -52,6 +52,7 @@ type ConsentChoice = 'necessary' | 'all'
 const defaultApi = new ApiClient()
 const consentStorageKey = 'sslping.public-status.cookie-consent.v1'
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
+const PROBLEM_REPORT_METADATA_URL = (import.meta.env.VITE_PROBLEM_REPORT_METADATA_URL ?? 'https://report-metadata.sslping.io').trim()
 
 const statusPriority: Readonly<Record<MonitorStatus, number>> = {
   down: 5,
@@ -286,7 +287,71 @@ function PasswordView({
   )
 }
 
-function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string }) {
+function ProblemReportPanel({ component, copy, onReport }: { component: PublicStatusComponent; copy: PublicStatusCopy; onReport: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
+  const [pendingKey, setPendingKey] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [resetSignal, setResetSignal] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
+  const submittingRef = useRef(false)
+  const options = component.report_options?.length ? component.report_options : [
+    { key: 'not_working', label: copy.reportNotWorking, standard: true },
+    { key: 'slow', label: copy.reportSlow, standard: true },
+  ]
+
+  const submit = useCallback(async (reasonKey: string, token?: string) => {
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setBusy(true)
+    setError('')
+    setSuccess(false)
+    try {
+      await onReport(reasonKey, token)
+      setSuccess(true)
+    } catch (reportError) {
+      setError(errorStatus(reportError) === 429 ? copy.reportAlreadySent : copy.reportError)
+    } finally {
+      submittingRef.current = false
+      setBusy(false)
+      setPendingKey('')
+      setTurnstileToken('')
+      setResetSignal((value) => value + 1)
+    }
+  }, [copy.reportAlreadySent, copy.reportError, onReport])
+
+  useEffect(() => {
+    if (pendingKey && turnstileToken) void submit(pendingKey, turnstileToken)
+  }, [pendingKey, submit, turnstileToken])
+
+  const choose = (reasonKey: string) => {
+    setError('')
+    setSuccess(false)
+    if (!TURNSTILE_SITE_KEY) {
+      void submit(reasonKey)
+      return
+    }
+    setPendingKey(reasonKey)
+  }
+
+  return (
+    <section className="ps-problem-report" aria-label={copy.reportProblem}>
+      <div className="ps-problem-report__heading"><TriangleAlert size={17} /><div><strong>{copy.reportProblem}</strong><span>{copy.selectIssue}</span></div></div>
+      <div className="ps-problem-report__actions">
+        {options.map((option) => {
+          const label = option.key === 'not_working' ? copy.reportNotWorking : option.key === 'slow' ? copy.reportSlow : option.label
+          return <button type="button" key={option.key} disabled={busy} className={pendingKey === option.key ? 'is-pending' : ''} onClick={() => choose(option.key)}>{label}</button>
+        })}
+      </div>
+      {pendingKey && TURNSTILE_SITE_KEY && <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} action="status-problem-report" appearance="interaction-only" resetSignal={resetSignal} onToken={setTurnstileToken} />}
+      {busy && <p className="ps-problem-report__message is-pending" aria-live="polite">{copy.reportVerifying}</p>}
+      {success && <p className="ps-problem-report__message is-success" role="status"><CheckCircle2 size={16} /><span><strong>{copy.reportThanks}</strong>{copy.reportThanksBody}</span></p>}
+      {error && <p className="ps-problem-report__message is-error" role="alert"><TriangleAlert size={16} />{error}</p>}
+    </section>
+  )
+}
+
+function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, onReport }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
   const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
   return (
     <article className="ps-component-row">
@@ -296,6 +361,7 @@ function ComponentRow({ component, showBars, showPercentage, showResponseTime, s
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
       {showResponseTime && <div className="ps-component-details"><div><strong>{copy.averageResponseTime}</strong><span>{copy.last24Hours}</span></div><ResponseChart points={component.response_time ?? []} copy={copy} /></div>}
+	  {onReport && <ProblemReportPanel component={component} copy={copy} onReport={onReport} />}
     </article>
   )
 }
@@ -375,6 +441,23 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
     } finally {
       if (!background) setLoading(false)
     }
+  }, [api, customDomain, slug])
+
+	const reportProblem = useCallback(async (componentId: string, reasonKey: string, turnstileToken?: string) => {
+		if (customDomain) throw new Error('Problem reporting is unavailable on custom domains.')
+		if (!api.reportPublicStatusProblem) throw new Error('Problem reporting is unavailable.')
+		const accepted = await api.reportPublicStatusProblem(slug, componentId, reasonKey, turnstileToken)
+		if (accepted.enrichment_token && PROBLEM_REPORT_METADATA_URL) {
+			try {
+				await fetch(PROBLEM_REPORT_METADATA_URL, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ token: accepted.enrichment_token }),
+				})
+			} catch {
+				// The report is already accepted. Network enrichment is best effort.
+			}
+		}
   }, [api, customDomain, slug])
 
   useEffect(() => { void load() }, [load])
@@ -468,14 +551,14 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         <section className="ps-section">
           <div className="ps-section-heading"><div><p className="ps-kicker">{copy.liveMonitoring}</p><h2>{copy.services}</h2></div><span>{visibleComponents.length} {copy.components}</span></div>
           <div className="ps-components-card">
-            {visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
+			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
           </div>
         </section>
 
         {(settings.show_latest_downtime || announcements.length > 0) && (
           <section className="ps-section">
             <div className="ps-section-heading"><div><p className="ps-kicker">{copy.latestUpdates}</p><h2>{copy.incidentsAndAnnouncements}</h2></div></div>
-            <div className="ps-announcements">
+            <div className={`ps-announcements ${announcements.length === 0 ? 'is-empty' : ''}`}>
               {announcements.length > 0 ? announcements.map((announcement) => <AnnouncementCard key={announcement.id} announcement={announcement} copy={copy} locale={locale} />) : <div className="ps-empty ps-empty--bordered"><ShieldCheck size={29} /><h3>{copy.noIncidents}</h3><p>{copy.noIncidentsBody}</p></div>}
             </div>
           </section>

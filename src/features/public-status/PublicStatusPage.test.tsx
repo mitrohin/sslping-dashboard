@@ -35,8 +35,8 @@ const snapshot: PublicStatusSnapshot = {
   password_protected: false,
   overall_status: 'up',
   components: [
-    { name: 'Public API', status: 'up', uptime_24h: 100, last_checked_at: '2026-07-25T12:59:30.000Z' },
-    { name: 'Checkout', status: 'up', uptime_24h: 99.998, last_checked_at: '2026-07-25T12:59:10.000Z' },
+		{ id: 'component-api', name: 'Public API', status: 'up', uptime_24h: 100, last_checked_at: '2026-07-25T12:59:30.000Z', report_options: [{ key: 'not_working', label: 'Not working completely', standard: true }, { key: 'slow', label: 'Working, but slowly', standard: true }] },
+		{ id: 'component-checkout', name: 'Checkout', status: 'up', uptime_24h: 99.998, last_checked_at: '2026-07-25T12:59:10.000Z' },
   ],
   announcements: [
     {
@@ -66,6 +66,7 @@ function createApi(result: PublicStatusSnapshot = snapshot): PublicStatusApi {
     subscribeStatusPage: vi.fn().mockResolvedValue({
       message: 'If the address can be subscribed, a confirmation email has been sent.',
     }),
+		reportPublicStatusProblem: vi.fn().mockResolvedValue({ accepted: true }),
   }
 }
 
@@ -158,4 +159,15 @@ describe('PublicStatusPage', () => {
     expect(localStorage.getItem('sslping.public-status.cookie-consent.v1')).toBe('all')
     expect(screen.queryByLabelText(/cookie consent/i)).not.toBeInTheDocument()
   })
+
+	it('submits a protected monitor problem reason and confirms receipt', async () => {
+		const api = createApi()
+		renderRoute(api)
+		await screen.findByRole('heading', { name: 'All systems operational' })
+
+		fireEvent.click(screen.getAllByRole('button', { name: 'Not working completely' })[0])
+
+		await waitFor(() => expect(api.reportPublicStatusProblem).toHaveBeenCalledWith('example-cloud', 'component-api', 'not_working', undefined))
+		expect(await screen.findByText('Thank you for the report')).toBeInTheDocument()
+	})
 })
