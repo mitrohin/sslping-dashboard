@@ -122,6 +122,14 @@
 .ps-problem-report__actions button.is-pending { border-color: color-mix(in srgb, var(--ps-green) 60%, var(--ps-line)); background: var(--ps-green-soft); transform: translateY(-1px); }
 .ps-problem-report__actions button:disabled { opacity: .58; cursor: wait; }
 .ps-problem-report .auth-turnstile { min-height: 0; }
+.ps-problem-report__state { min-height: 66px; display: flex; align-items: center; gap: 11px; padding: 13px 14px; border: 1px solid var(--ps-line); border-radius: 12px; background: color-mix(in srgb, var(--ps-panel) 88%, var(--ps-green-soft)); }
+.ps-problem-report__state > div { display: grid; gap: 3px; min-width: 0; }
+.ps-problem-report__state strong { color: var(--ps-ink); font-size: 12px; }
+.ps-problem-report__state span,
+.ps-problem-report__state time { color: var(--ps-muted); font-size: 10px; line-height: 1.45; }
+.ps-problem-report__state.is-received { border-color: color-mix(in srgb, var(--ps-green) 36%, var(--ps-line)); background: color-mix(in srgb, var(--ps-panel) 82%, var(--ps-green-soft)); }
+.ps-problem-report__state-icon { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 10px; color: var(--ps-green-dark) !important; background: var(--ps-green-soft); }
+.ps-problem-report__spinner { width: 28px; height: 28px; flex: 0 0 28px; border: 3px solid color-mix(in srgb, var(--ps-green) 18%, var(--ps-line)); border-top-color: var(--ps-green); border-radius: 50%; animation: ps-spin .8s linear infinite; }
 .ps-problem-report__message { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--ps-muted); font-size: 10px; }
 .ps-problem-report__message span { display: grid; gap: 1px; }
 .ps-problem-report__message.is-success { color: var(--ps-green-dark); }

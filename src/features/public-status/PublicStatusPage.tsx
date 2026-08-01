@@ -48,11 +48,20 @@ export interface PublicStatusPageProps {
 
 type Failure = { kind: 'not-found' | 'error'; message: string }
 type ConsentChoice = 'necessary' | 'all'
+type ProblemReportReceipt = {
+  version: 1
+  reasonKey: string
+  reasonLabel: string
+  reportedAt: string
+  expiresAt: string
+}
 
 const defaultApi = new ApiClient()
 const consentStorageKey = 'sslping.public-status.cookie-consent.v1'
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
 const PROBLEM_REPORT_METADATA_URL = (import.meta.env.VITE_PROBLEM_REPORT_METADATA_URL ?? '/problem-report-metadata').trim()
+const PROBLEM_REPORT_RECEIPT_PREFIX = 'sslping_problem_report_v1'
+const PROBLEM_REPORT_RECEIPT_TTL_SECONDS = 24 * 60 * 60
 
 const statusPriority: Readonly<Record<MonitorStatus, number>> = {
   down: 5,
@@ -90,6 +99,45 @@ function saveConsent(choice: ConsentChoice): void {
   } catch {
     // The public page remains usable when browser storage is disabled.
   }
+}
+
+function problemReportReceiptCookieName(pageSlug: string, componentID: string): string {
+  const safePart = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80)
+  return `${PROBLEM_REPORT_RECEIPT_PREFIX}_${safePart(pageSlug)}_${safePart(componentID)}`
+}
+
+function readProblemReportReceipt(cookieName: string): ProblemReportReceipt | null {
+  if (typeof document === 'undefined') return null
+  const prefix = `${cookieName}=`
+  const rawValue = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length)
+  if (!rawValue) return null
+  try {
+    const receipt = JSON.parse(decodeURIComponent(rawValue)) as Partial<ProblemReportReceipt>
+    if (receipt.version !== 1 || typeof receipt.reasonKey !== 'string' || typeof receipt.reasonLabel !== 'string' || typeof receipt.reportedAt !== 'string' || typeof receipt.expiresAt !== 'string') return null
+    if (!Number.isFinite(Date.parse(receipt.reportedAt)) || !Number.isFinite(Date.parse(receipt.expiresAt)) || Date.parse(receipt.expiresAt) <= Date.now()) return null
+    return receipt as ProblemReportReceipt
+  } catch {
+    return null
+  }
+}
+
+function saveProblemReportReceipt(cookieName: string, reasonKey: string, reasonLabel: string): ProblemReportReceipt {
+  const reportedAt = new Date()
+  const receipt: ProblemReportReceipt = {
+    version: 1,
+    reasonKey: reasonKey.slice(0, 128),
+    reasonLabel: reasonLabel.slice(0, 200),
+    reportedAt: reportedAt.toISOString(),
+    expiresAt: new Date(reportedAt.getTime() + PROBLEM_REPORT_RECEIPT_TTL_SECONDS * 1000).toISOString(),
+  }
+  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+  try {
+    document.cookie = `${cookieName}=${encodeURIComponent(JSON.stringify(receipt))}; Max-Age=${PROBLEM_REPORT_RECEIPT_TTL_SECONDS}; Path=/; SameSite=Lax${secure}`
+  } catch {
+    // The acknowledgement still works when the browser blocks cookies; only
+    // restoring it after a reload becomes unavailable.
+  }
+  return receipt
 }
 
 function deriveOverallStatus(
@@ -287,51 +335,72 @@ function PasswordView({
   )
 }
 
-function ProblemReportPanel({ component, copy, onReport }: { component: PublicStatusComponent; copy: PublicStatusCopy; onReport: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
-  const [pendingKey, setPendingKey] = useState('')
+function ProblemReportPanel({ component, copy, locale, pageSlug, onReport }: { component: PublicStatusComponent; copy: PublicStatusCopy; locale: string; pageSlug: string; onReport: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
+  const cookieName = problemReportReceiptCookieName(pageSlug, component.id ?? component.name)
+  const [pendingSelection, setPendingSelection] = useState<{ reasonKey: string; reasonLabel: string } | null>(null)
   const [turnstileToken, setTurnstileToken] = useState('')
   const [resetSignal, setResetSignal] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError] = useState('')
+  const [receipt, setReceipt] = useState<ProblemReportReceipt | null>(() => readProblemReportReceipt(cookieName))
   const submittingRef = useRef(false)
+  const interactionLockedRef = useRef(Boolean(receipt))
   const options = component.report_options?.length ? component.report_options : [
     { key: 'not_working', label: copy.reportNotWorking, standard: true },
     { key: 'slow', label: copy.reportSlow, standard: true },
   ]
 
-  const submit = useCallback(async (reasonKey: string, token?: string) => {
+  const submit = useCallback(async (selection: { reasonKey: string; reasonLabel: string }, token?: string) => {
     if (submittingRef.current) return
     submittingRef.current = true
     setBusy(true)
-    setError('')
-    setSuccess(false)
     try {
-      await onReport(reasonKey, token)
-      setSuccess(true)
-    } catch (reportError) {
-      setError(errorStatus(reportError) === 429 ? copy.reportAlreadySent : copy.reportError)
+      await onReport(selection.reasonKey, token)
+    } catch {
+      // Use the same acknowledgement for accepted and rejected submissions.
+      // This avoids exposing the anti-abuse decision as an oracle and keeps
+      // visitors from retrying a report the backend has already seen.
     } finally {
+      setReceipt(saveProblemReportReceipt(cookieName, selection.reasonKey, selection.reasonLabel))
       submittingRef.current = false
       setBusy(false)
-      setPendingKey('')
+      setPendingSelection(null)
       setTurnstileToken('')
       setResetSignal((value) => value + 1)
     }
-  }, [copy.reportAlreadySent, copy.reportError, onReport])
+  }, [cookieName, onReport])
 
   useEffect(() => {
-    if (pendingKey && turnstileToken) void submit(pendingKey, turnstileToken)
-  }, [pendingKey, submit, turnstileToken])
+    if (pendingSelection && turnstileToken) void submit(pendingSelection, turnstileToken)
+  }, [pendingSelection, submit, turnstileToken])
 
-  const choose = (reasonKey: string) => {
-    setError('')
-    setSuccess(false)
+  const choose = (reasonKey: string, reasonLabel: string) => {
+    if (interactionLockedRef.current) return
+    interactionLockedRef.current = true
+    const selection = { reasonKey, reasonLabel }
+    setPendingSelection(selection)
     if (!TURNSTILE_SITE_KEY) {
-      void submit(reasonKey)
-      return
+      void submit(selection)
     }
-    setPendingKey(reasonKey)
+  }
+
+  if (receipt) {
+    return (
+      <section className="ps-problem-report" aria-label={copy.reportProblem}>
+        <div className="ps-problem-report__state is-received" role="status">
+          <span className="ps-problem-report__state-icon"><CheckCircle2 size={18} /></span>
+          <div><strong>{copy.reportReceiptTitle}</strong><span>{copy.reportReceiptSignal}: {receipt.reasonLabel}</span><time dateTime={receipt.reportedAt}>{copy.reportReceiptTime}: {formatDate(receipt.reportedAt, { includeSeconds: true, locale })}</time></div>
+        </div>
+      </section>
+    )
+  }
+
+  if (pendingSelection || busy) {
+    return (
+      <section className="ps-problem-report" aria-label={copy.reportProblem} aria-busy="true">
+        <div className="ps-problem-report__state is-processing" role="status" aria-live="polite"><span className="ps-problem-report__spinner" /><div><strong>{copy.reportProcessing}</strong><span>{copy.reportProcessingBody}</span></div></div>
+        {pendingSelection && TURNSTILE_SITE_KEY && <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} action="status-problem-report" appearance="interaction-only" resetSignal={resetSignal} onToken={setTurnstileToken} />}
+      </section>
+    )
   }
 
   return (
@@ -340,18 +409,14 @@ function ProblemReportPanel({ component, copy, onReport }: { component: PublicSt
       <div className="ps-problem-report__actions">
         {options.map((option) => {
           const label = option.key === 'not_working' ? copy.reportNotWorking : option.key === 'slow' ? copy.reportSlow : option.label
-          return <button type="button" key={option.key} disabled={busy} className={pendingKey === option.key ? 'is-pending' : ''} onClick={() => choose(option.key)}>{label}</button>
+          return <button type="button" key={option.key} onClick={() => choose(option.key, label)}>{label}</button>
         })}
       </div>
-      {pendingKey && TURNSTILE_SITE_KEY && <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} action="status-problem-report" appearance="interaction-only" resetSignal={resetSignal} onToken={setTurnstileToken} />}
-      {busy && <p className="ps-problem-report__message is-pending" aria-live="polite">{copy.reportVerifying}</p>}
-      {success && <p className="ps-problem-report__message is-success" role="status"><CheckCircle2 size={16} /><span><strong>{copy.reportThanks}</strong>{copy.reportThanksBody}</span></p>}
-      {error && <p className="ps-problem-report__message is-error" role="alert"><TriangleAlert size={16} />{error}</p>}
     </section>
   )
 }
 
-function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, onReport }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
+function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, pageSlug, onReport }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; pageSlug: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
   const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
   return (
     <article className="ps-component-row">
@@ -361,7 +426,7 @@ function ComponentRow({ component, showBars, showPercentage, showResponseTime, s
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
       {showResponseTime && <div className="ps-component-details"><div><strong>{copy.averageResponseTime}</strong><span>{copy.last24Hours}</span></div><ResponseChart points={component.response_time ?? []} copy={copy} /></div>}
-	  {onReport && <ProblemReportPanel component={component} copy={copy} onReport={onReport} />}
+	  {onReport && <ProblemReportPanel component={component} copy={copy} locale={locale} pageSlug={pageSlug} onReport={onReport} />}
     </article>
   )
 }
@@ -551,7 +616,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         <section className="ps-section">
           <div className="ps-section-heading"><div><p className="ps-kicker">{copy.liveMonitoring}</p><h2>{copy.services}</h2></div><span>{visibleComponents.length} {copy.components}</span></div>
           <div className="ps-components-card">
-			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
+			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} pageSlug={slug} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
           </div>
         </section>
 

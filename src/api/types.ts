@@ -1232,6 +1232,26 @@ export interface AdminUser extends User {
   region?: CustomerRegion
 }
 
+export interface ProblemReportIPProfile {
+  ip_address: string
+  country: string
+  asn: string
+  provider: string
+  colo: string
+  as_organization: string
+  is_eu_country: string
+  city: string
+  continent: string
+  region: string
+  region_code: string
+  timezone: string
+  longitude: string
+  latitude: string
+  postal_code: string
+  created_at: ISODateTime
+  updated_at: ISODateTime
+}
+
 export type SupportTicketStatus = 'open' | 'in_progress' | 'waiting' | 'resolved' | 'closed'
 export type SupportTicketPriority = 'low' | 'normal' | 'high' | 'urgent'
 

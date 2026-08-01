@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { PublicStatusSnapshot } from '../../api'
@@ -7,6 +7,10 @@ import { PublicStatusPage, type PublicStatusApi } from './PublicStatusPage'
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  for (const cookie of document.cookie.split(';')) {
+    const name = cookie.split('=')[0]?.trim()
+    if (name) document.cookie = `${name}=; Max-Age=0; Path=/`
+  }
   vi.restoreAllMocks()
 })
 
@@ -160,14 +164,48 @@ describe('PublicStatusPage', () => {
     expect(screen.queryByLabelText(/cookie consent/i)).not.toBeInTheDocument()
   })
 
-	it('submits a protected monitor problem reason and confirms receipt', async () => {
+	it('locks a monitor report panel immediately and keeps a 24-hour receipt in a cookie', async () => {
+		let resolveReport: ((value: { accepted: boolean }) => void) | undefined
 		const api = createApi()
+		api.reportPublicStatusProblem = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveReport = resolve }))
+		const view = renderRoute(api)
+		await screen.findByRole('heading', { name: 'All systems operational' })
+		const componentRow = screen.getByText('Public API').closest('article')
+		expect(componentRow).not.toBeNull()
+		const component = within(componentRow as HTMLElement)
+
+		fireEvent.click(component.getByRole('button', { name: 'Not working completely' }))
+
+		expect(component.getByText('We are processing your report…')).toBeInTheDocument()
+		expect(component.queryByRole('button', { name: 'Not working completely' })).not.toBeInTheDocument()
+		expect(component.queryByRole('button', { name: 'Working, but slowly' })).not.toBeInTheDocument()
+		await waitFor(() => expect(api.reportPublicStatusProblem).toHaveBeenCalledWith('example-cloud', 'component-api', 'not_working', undefined))
+		await act(async () => { resolveReport?.({ accepted: true }) })
+
+		expect(await component.findByText('Thank you — we received your signal')).toBeInTheDocument()
+		expect(component.getByText('Signal: Not working completely')).toBeInTheDocument()
+		expect(document.cookie).toContain('sslping_problem_report_v1_example-cloud_component-api=')
+
+		view.unmount()
 		renderRoute(api)
 		await screen.findByRole('heading', { name: 'All systems operational' })
+		const restoredRow = screen.getByText('Public API').closest('article')
+		expect(within(restoredRow as HTMLElement).getByText('Thank you — we received your signal')).toBeInTheDocument()
+		expect(api.reportPublicStatusProblem).toHaveBeenCalledTimes(1)
+	})
 
-		fireEvent.click(screen.getAllByRole('button', { name: 'Not working completely' })[0])
+	it('shows the same thank-you receipt when anti-abuse rejects a report', async () => {
+		const api = createApi({ ...snapshot, page: { ...snapshot.page, language: 'ru' } })
+		api.reportPublicStatusProblem = vi.fn().mockRejectedValue(Object.assign(new Error('rate limited'), { status: 429 }))
+		renderRoute(api)
+		await screen.findByRole('heading', { name: 'Все системы работают' })
+		const componentRow = screen.getByText('Public API').closest('article')
+		const component = within(componentRow as HTMLElement)
 
-		await waitFor(() => expect(api.reportPublicStatusProblem).toHaveBeenCalledWith('example-cloud', 'component-api', 'not_working', undefined))
-		expect(await screen.findByText('Thank you for the report')).toBeInTheDocument()
+		fireEvent.click(component.getByRole('button', { name: 'Работает, но медленно' }))
+
+		expect(await component.findByText('Спасибо — мы получили ваш сигнал')).toBeInTheDocument()
+		expect(component.getByText('Сигнал: Работает, но медленно')).toBeInTheDocument()
+		expect(component.queryByText(/уже недавно получили/i)).not.toBeInTheDocument()
 	})
 })

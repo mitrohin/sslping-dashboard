@@ -851,6 +851,10 @@ export class ApiClient {
     return this.#request(withQuery('/v1/admin/users', query))
   }
 
+  adminListProblemReportIPProfiles(search?: string): Promise<Api.ItemList<Api.ProblemReportIPProfile>> {
+    return this.#request(withQuery('/v1/admin/problem-report-ip-profiles', { search }))
+  }
+
   adminGetUser(userId: Api.UUID): Promise<Api.AdminUser> {
     return this.#request(`/v1/admin/users/${encodePath(userId)}`)
   }

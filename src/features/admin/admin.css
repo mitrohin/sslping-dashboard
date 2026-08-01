@@ -10,6 +10,23 @@
 .admin-tabs b { min-width: 19px; height: 19px; display: grid; place-items: center; border-radius: 10px; color: #fff; background: var(--red); font-size: 10px; }
 .admin-search { min-height: 46px; display: flex; align-items: center; gap: 10px; margin-bottom: 15px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); background: var(--panel-strong); }
 .admin-search input { width: 100%; border: 0; outline: 0; color: var(--text); background: transparent; }
+.admin-ip-cache-section > .feedback-banner { margin-bottom: 15px; }
+.admin-ip-cache-count { min-height: 31px; display: inline-flex; align-items: center; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--panel-strong); font-size: 11px; white-space: nowrap; }
+.admin-ip-cache-search { margin-bottom: 8px; }
+.admin-ip-cache-hint { margin: 0 0 13px; color: var(--muted); font-size: 11px; }
+.admin-ip-cache-panel.panel { min-height: 230px; padding: 0; overflow: hidden; }
+.admin-ip-cache-state { min-height: 230px; display: grid; place-items: center; align-content: center; gap: 9px; padding: 25px; color: var(--muted); text-align: center; }
+.admin-ip-cache-state svg { color: var(--green); }
+.admin-ip-cache-state strong { color: var(--text); font-size: 16px; }
+.admin-ip-cache-scroll { max-width: 100%; overflow: auto; overscroll-behavior-inline: contain; }
+.admin-ip-cache-scroll table { width: 100%; min-width: 2420px; border-collapse: collapse; font-size: 11px; }
+.admin-ip-cache-scroll th,.admin-ip-cache-scroll td { min-width: 105px; height: 54px; padding: 10px 13px; border-bottom: 1px solid var(--line); color: var(--text); text-align: left; white-space: nowrap; }
+.admin-ip-cache-scroll th { position: sticky; top: 0; z-index: 2; height: 46px; color: var(--muted); background: var(--panel-strong); font-size: 9px; font-weight: 750; letter-spacing: .055em; text-transform: uppercase; }
+.admin-ip-cache-scroll th:first-child,.admin-ip-cache-scroll td:first-child { position: sticky; left: 0; z-index: 1; min-width: 164px; border-right: 1px solid var(--line); background: var(--panel); }
+.admin-ip-cache-scroll th:first-child { z-index: 3; background: var(--panel-strong); }
+.admin-ip-cache-scroll tbody tr:hover td { background-color: color-mix(in srgb, var(--panel) 94%, var(--green)); }
+.admin-ip-cache-scroll code { color: #dfe7f1; font-size: 11px; }
+.admin-ip-cache-scroll time { color: var(--muted); }
 .admin-table-panel { overflow: hidden; }
 .admin-users-panel { overflow: hidden; }
 .admin-user-list-heading,.admin-user-row { display: grid; grid-template-columns: minmax(270px,1.05fr) minmax(350px,1.3fr) minmax(150px,.55fr) minmax(216px,auto); align-items: center; column-gap: 26px; }

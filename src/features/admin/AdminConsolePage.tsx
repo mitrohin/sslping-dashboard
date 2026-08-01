@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Ban, BellRing, ChevronRight, CreditCard, Download, FileCheck2, Globe2, Landmark, LogIn, MessageSquare, Pencil, Plus, ReceiptText, Search, Send, ServerCog, Settings2, Shield, Trash2, Users } from 'lucide-react'
+import { Ban, BellRing, ChevronRight, CreditCard, Database, Download, FileCheck2, Globe2, Landmark, LogIn, MessageSquare, Pencil, Plus, ReceiptText, Search, Send, ServerCog, Settings2, Shield, Trash2, Users } from 'lucide-react'
 import type { AdminBillingWorkspace, AdminUser, BillingSettings, CustomerRegion, Invoice, InvoiceIssuerProfile, JsonObject, Locale, PaymentProvider, Plan, PlanLimits, SupportAttachment, SupportMessage, SupportNotificationChannel, SupportTicket, SupportTicketDetail, SupportTicketPriority, SupportTicketStatus, Workspace } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
 import { Badge, Button, FeedbackBanner, Field, IconButton, Modal, PageHeader, PageLoadingSkeleton, Panel, Select, Toggle } from '../../components/ui'
@@ -8,12 +8,13 @@ import { saveAdministratorSession } from '../../app/impersonation'
 import { AttachmentList, AttachmentPicker, openAttachmentBlob } from '../support/SupportAttachments'
 import { requestSupportUnreadRefresh } from '../support/unread'
 import { CheckLocationsSection } from './CheckLocationsSection'
+import { IPProfilesSection } from './IPProfilesSection'
 import './admin.css'
 
 const supportAttachmentsAvailable = true
 import { localeOptions, useI18n } from '../../app/I18nProvider'
 
-type Section = 'users' | 'regions' | 'locations' | 'plans' | 'invoices' | 'tickets' | 'notifications'
+type Section = 'users' | 'regions' | 'locations' | 'plans' | 'invoices' | 'tickets' | 'notifications' | 'ip-cache'
 
 const emptyLimits: PlanLimits = {
   max_monitors: 100,
@@ -329,6 +330,7 @@ export function AdminConsolePage() {
         <button className={section === 'invoices' ? 'is-active' : ''} onClick={() => setSection('invoices')}><ReceiptText size={17} /> {t('admin.tab.invoices')} {openInvoices > 0 && <b aria-label={t('admin.openInvoices', { count: openInvoices })}>{openInvoices}</b>}</button>
         {!accountant && <button className={section === 'tickets' ? 'is-active' : ''} onClick={() => setSection('tickets')}><MessageSquare size={17} /> {t('admin.tab.tickets')} {unreadTickets > 0 && <b aria-label={t('admin.unreadTickets', { count: unreadTickets })}>{unreadTickets}</b>}</button>}
         {!accountant && <button className={section === 'notifications' ? 'is-active' : ''} onClick={() => setSection('notifications')}><BellRing size={17} /> {t('admin.tab.notifications')}</button>}
+        {!accountant && <button className={section === 'ip-cache' ? 'is-active' : ''} onClick={() => setSection('ip-cache')}><Database size={17} /> {t('admin.tab.ipCache')}</button>}
       </nav>
       {section === 'users' ? (
         <UsersSection users={filteredUsers} plans={plans} query={query} setQuery={setQuery} busy={busy} onPlan={changePlan} onEdit={setEditingUser} onImpersonate={openImpersonation} />
@@ -356,8 +358,10 @@ export function AdminConsolePage() {
         />
       ) : section === 'tickets' ? (
         <TicketsSection tickets={tickets} users={users} busy={busy} onOpen={openTicket} />
-      ) : (
+      ) : section === 'notifications' ? (
         <NotificationsSection channels={channels} onCreate={() => setCreatingChannel(true)} onTest={async (channel) => { setBusy(true); try { await api.adminTestNotificationChannel(channel.id); setNotice(t('admin.notice.channelTest', { name: channel.name })) } catch (reason) { setError(asMessage(reason, t('admin.error.testChannel'))) } finally { setBusy(false) } }} onToggle={async (channel) => { try { const updated = await api.adminUpdateNotificationChannel(channel.id, { name: channel.name, active: !channel.active }); setChannels((items) => items.map((item) => item.id === updated.id ? updated : item)) } catch (reason) { setError(asMessage(reason, t('admin.error.updateChannel'))) } }} onDelete={async (channel) => { if (!window.confirm(t('admin.confirm.deleteChannel', { name: channel.name }))) return; try { await api.adminDeleteNotificationChannel(channel.id); setChannels((items) => items.filter((item) => item.id !== channel.id)) } catch (reason) { setError(asMessage(reason, t('admin.error.deleteChannel'))) } }} />
+      ) : (
+        <IPProfilesSection api={api} />
       )}
       <UserModal user={editingUser} regions={regions} busy={busy} onClose={() => setEditingUser(null)} onSave={async (target, input) => { setBusy(true); try { const updated = await api.adminUpdateUser(target.id, input); setUsers((items) => items.map((item) => item.id === updated.id ? updated : item)); setEditingUser(null); setNotice(t('admin.notice.user', { name: updated.name })) } catch (reason) { setError(asMessage(reason, t('admin.error.updateUser'))) } finally { setBusy(false) } }} />
       <Modal open={Boolean(impersonatingUser)} onClose={() => setImpersonatingUser(null)} title={t('admin.session.title')} icon={<LogIn size={29} />}>
