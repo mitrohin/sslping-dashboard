@@ -52,7 +52,7 @@ type ConsentChoice = 'necessary' | 'all'
 const defaultApi = new ApiClient()
 const consentStorageKey = 'sslping.public-status.cookie-consent.v1'
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
-const PROBLEM_REPORT_METADATA_URL = (import.meta.env.VITE_PROBLEM_REPORT_METADATA_URL ?? 'https://report-metadata.sslping.io').trim()
+const PROBLEM_REPORT_METADATA_URL = (import.meta.env.VITE_PROBLEM_REPORT_METADATA_URL ?? '/problem-report-metadata').trim()
 
 const statusPriority: Readonly<Record<MonitorStatus, number>> = {
   down: 5,
