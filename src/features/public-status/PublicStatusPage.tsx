@@ -82,10 +82,6 @@ function errorStatus(error: unknown): number | undefined {
   return undefined
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
-
 function readConsent(): ConsentChoice | null {
   try {
     const value = localStorage.getItem(consentStorageKey)
@@ -303,7 +299,7 @@ function CombinedActivityChart({ responsePoints, reportPoints, copy, locale, gen
         {responses.length >= 2 && <><path className="ps-combined-chart__response-shadow" d={`M ${responsePath}`} /><path className="ps-combined-chart__response" d={`M ${responsePath}`} /></>}
         {hovered && hoveredIndex !== null && <g className="ps-combined-chart__selection"><line x1={xForIndex(hoveredIndex)} y1={plot.top} x2={xForIndex(hoveredIndex)} y2={plot.bottom} /><circle className="is-report" cx={xForIndex(hoveredIndex)} cy={yForCount(hovered.reports)} r="5" /><circle className="is-baseline" cx={xForIndex(hoveredIndex)} cy={yForCount(hovered.baseline)} r="5" />{visibleHoveredResponse && <circle className="is-response" cx={xForIndex(hoveredIndex)} cy={yForResponse(visibleHoveredResponse.averageMS)} r="5" />}</g>}
       </svg>
-      {hovered && hoveredIndex !== null && <div className={`ps-combined-chart__tooltip${hoveredIndex > activity.length * 0.66 ? ' is-right' : ''}`} style={{ left: `${(xForIndex(hoveredIndex) / width) * 100}%` }} role="status"><time>{formatDate(hovered.at, { locale })}</time><span><i className="is-response" />{copy.responseTime}<strong>{visibleHoveredResponse ? `${Math.round(visibleHoveredResponse.averageMS)} ms` : '—'}</strong></span><span><i className="is-reports" />{copy.visitorReports}<strong>{hovered.reports}</strong></span><span><i className="is-baseline" />{copy.baseline}<strong>{decimalFormatter.format(hovered.baseline)}</strong></span></div>}
+      {hovered && hoveredIndex !== null && <div className={`ps-combined-chart__tooltip${hoveredIndex > activity.length * 0.66 ? ' is-right' : ''}`} style={{ left: `${(xForIndex(hoveredIndex) / width) * 100}%` }} role="status"><time>{formatDate(hovered.at, { locale })}</time><span><i className="is-response" />{copy.responseTime}<strong>{visibleHoveredResponse ? `${Math.round(visibleHoveredResponse.averageMS)} ${copy.millisecondsShort}` : '—'}</strong></span><span><i className="is-reports" />{copy.visitorReports}<strong>{hovered.reports}</strong></span><span><i className="is-baseline" />{copy.baseline}<strong>{decimalFormatter.format(hovered.baseline)}</strong></span></div>}
     </div>
   )
 }
@@ -320,13 +316,13 @@ function StatusDialog({
   title,
   children,
   onClose,
-  closeLabel = 'Close',
+  closeLabel,
 }: {
   open: boolean
   title: string
   children: ReactNode
   onClose: () => void
-  closeLabel?: string
+  closeLabel: string
 }) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -376,9 +372,9 @@ function StatusDialog({
   )
 }
 
-function LoadingView() {
+function LoadingView({ copy }: { copy: PublicStatusCopy }) {
   return (
-    <main className="public-status-page ps-state-page" aria-busy="true" aria-label="Loading status page">
+    <main className="public-status-page ps-state-page" aria-busy="true" aria-label={copy.loadingStatusPage}>
       <div className="ps-state-card ps-loading-card">
         <span className="ps-loader" />
         <div><span className="ps-skeleton ps-skeleton--title" /><span className="ps-skeleton" /></div>
@@ -389,17 +385,17 @@ function LoadingView() {
   )
 }
 
-function FailureView({ failure, onRetry }: { failure: Failure; onRetry: () => void }) {
+function FailureView({ failure, onRetry, copy }: { failure: Failure; onRetry: () => void; copy: PublicStatusCopy }) {
   const notFound = failure.kind === 'not-found'
   return (
     <main className="public-status-page ps-state-page">
       <section className="ps-state-card ps-failure-card">
         <span className="ps-state-icon">{notFound ? <Activity size={36} /> : <TriangleAlert size={36} />}</span>
-        <p className="ps-kicker">{notFound ? '404 · Status page not found' : 'Unable to load status'}</p>
-        <h1>{notFound ? 'This status page is unavailable.' : 'We could not retrieve the latest status.'}</h1>
+        <p className="ps-kicker">{notFound ? `404 · ${copy.statusPageNotFound}` : copy.unableToLoadStatus}</p>
+        <h1>{notFound ? copy.statusPageUnavailable : copy.latestStatusUnavailable}</h1>
         <p>{failure.message}</p>
-        {!notFound && <button type="button" className="ps-button ps-button--primary" onClick={onRetry}><RefreshCw size={17} /> Try again</button>}
-        <a href="/" className="ps-text-link">Go to SSLPing</a>
+        {!notFound && <button type="button" className="ps-button ps-button--primary" onClick={onRetry}><RefreshCw size={17} /> {copy.tryAgain}</button>}
+        <a href="/" className="ps-text-link">{copy.goToSSLPing}</a>
       </section>
     </main>
   )
@@ -572,15 +568,17 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [consent, setConsent] = useState<ConsentChoice | null>(readConsent)
   const preferredColorScheme = usePreferredColorScheme()
-  const languageRef = useRef<StatusPageLanguage>('en')
+  const documentLanguage = document.documentElement.lang.split('-')[0] as StatusPageLanguage
+  const initialLanguage = (['en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'id'] as const).includes(documentLanguage) ? documentLanguage : 'en'
+  const languageRef = useRef<StatusPageLanguage>(initialLanguage)
   const passwordRef = useRef('')
-  const language = (snapshot?.page.language ?? 'en') as StatusPageLanguage
+  const language = (snapshot?.page.language ?? initialLanguage) as StatusPageLanguage
   const copy = publicStatusCopy(language)
   const locale = statusPageLocale(language)
 
   const load = useCallback(async (password?: string, background = false, turnstileToken?: string) => {
     if (!slug && !customDomain) {
-      setFailure({ kind: 'not-found', message: 'The status page address is incomplete.' })
+      setFailure({ kind: 'not-found', message: publicStatusCopy(languageRef.current).addressIncomplete })
       setLoading(false)
       return
     }
@@ -612,9 +610,9 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
           setCaptchaReset((value) => value + 1)
         }
       } else if (status === 404) {
-        setFailure({ kind: 'not-found', message: 'Check the address or ask the service owner for an updated link.' })
+        setFailure({ kind: 'not-found', message: publicStatusCopy(languageRef.current).checkAddress })
       } else {
-        setFailure({ kind: 'error', message: errorMessage(error, 'The monitoring service did not respond. Please try again shortly.') })
+        setFailure({ kind: 'error', message: publicStatusCopy(languageRef.current).monitoringUnavailable })
       }
     } finally {
       if (!background) setLoading(false)
@@ -649,6 +647,16 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
     const previousLanguage = document.documentElement.lang
     const previousDirection = document.documentElement.dir
     const previousTitle = document.title
+    const serverSocialTitle = document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content
+    const serverCanonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href
+    let hasMatchingServerMetadata = false
+    if (serverSocialTitle && serverCanonical) {
+      try {
+        hasMatchingServerMetadata = new URL(serverCanonical, window.location.href).pathname.replace(/\/$/, '') === `/${snapshot.page.slug}`
+      } catch {
+        hasMatchingServerMetadata = false
+      }
+    }
     let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
     const robotsWasCreated = !robots
     const previousRobots = robots?.content
@@ -659,7 +667,12 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
     }
     document.documentElement.lang = snapshot.page.language
     document.documentElement.dir = snapshot.page.language === 'ar' ? 'rtl' : 'ltr'
-    document.title = `${snapshot.page.name} · ${publicStatusCopy(snapshot.page.language).currentStatus}`
+    // Preserve the localized search-oriented title emitted by the server.
+    // The shorter fallback is only for local Vite/demo routes whose static
+    // dashboard shell has no page-specific social metadata.
+    document.title = hasMatchingServerMetadata && serverSocialTitle
+      ? serverSocialTitle
+      : `${snapshot.page.name} · ${publicStatusCopy(snapshot.page.language).currentStatus}`
     robots.content = snapshot.page.robots
     return () => {
       document.documentElement.lang = previousLanguage
@@ -670,12 +683,12 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
     }
   }, [snapshot])
 
-  if (loading && !passwordRequired) return <LoadingView />
-  if (failure) return <FailureView failure={failure} onRetry={() => void load()} />
+  if (loading && !passwordRequired) return <LoadingView copy={copy} />
+  if (failure) return <FailureView failure={failure} copy={copy} onRetry={() => void load()} />
   if (passwordRequired) {
     return <PasswordView pageName={snapshot?.page.name ?? copy.protectedPage} busy={loading} error={passwordError} copy={copy} captchaRequired={captchaRequired} captchaReset={captchaReset} onSubmit={(password, token) => void load(password, false, token)} />
   }
-  if (!snapshot) return <LoadingView />
+  if (!snapshot) return <LoadingView copy={copy} />
 
   const settings = snapshot.page.settings
   const visibleComponents = (snapshot.components ?? []).filter((component) => !(settings.hide_paused_monitors && component.status === 'paused'))
@@ -752,7 +765,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       </main>
 
       <footer className="ps-footer">
-        <div className="ps-container">{!branding.removeProductLogo && <span>Powered by <strong>SSLPing</strong></span>}<nav aria-label={copy.footerLabel}><button type="button" onClick={() => setPrivacyOpen(true)}>{copy.privacy}</button>{!branding.removeCookieConsent && <button type="button" onClick={() => setConsent(null)}>{copy.cookieSettings}</button>}<span>{copy.generated} {formatDate(snapshot.generated_at, { includeSeconds: true, locale })}</span></nav></div>
+        <div className="ps-container">{!branding.removeProductLogo && <span>{copy.poweredBy} <strong>SSLPing</strong></span>}<nav aria-label={copy.footerLabel}><button type="button" onClick={() => setPrivacyOpen(true)}>{copy.privacy}</button>{!branding.removeCookieConsent && <button type="button" onClick={() => setConsent(null)}>{copy.cookieSettings}</button>}<span>{copy.generated} {formatDate(snapshot.generated_at, { includeSeconds: true, locale })}</span></nav></div>
       </footer>
 
       <SubscriptionDialog open={subscriptionOpen} slug={snapshot.page.slug} api={api} copy={copy} onClose={() => setSubscriptionOpen(false)} onPrivacy={() => setPrivacyOpen(true)} />
@@ -811,8 +824,8 @@ function SubscriptionDialog({
     try {
       const response = await api.subscribeStatusPage(slug, email.trim().toLowerCase())
       setResult(response)
-    } catch (subscriptionError) {
-      setError(errorMessage(subscriptionError, copy.subscriptionConsentRequired))
+    } catch {
+      setError(copy.subscriptionError)
     } finally {
       setBusy(false)
     }
@@ -821,7 +834,7 @@ function SubscriptionDialog({
   return (
     <StatusDialog open={open} title={copy.subscribeTitle} closeLabel={copy.close} onClose={onClose}>
       {result ? (
-        <div className="ps-subscription-success"><span><CheckCircle2 size={31} /></span><h3>{copy.checkInbox}</h3><p>{result.message}</p><button type="button" className="ps-button ps-button--primary" onClick={onClose}>{copy.done}</button></div>
+        <div className="ps-subscription-success"><span><CheckCircle2 size={31} /></span><h3>{copy.checkInbox}</h3><p>{copy.subscriptionConfirmationSent}</p><button type="button" className="ps-button ps-button--primary" onClick={onClose}>{copy.done}</button></div>
       ) : (
         <form className="ps-subscribe-form" onSubmit={submit}>
           <p>{copy.subscriptionIntro}</p>

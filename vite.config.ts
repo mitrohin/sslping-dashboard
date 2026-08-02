@@ -21,6 +21,21 @@ export default defineConfig(() => {
       host: '127.0.0.1',
       port: 4173,
     },
+    build: {
+      // Public status HTML is rendered by the API so crawlers and social
+      // unfurlers receive live metadata. Stable entry names let that HTML
+      // start the same SPA while lazy chunks remain content-hashed.
+      cssCodeSplit: false,
+      rollupOptions: {
+        output: {
+          entryFileNames: 'assets/app.js',
+          chunkFileNames: 'assets/chunk-[name]-[hash].js',
+          assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css')
+            ? 'assets/app.css'
+            : 'assets/[name]-[hash][extname]',
+        },
+      },
+    },
     test: {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],

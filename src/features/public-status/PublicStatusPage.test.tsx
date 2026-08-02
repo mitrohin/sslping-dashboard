@@ -6,6 +6,8 @@ import { PublicStatusPage, type PublicStatusApi } from './PublicStatusPage'
 
 afterEach(() => {
   cleanup()
+  document.documentElement.lang = 'en'
+  document.documentElement.dir = 'ltr'
   localStorage.clear()
   for (const cookie of document.cookie.split(';')) {
     const name = cookie.split('=')[0]?.trim()
@@ -94,8 +96,24 @@ describe('PublicStatusPage', () => {
     expect(screen.getByText('Текущий статус')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Подписаться на обновления' })).toBeInTheDocument()
     expect(screen.getAllByText('Работает').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Работает на платформе/)).toBeInTheDocument()
+    expect(screen.queryByText(/Powered by/)).not.toBeInTheDocument()
+    const componentRow = screen.getByText('Public API').closest('article')
+    const chart = within(componentRow as HTMLElement).getByRole('img', { name: 'Сигналы пользователей и время ответа' })
+    fireEvent.focus(chart)
+    expect(within(componentRow as HTMLElement).getByText('710 мс')).toBeInTheDocument()
     expect(document.documentElement.lang).toBe('ru')
     expect(document.title).toContain('Текущий статус')
+  })
+
+  it('uses the server-selected language before the status API responds', () => {
+    document.documentElement.lang = 'ru'
+    const api = createApi()
+    api.getPublicStatusPage = vi.fn().mockImplementation(() => new Promise(() => undefined))
+    renderRoute(api)
+
+    expect(screen.getByLabelText('Загрузка статус-страницы')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Loading status page')).not.toBeInTheDocument()
   })
 
   it('combines visitor signals and response time without summary statistics', async () => {
@@ -173,6 +191,20 @@ describe('PublicStatusPage', () => {
 
     await waitFor(() => expect(api.subscribeStatusPage).toHaveBeenCalledWith('example-cloud', 'user@example.com'))
     expect(await screen.findByRole('heading', { name: /check your inbox/i })).toBeInTheDocument()
+  })
+
+  it('does not show the English API confirmation on a Russian status page', async () => {
+    const api = createApi({ ...snapshot, page: { ...snapshot.page, language: 'ru' } })
+    renderRoute(api)
+    await screen.findByRole('heading', { name: 'Все системы работают' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Подписаться на обновления' }))
+    fireEvent.change(screen.getByLabelText('Адрес электронной почты'), { target: { value: 'user@example.com' } })
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить письмо для подтверждения' }))
+
+    expect(await screen.findByText('Если этот адрес можно подписать, мы отправили письмо для подтверждения.')).toBeInTheDocument()
+    expect(screen.queryByText('If the address can be subscribed, a confirmation email has been sent.')).not.toBeInTheDocument()
   })
 
   it('persists only the selected cookie-consent level', async () => {

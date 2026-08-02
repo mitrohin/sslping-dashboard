@@ -90,7 +90,7 @@ function makeDefaultValue(page: StatusPageViewModel, monitors: readonly MonitorV
     customDomain: page.customDomain ?? '',
     googleAnalyticsId: '',
     language: page.languageCode ?? 'en',
-    robots: 'noindex,nofollow',
+    robots: 'index,follow',
     published: page.status === 'published',
     passwordEnabled: page.accessLevel === 'password',
     password: '',
