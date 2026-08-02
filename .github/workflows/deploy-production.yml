@@ -104,3 +104,57 @@ jobs:
           set -euo pipefail
           kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
           kubectl -n sslping get pods,services,gateways,httproutes
+
+      - name: Verify public status end to end
+        id: public_status_smoke
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          sitemap_file="$(mktemp)"
+          page_file="$(mktemp)"
+          trap 'rm -f "${sitemap_file}" "${page_file}"' EXIT
+
+          # This request traverses Cloudflare, the Gateway, dashboard nginx,
+          # the in-cluster API service, and PostgreSQL. A local nginx health
+          # check cannot catch a broken dashboard-to-API network policy.
+          for attempt in $(seq 1 24); do
+            if curl --fail --silent --show-error \
+              --connect-timeout 5 --max-time 15 \
+              --output "${sitemap_file}" \
+              https://status.sslping.io/sitemap.xml; then
+              break
+            fi
+            if [ "${attempt}" -eq 24 ]; then
+              echo "Public status sitemap did not become healthy" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          page_url="$(grep --extended-regexp --only-matching --max-count=1 \
+            'https://status\.sslping\.io/[a-z0-9-]+' "${sitemap_file}")"
+          test -n "${page_url}"
+          curl --fail --silent --show-error \
+            --connect-timeout 5 --max-time 20 \
+            --output "${page_file}" \
+            "${page_url}"
+          grep -q '<meta property="og:image"' "${page_file}"
+
+          image_type="$(curl --fail --silent --show-error \
+            --connect-timeout 5 --max-time 30 \
+            --output /dev/null --write-out '%{content_type}' \
+            "${page_url}/og.png")"
+          test "${image_type}" = "image/png"
+
+      - name: Roll back an unhealthy dashboard release
+        if: steps.public_status_smoke.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          kubectl -n sslping rollout undo deployment/sslping-dashboard
+          kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
+
+      - name: Fail an unhealthy dashboard release
+        if: steps.public_status_smoke.outcome == 'failure'
+        run: |
+          echo "The public status end-to-end smoke test failed; dashboard was rolled back." >&2
+          exit 1
