@@ -52,6 +52,44 @@ describe('IncidentsPage', () => {
     expect(screen.getByText('Monitor recovered')).toBeInTheDocument()
   })
 
+  it('renders visitor reports as an interactive mountain chart with a baseline and watermark', () => {
+    const now = Date.now()
+    const incident = {
+      ...demoIncidents[0],
+      id: 'visitor-report-incident',
+      source: 'user_report' as const,
+      startedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+      resolvedAt: undefined,
+      reportReasonLabel: 'Not working completely',
+    }
+    const reports = [
+      { id: 'report-1', reported_at: new Date(now - 90 * 60 * 1000).toISOString() },
+      { id: 'report-2', reported_at: new Date(now - 30 * 60 * 1000).toISOString() },
+    ].map((report) => ({
+      ...report,
+      incident_id: incident.id,
+      workspace_id: 'workspace-1',
+      status_page_id: 'status-page-1',
+      monitor_id: incident.monitorId,
+      reason_key: 'not_working',
+      reason_label: 'Not working completely',
+      ip_address: '192.0.2.1',
+    }))
+
+    render(<IncidentsPage incidents={[incident]} initialReports={{ [incident.id]: reports }} />)
+    fireEvent.click(screen.getByRole('button', { name: incident.monitorName }))
+
+    const chart = screen.getByRole('img', { name: 'Report activity over time' })
+    expect(chart).toBeInTheDocument()
+    expect(chart.querySelector('.ops-report-activity__area')).toBeInTheDocument()
+    expect(chart.querySelector('.ops-report-activity__baseline')).toBeInTheDocument()
+    expect(screen.getByText('SSLPing')).toBeInTheDocument()
+
+    fireEvent.focus(chart)
+    expect(screen.getByText('Baseline:')).toBeInTheDocument()
+    expect(screen.getByText('Reports:')).toBeInTheDocument()
+  })
+
   it('shows the location evidence that confirmed an incident', () => {
     const incident = {
       ...demoIncidents[0],

@@ -130,6 +130,33 @@ button.ops-incident-card:hover { border-color: #46536a; background: #202b3e; }
 .ops-incident-activity svg line { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .ops-incident-activity svg polyline { fill: none; stroke: var(--green); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .ops-incident-activity footer { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
+.ops-report-activity { --report-chart-fill: #12b8c6; gap: 16px; padding: 0; overflow: hidden; background: #151e2b; }
+.ops-report-activity > header { min-height: 82px; align-items: center; padding: 17px 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 76%, #56606d); }
+.ops-report-activity > header > div { gap: 2px; }
+.ops-report-activity > header span { color: #69dbe3; }
+.ops-report-activity > header small { color: var(--muted); font-size: 11px; }
+.ops-report-activity > header > strong { min-height: 31px; display: inline-flex; align-items: center; padding: 0 11px; border: 1px solid rgb(18 184 198 / 25%); border-radius: 999px; color: #a9edf1; background: rgb(18 184 198 / 9%); white-space: nowrap; }
+.ops-report-activity__plot { position: relative; min-width: 0; padding: 0 12px 12px; }
+.ops-report-activity__plot svg { width: 100%; height: auto; aspect-ratio: 960 / 300; overflow: visible; outline: none; touch-action: pan-y; }
+.ops-report-activity__plot svg:focus-visible { border-radius: 8px; box-shadow: inset 0 0 0 2px rgb(18 184 198 / 45%); }
+.ops-report-activity__axis line { stroke: rgb(132 151 179 / 18%); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ops-report-activity__axis text { fill: var(--muted); font-size: 11px; font-weight: 600; }
+.ops-report-activity__axis--time line { stroke-dasharray: 5 7; }
+.ops-report-activity__watermark { fill: var(--text); opacity: .075; font-size: 48px; font-weight: 850; letter-spacing: -.04em; pointer-events: none; }
+.ops-report-activity__area { pointer-events: none; }
+.ops-report-activity__reports { fill: none; stroke: #13bdcb; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.ops-report-activity__baseline { fill: none; stroke: rgb(238 243 248 / 85%); stroke-width: 2.5; stroke-dasharray: 7 7; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.ops-report-activity__selection line { stroke: rgb(238 243 248 / 68%); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ops-report-activity__selection circle { stroke-width: 2; vector-effect: non-scaling-stroke; }
+.ops-report-activity__selection-report { fill: #151e2b; stroke: #13bdcb; }
+.ops-report-activity__selection-baseline { fill: #151e2b; stroke: #eef3f8; }
+.ops-report-activity__tooltip { position: absolute; z-index: 3; top: 24px; min-width: 205px; display: grid; gap: 9px; padding: 13px 15px; border: 1px solid rgb(238 243 248 / 75%); border-radius: 9px; color: #eef3f8; background: rgb(6 10 15 / 96%); box-shadow: 0 15px 40px rgb(0 0 0 / 35%); transform: translateX(-18px); pointer-events: none; }
+.ops-report-activity__tooltip--right { transform: translateX(calc(-100% + 18px)); }
+.ops-report-activity__tooltip time { padding-bottom: 7px; border-bottom: 1px solid rgb(238 243 248 / 15%); color: #eef3f8; font-size: 12px; font-weight: 700; }
+.ops-report-activity__tooltip span { display: flex; align-items: center; gap: 7px; color: #b7c2d0; font-size: 11px; letter-spacing: 0; text-transform: none; }
+.ops-report-activity__tooltip strong { margin-left: auto; color: #eef3f8; }
+.ops-report-activity__legend-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #13bdcb; }
+.ops-report-activity__legend-dot--baseline { background: #eef3f8; }
 .ops-report-journal { display: grid; gap: 14px; }
 .ops-report-journal > header { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .ops-report-journal > header > div { display: grid; gap: 3px; }
@@ -294,6 +321,9 @@ button.ops-incident-card:hover { border-color: #46536a; background: #202b3e; }
   .ops-sticky-save { bottom: calc(8px + env(safe-area-inset-bottom)); }
   .ops-sticky-save .button { width: 100%; }
   .ops-card-actions { flex-wrap: wrap; }
+  .ops-report-activity > header { min-height: 0; align-items: flex-start; }
+  .ops-report-activity__plot { min-width: 680px; }
+  .ops-report-activity { overflow-x: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

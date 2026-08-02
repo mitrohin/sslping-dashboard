@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useId, useMemo, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   CheckCircle2,
   Clock3,
@@ -64,26 +64,167 @@ const makeId = (): string =>
     ? crypto.randomUUID()
     : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-function IncidentActivityChart({ incident, comments, reports, translate }: { incident: IncidentViewModel; comments: readonly IncidentCommentViewModel[]; reports: readonly UserProblemReport[]; translate: (key: string, variables?: Record<string, string | number>) => string }) {
+const REPORT_CHART_WINDOW_MS = 24 * 60 * 60 * 1000
+const REPORT_CHART_BUCKETS = 48
+
+interface ReportActivityBucket {
+  at: number
+  reports: number
+  baseline: number
+}
+
+function niceChartMaximum(value: number): number {
+  if (value <= 4) return 4
+  const magnitude = 10 ** Math.floor(Math.log10(value))
+  const normalized = value / magnitude
+  const step = normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
+  return step * magnitude
+}
+
+function buildReportActivity(reports: readonly UserProblemReport[], endAt: number): ReportActivityBucket[] {
+  const startAt = endAt - REPORT_CHART_WINDOW_MS
+  const bucketDuration = REPORT_CHART_WINDOW_MS / REPORT_CHART_BUCKETS
+  const counts = Array.from({ length: REPORT_CHART_BUCKETS }, () => 0)
+
+  for (const report of reports) {
+    const reportedAt = Date.parse(report.reported_at)
+    if (!Number.isFinite(reportedAt) || reportedAt < startAt || reportedAt > endAt) continue
+    const index = Math.min(REPORT_CHART_BUCKETS - 1, Math.floor((reportedAt - startAt) / bucketDuration))
+    counts[index] += 1
+  }
+
+  const overallAverage = counts.reduce((sum, count) => sum + count, 0) / counts.length
+  return counts.map((reportCount, index) => {
+    const historyStart = Math.max(0, index - 8)
+    const history = counts.slice(historyStart, index)
+    const trailingAverage = history.length > 0
+      ? history.reduce((sum, count) => sum + count, 0) / history.length
+      : overallAverage
+
+    return {
+      at: startAt + (index + 0.5) * bucketDuration,
+      reports: reportCount,
+      baseline: (trailingAverage * 0.7) + (overallAverage * 0.3),
+    }
+  })
+}
+
+function VisitorReportActivityChart({ incident, reports, translate, locale }: { incident: IncidentViewModel; reports: readonly UserProblemReport[]; translate: (key: string, variables?: Record<string, string | number>) => string; locale: string }) {
+  const gradientId = `report-area-${useId().replace(/:/g, '')}`
+  const latestReportAt = Math.max(0, ...reports.map((report) => Date.parse(report.reported_at)).filter(Number.isFinite))
+  const resolvedAt = Date.parse(incident.resolvedAt ?? '')
+  const endAt = useMemo(
+    () => Number.isFinite(resolvedAt) ? resolvedAt : Math.max(Date.now(), latestReportAt),
+    [latestReportAt, resolvedAt],
+  )
+  const buckets = useMemo(() => buildReportActivity(reports, endAt), [endAt, reports])
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+
+  const width = 960
+  const height = 300
+  const plot = { left: 52, right: 18, top: 28, bottom: 252 }
+  const plotWidth = width - plot.left - plot.right
+  const plotHeight = plot.bottom - plot.top
+  const highestValue = Math.max(1, ...buckets.flatMap((bucket) => [bucket.reports, bucket.baseline]))
+  const maximum = niceChartMaximum(highestValue)
+  const xForIndex = (index: number): number => plot.left + (index / (buckets.length - 1)) * plotWidth
+  const yForValue = (value: number): number => plot.bottom - (value / maximum) * plotHeight
+  const reportPoints = buckets.map((bucket, index) => `${xForIndex(index)},${yForValue(bucket.reports)}`).join(' L ')
+  const reportArea = `M ${plot.left},${plot.bottom} L ${reportPoints} L ${plot.left + plotWidth},${plot.bottom} Z`
+  const baselinePath = `M ${buckets.map((bucket, index) => `${xForIndex(index)},${yForValue(bucket.baseline)}`).join(' L ')}`
+  const timeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }), [locale])
+  const decimalFormatter = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }), [locale])
+  const hovered = hoveredIndex === null ? null : buckets[hoveredIndex]
+
+  const selectFromPointer = (event: ReactPointerEvent<SVGSVGElement>): void => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (bounds.width === 0) return
+    const viewBoxX = ((event.clientX - bounds.left) / bounds.width) * width
+    const relativeX = Math.max(0, Math.min(plotWidth, viewBoxX - plot.left))
+    setHoveredIndex(Math.round((relativeX / plotWidth) * (buckets.length - 1)))
+  }
+
+  const xTicks = Array.from({ length: 9 }, (_, index) => {
+    const bucketIndex = Math.min(buckets.length - 1, index * 6)
+    return { index: bucketIndex, x: xForIndex(bucketIndex), label: timeFormatter.format(buckets[bucketIndex].at) }
+  })
+  const yTicks = [0, maximum / 2, maximum]
+
+  return (
+    <section className="ops-incident-activity ops-report-activity">
+      <header>
+        <div><span>{translate('incidents.visitorReports')}</span><h3>{translate('incidents.reportActivity')}</h3><small>{translate('incidents.last24Hours')}</small></div>
+        <strong>{translate('incidents.reportCount', { count: reports.length })}</strong>
+      </header>
+      <div className="ops-report-activity__plot">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={translate('incidents.reportActivity')}
+          tabIndex={0}
+          onPointerMove={selectFromPointer}
+          onPointerLeave={() => setHoveredIndex(null)}
+          onFocus={() => setHoveredIndex(buckets.length - 1)}
+          onBlur={() => setHoveredIndex(null)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            const direction = event.key === 'ArrowLeft' ? -1 : 1
+            setHoveredIndex((current) => Math.max(0, Math.min(buckets.length - 1, (current ?? buckets.length - 1) + direction)))
+          }}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--report-chart-fill)" stopOpacity=".8" />
+              <stop offset="100%" stopColor="var(--report-chart-fill)" stopOpacity=".08" />
+            </linearGradient>
+          </defs>
+          {yTicks.map((tick) => (
+            <g key={tick} className="ops-report-activity__axis">
+              <line x1={plot.left} y1={yForValue(tick)} x2={plot.left + plotWidth} y2={yForValue(tick)} />
+              <text x={plot.left - 10} y={yForValue(tick) + 4} textAnchor="end">{decimalFormatter.format(tick)}</text>
+            </g>
+          ))}
+          {xTicks.map((tick) => (
+            <g key={tick.index} className="ops-report-activity__axis ops-report-activity__axis--time">
+              <line x1={tick.x} y1={plot.top} x2={tick.x} y2={plot.bottom} />
+              <text x={tick.x} y={plot.bottom + 24} textAnchor={tick.index === 0 ? 'start' : tick.index >= buckets.length - 2 ? 'end' : 'middle'}>{tick.label}</text>
+            </g>
+          ))}
+          <text className="ops-report-activity__watermark" x={plot.left + plotWidth / 2} y={plot.top + plotHeight / 2} textAnchor="middle">SSLPing</text>
+          <path className="ops-report-activity__area" d={reportArea} fill={`url(#${gradientId})`} />
+          <path className="ops-report-activity__reports" d={`M ${reportPoints}`} />
+          <path className="ops-report-activity__baseline" d={baselinePath} />
+          {hovered && hoveredIndex !== null && (
+            <g className="ops-report-activity__selection">
+              <line x1={xForIndex(hoveredIndex)} y1={plot.top} x2={xForIndex(hoveredIndex)} y2={plot.bottom} />
+              <circle className="ops-report-activity__selection-report" cx={xForIndex(hoveredIndex)} cy={yForValue(hovered.reports)} r="5" />
+              <circle className="ops-report-activity__selection-baseline" cx={xForIndex(hoveredIndex)} cy={yForValue(hovered.baseline)} r="5" />
+            </g>
+          )}
+        </svg>
+        {hovered && hoveredIndex !== null && (
+          <div
+            className={`ops-report-activity__tooltip${hoveredIndex > buckets.length * 0.66 ? ' ops-report-activity__tooltip--right' : ''}`}
+            style={{ left: `${(xForIndex(hoveredIndex) / width) * 100}%` }}
+            role="status"
+          >
+            <time>{formatDate(hovered.at, { includeSeconds: false, locale })}</time>
+            <span><i className="ops-report-activity__legend-dot ops-report-activity__legend-dot--baseline" />{translate('incidents.baseline')}: <strong>{decimalFormatter.format(hovered.baseline)}</strong></span>
+            <span><i className="ops-report-activity__legend-dot" />{translate('incidents.reports')}: <strong>{hovered.reports}</strong></span>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function IncidentActivityChart({ incident, comments, translate }: { incident: IncidentViewModel; comments: readonly IncidentCommentViewModel[]; translate: (key: string, variables?: Record<string, string | number>) => string }) {
   const startedAt = Date.parse(incident.startedAt) || Date.now()
   const endedAt = Date.parse(incident.resolvedAt ?? '') || Math.max(Date.now(), startedAt + 1)
   const span = Math.max(endedAt - startedAt, 1)
   const width = 640
-  const chartTop = 18
   const chartBottom = 122
-
-  if (incident.source === 'user_report') {
-    const bucketCount = 24
-    const buckets = Array.from({ length: bucketCount }, () => 0)
-    for (const report of reports) {
-      const at = Date.parse(report.reported_at)
-      const index = Math.max(0, Math.min(bucketCount - 1, Math.floor(((at - startedAt) / span) * bucketCount)))
-      buckets[index] += 1
-    }
-    const max = Math.max(...buckets, 1)
-    const points = buckets.map((count, index) => `${(index / (bucketCount - 1)) * width},${chartBottom - (count / max) * (chartBottom - chartTop)}`).join(' ')
-    return <section className="ops-incident-activity"><header><div><span>{translate('incidents.visitorReports')}</span><h3>{translate('incidents.reportActivity')}</h3></div><strong>{translate('incidents.reportCount', { count: reports.length })}</strong></header><svg viewBox={`0 0 ${width} 140`} preserveAspectRatio="none" role="img" aria-label={translate('incidents.reportActivity')}><line x1="0" y1={chartBottom} x2={width} y2={chartBottom} /><line x1="0" y1="70" x2={width} y2="70" /><polyline points={points} /></svg><footer><span>{formatDate(incident.startedAt, { includeSeconds: true })}</span><span>{incident.resolvedAt ? formatDate(incident.resolvedAt, { includeSeconds: true }) : translate('incidents.now')}</span></footer></section>
-  }
 
   const statusY: Record<IncidentStatus, number> = { investigating: 24, identified: 52, monitoring: 82, resolved: 120 }
   const events = [{ at: startedAt, status: comments[0]?.status ?? 'investigating' as IncidentStatus }, ...comments.map((comment) => ({ at: Date.parse(comment.createdAt), status: comment.status ?? incident.status }))]
@@ -404,7 +545,9 @@ export function IncidentsPage({
             )}
             {actionError && <FeedbackBanner tone="error">{actionError}</FeedbackBanner>}
 
-			<IncidentActivityChart incident={selected} comments={selectedComments} reports={selectedReports} translate={t} />
+			{selected.source === 'user_report'
+				? <VisitorReportActivityChart incident={selected} reports={selectedReports} translate={t} locale={locale} />
+				: <IncidentActivityChart incident={selected} comments={selectedComments} translate={t} />}
 
 			{selected.source === 'user_report' && (
 				<section className="ops-report-journal">
