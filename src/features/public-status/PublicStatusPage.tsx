@@ -2,10 +2,12 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
 import { useParams } from 'react-router'
@@ -185,14 +187,125 @@ function usePreferredColorScheme(): 'light' | 'dark' {
   return scheme
 }
 
-function ResponseChart({ points, copy }: { points: NonNullable<PublicStatusComponent['response_time']>; copy: PublicStatusCopy }) {
-  if (points.length < 2) return null
-  const max = Math.max(...points.map((point) => point.average_ms), 1)
-  const coordinates = points.map((point, index) => `${(index / (points.length - 1)) * 180},${34 - (point.average_ms / max) * 30}`).join(' ')
-  const average = Math.round(points.reduce((sum, point) => sum + point.average_ms, 0) / points.length)
-  const fastest = Math.round(Math.min(...points.map((point) => point.average_ms)))
-  const slowest = Math.round(max)
-  return <div className="ps-response-chart" aria-label={`${copy.averageResponseTime}: ${average} ms`}><svg viewBox="0 0 180 38" preserveAspectRatio="none" role="img"><line x1="0" y1="34" x2="180" y2="34" /><line x1="0" y1="19" x2="180" y2="19" /><line x1="0" y1="4" x2="180" y2="4" /><polyline points={coordinates} /></svg><div className="ps-response-stats"><span><small>{copy.averageShort}</small><strong>{average} ms</strong></span><span><small>{copy.fastest}</small><strong>{fastest} ms</strong></span><span><small>{copy.slowest}</small><strong>{slowest} ms</strong></span></div></div>
+const PUBLIC_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
+const PUBLIC_ACTIVITY_BUCKETS = 48
+
+interface PublicActivityBucket {
+  at: number
+  reports: number
+  baseline: number
+}
+
+function publicChartMaximum(value: number): number {
+  if (value <= 4) return 4
+  const magnitude = 10 ** Math.floor(Math.log10(value))
+  const normalized = value / magnitude
+  return (normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude
+}
+
+function publicActivityBuckets(points: NonNullable<PublicStatusComponent['report_activity']>, endAt: number): PublicActivityBucket[] {
+  const startAt = endAt - PUBLIC_ACTIVITY_WINDOW_MS
+  const interval = PUBLIC_ACTIVITY_WINDOW_MS / PUBLIC_ACTIVITY_BUCKETS
+  const reports = Array.from({ length: PUBLIC_ACTIVITY_BUCKETS }, () => 0)
+  for (const point of points) {
+    const at = Date.parse(point.at)
+    if (!Number.isFinite(at) || at < startAt || at > endAt) continue
+    const index = Math.min(PUBLIC_ACTIVITY_BUCKETS - 1, Math.floor((at - startAt) / interval))
+    reports[index] += Math.max(0, point.count)
+  }
+  const overallAverage = reports.reduce((sum, count) => sum + count, 0) / reports.length
+  return reports.map((reportCount, index) => {
+    const history = reports.slice(Math.max(0, index - 8), index)
+    const trailingAverage = history.length > 0 ? history.reduce((sum, count) => sum + count, 0) / history.length : overallAverage
+    return { at: startAt + (index + 0.5) * interval, reports: reportCount, baseline: trailingAverage * 0.7 + overallAverage * 0.3 }
+  })
+}
+
+function CombinedActivityChart({ responsePoints, reportPoints, copy, locale, generatedAt }: { responsePoints: NonNullable<PublicStatusComponent['response_time']>; reportPoints: NonNullable<PublicStatusComponent['report_activity']>; copy: PublicStatusCopy; locale: string; generatedAt: string }) {
+  const gradientId = `public-report-area-${useId().replace(/:/g, '')}`
+  const parsedGeneratedAt = Date.parse(generatedAt)
+  const latestPointAt = Math.max(0, ...[...responsePoints, ...reportPoints].map((point) => Date.parse(point.at)).filter(Number.isFinite))
+  const endAt = Number.isFinite(parsedGeneratedAt) ? parsedGeneratedAt : Math.max(Date.now(), latestPointAt)
+  const activity = useMemo(() => publicActivityBuckets(reportPoints, endAt), [endAt, reportPoints])
+  const responses = useMemo(() => responsePoints
+    .map((point) => ({ at: Date.parse(point.at), averageMS: point.average_ms }))
+    .filter((point) => Number.isFinite(point.at) && Number.isFinite(point.averageMS) && point.averageMS >= 0)
+    .sort((left, right) => left.at - right.at), [responsePoints])
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const timeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }), [locale])
+  const decimalFormatter = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }), [locale])
+
+  if (responses.length < 2 && activity.every((bucket) => bucket.reports === 0)) return null
+
+  const width = 960
+  const height = 250
+  const plot = { left: 42, right: 18, top: 40, bottom: 210 }
+  const plotWidth = width - plot.left - plot.right
+  const plotHeight = plot.bottom - plot.top
+  const countMaximum = publicChartMaximum(Math.max(1, ...activity.flatMap((bucket) => [bucket.reports, bucket.baseline])))
+  const responseValues = responses.map((point) => point.averageMS)
+  const rawResponseMin = responseValues.length > 0 ? Math.min(...responseValues) : 0
+  const rawResponseMax = responseValues.length > 0 ? Math.max(...responseValues) : 1
+  const responsePadding = rawResponseMax === rawResponseMin ? Math.max(25, rawResponseMax * 0.1) : (rawResponseMax - rawResponseMin) * 0.12
+  const responseMin = Math.max(0, rawResponseMin - responsePadding)
+  const responseMax = rawResponseMax + responsePadding
+  const xForTime = (at: number): number => plot.left + Math.max(0, Math.min(1, (at - (endAt - PUBLIC_ACTIVITY_WINDOW_MS)) / PUBLIC_ACTIVITY_WINDOW_MS)) * plotWidth
+  const xForIndex = (index: number): number => plot.left + (index / (activity.length - 1)) * plotWidth
+  const yForCount = (value: number): number => plot.bottom - (value / countMaximum) * plotHeight
+  const yForResponse = (value: number): number => plot.bottom - ((value - responseMin) / Math.max(1, responseMax - responseMin)) * plotHeight
+  const areaPoints = activity.map((bucket, index) => `${xForIndex(index)},${yForCount(bucket.reports)}`).join(' L ')
+  const areaPath = `M ${plot.left},${plot.bottom} L ${areaPoints} L ${plot.left + plotWidth},${plot.bottom} Z`
+  const baselinePath = `M ${activity.map((bucket, index) => `${xForIndex(index)},${yForCount(bucket.baseline)}`).join(' L ')}`
+  const responsePath = responses.map((point) => `${xForTime(point.at)},${yForResponse(point.averageMS)}`).join(' L ')
+  const hovered = hoveredIndex === null ? null : activity[hoveredIndex]
+  const hoveredResponse = hovered ? responses.reduce<(typeof responses)[number] | null>((nearest, point) => !nearest || Math.abs(point.at - hovered.at) < Math.abs(nearest.at - hovered.at) ? point : nearest, null) : null
+  const visibleHoveredResponse = hoveredResponse && hovered && Math.abs(hoveredResponse.at - hovered.at) <= 90 * 60 * 1000 ? hoveredResponse : null
+  const xTicks = [0, 12, 24, 36, 47].map((index) => ({ index, x: xForIndex(index), label: timeFormatter.format(activity[index].at) }))
+
+  const selectFromPointer = (event: ReactPointerEvent<SVGSVGElement>): void => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (bounds.width === 0) return
+    const viewBoxX = ((event.clientX - bounds.left) / bounds.width) * width
+    const relativeX = Math.max(0, Math.min(plotWidth, viewBoxX - plot.left))
+    setHoveredIndex(Math.round((relativeX / plotWidth) * (activity.length - 1)))
+  }
+
+  return (
+    <div className="ps-combined-chart">
+      <div className="ps-combined-chart__legend" aria-hidden="true">
+        <span><i className="is-response" />{copy.responseTime}</span>
+        <span><i className="is-reports" />{copy.visitorReports}</span>
+        <span><i className="is-baseline" />{copy.baseline}</span>
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={copy.activityAndResponse}
+        tabIndex={0}
+        onPointerMove={selectFromPointer}
+        onPointerLeave={() => setHoveredIndex(null)}
+        onFocus={() => setHoveredIndex(activity.length - 1)}
+        onBlur={() => setHoveredIndex(null)}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+          event.preventDefault()
+          const direction = event.key === 'ArrowLeft' ? -1 : 1
+          setHoveredIndex((current) => Math.max(0, Math.min(activity.length - 1, (current ?? activity.length - 1) + direction)))
+        }}
+      >
+        <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#13b8c8" stopOpacity=".72" /><stop offset="100%" stopColor="#13b8c8" stopOpacity=".04" /></linearGradient></defs>
+        {[0, countMaximum / 2, countMaximum].map((tick) => <g className="ps-combined-chart__axis" key={tick}><line x1={plot.left} y1={yForCount(tick)} x2={plot.left + plotWidth} y2={yForCount(tick)} /><text x={plot.left - 9} y={yForCount(tick) + 4} textAnchor="end">{decimalFormatter.format(tick)}</text></g>)}
+        {xTicks.map((tick) => <g className="ps-combined-chart__axis ps-combined-chart__axis--time" key={tick.index}><line x1={tick.x} y1={plot.top} x2={tick.x} y2={plot.bottom} /><text x={tick.x} y={plot.bottom + 25} textAnchor={tick.index === 0 ? 'start' : tick.index === 47 ? 'end' : 'middle'}>{tick.label}</text></g>)}
+        <text className="ps-combined-chart__watermark" x={plot.left + plotWidth / 2} y={plot.top + plotHeight / 2} textAnchor="middle">SSLPing</text>
+        <path className="ps-combined-chart__area" d={areaPath} fill={`url(#${gradientId})`} />
+        <path className="ps-combined-chart__reports" d={`M ${areaPoints}`} />
+        <path className="ps-combined-chart__baseline" d={baselinePath} />
+        {responses.length >= 2 && <><path className="ps-combined-chart__response-shadow" d={`M ${responsePath}`} /><path className="ps-combined-chart__response" d={`M ${responsePath}`} /></>}
+        {hovered && hoveredIndex !== null && <g className="ps-combined-chart__selection"><line x1={xForIndex(hoveredIndex)} y1={plot.top} x2={xForIndex(hoveredIndex)} y2={plot.bottom} /><circle className="is-report" cx={xForIndex(hoveredIndex)} cy={yForCount(hovered.reports)} r="5" /><circle className="is-baseline" cx={xForIndex(hoveredIndex)} cy={yForCount(hovered.baseline)} r="5" />{visibleHoveredResponse && <circle className="is-response" cx={xForIndex(hoveredIndex)} cy={yForResponse(visibleHoveredResponse.averageMS)} r="5" />}</g>}
+      </svg>
+      {hovered && hoveredIndex !== null && <div className={`ps-combined-chart__tooltip${hoveredIndex > activity.length * 0.66 ? ' is-right' : ''}`} style={{ left: `${(xForIndex(hoveredIndex) / width) * 100}%` }} role="status"><time>{formatDate(hovered.at, { locale })}</time><span><i className="is-response" />{copy.responseTime}<strong>{visibleHoveredResponse ? `${Math.round(visibleHoveredResponse.averageMS)} ms` : '—'}</strong></span><span><i className="is-reports" />{copy.visitorReports}<strong>{hovered.reports}</strong></span><span><i className="is-baseline" />{copy.baseline}<strong>{decimalFormatter.format(hovered.baseline)}</strong></span></div>}
+    </div>
+  )
 }
 
 function statusIcon(status: MonitorStatus, size = 24) {
@@ -416,7 +529,7 @@ function ProblemReportPanel({ component, copy, locale, pageSlug, onReport }: { c
   )
 }
 
-function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, pageSlug, onReport }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; pageSlug: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
+function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, pageSlug, generatedAt, onReport }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; pageSlug: string; generatedAt: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
   const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
   return (
     <article className="ps-component-row">
@@ -425,7 +538,7 @@ function ComponentRow({ component, showBars, showPercentage, showResponseTime, s
       {showBars && <div className="ps-uptime-bars" aria-label={`${copy.uptime24h}: ${formatUptime(component.uptime_24h, 3, locale)}`}>{bars.map((status, index) => <span key={index} className={`is-${status}`} />)}</div>}
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
-      {showResponseTime && <div className="ps-component-details"><div><strong>{copy.averageResponseTime}</strong><span>{copy.last24Hours}</span></div><ResponseChart points={component.response_time ?? []} copy={copy} /></div>}
+	  {showResponseTime && <div className="ps-component-details"><div className="ps-component-details__heading"><div><strong>{copy.activityAndResponse}</strong><span>{copy.last24Hours}</span></div></div><CombinedActivityChart responsePoints={component.response_time ?? []} reportPoints={component.report_activity ?? []} copy={copy} locale={locale} generatedAt={generatedAt} /></div>}
 	  {onReport && <ProblemReportPanel component={component} copy={copy} locale={locale} pageSlug={pageSlug} onReport={onReport} />}
     </article>
   )
@@ -616,7 +729,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         <section className="ps-section">
           <div className="ps-section-heading"><div><p className="ps-kicker">{copy.liveMonitoring}</p><h2>{copy.services}</h2></div><span>{visibleComponents.length} {copy.components}</span></div>
           <div className="ps-components-card">
-			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} pageSlug={slug} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
+			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} pageSlug={slug} generatedAt={snapshot.generated_at} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
           </div>
         </section>
 

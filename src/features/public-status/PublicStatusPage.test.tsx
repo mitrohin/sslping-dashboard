@@ -39,7 +39,7 @@ const snapshot: PublicStatusSnapshot = {
   password_protected: false,
   overall_status: 'up',
   components: [
-		{ id: 'component-api', name: 'Public API', status: 'up', uptime_24h: 100, last_checked_at: '2026-07-25T12:59:30.000Z', report_options: [{ key: 'not_working', label: 'Not working completely', standard: true }, { key: 'slow', label: 'Working, but slowly', standard: true }] },
+		{ id: 'component-api', name: 'Public API', status: 'up', uptime_24h: 100, last_checked_at: '2026-07-25T12:59:30.000Z', response_time: [{ at: '2026-07-24T13:30:00.000Z', average_ms: 690 }, { at: '2026-07-25T00:00:00.000Z', average_ms: 735 }, { at: '2026-07-25T12:30:00.000Z', average_ms: 710 }], report_activity: [{ at: '2026-07-24T16:00:00.000Z', count: 3 }, { at: '2026-07-25T12:30:00.000Z', count: 1 }], report_options: [{ key: 'not_working', label: 'Not working completely', standard: true }, { key: 'slow', label: 'Working, but slowly', standard: true }] },
 		{ id: 'component-checkout', name: 'Checkout', status: 'up', uptime_24h: 99.998, last_checked_at: '2026-07-25T12:59:10.000Z' },
   ],
   announcements: [
@@ -96,6 +96,27 @@ describe('PublicStatusPage', () => {
     expect(screen.getAllByText('Работает').length).toBeGreaterThan(0)
     expect(document.documentElement.lang).toBe('ru')
     expect(document.title).toContain('Текущий статус')
+  })
+
+  it('combines visitor signals and response time without summary statistics', async () => {
+    const api = createApi()
+    renderRoute(api)
+
+    await screen.findByRole('heading', { name: 'All systems operational' })
+    const componentRow = screen.getByText('Public API').closest('article')
+    expect(componentRow).not.toBeNull()
+    const component = within(componentRow as HTMLElement)
+    const chart = component.getByRole('img', { name: 'Visitor signals and response time' })
+
+    expect(chart.querySelector('.ps-combined-chart__area')).toBeInTheDocument()
+    expect(chart.querySelector('.ps-combined-chart__response')).toBeInTheDocument()
+    expect(component.queryByText('Average')).not.toBeInTheDocument()
+    expect(component.queryByText('Fastest')).not.toBeInTheDocument()
+    expect(component.queryByText('Slowest')).not.toBeInTheDocument()
+
+    fireEvent.focus(chart)
+    expect(component.getByText('710 ms')).toBeInTheDocument()
+    expect(component.getAllByText('Visitor signals').length).toBeGreaterThan(0)
   })
 
   it('unlocks password-protected pages without storing the password', async () => {

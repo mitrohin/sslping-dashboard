@@ -101,16 +101,40 @@
 .ps-component-copy p { margin: 0; color: var(--ps-muted); font-size: 11px; }
 .ps-component-copy .ps-response-issue { display: flex; align-items: center; gap: 4px; margin-top: 7px; color: var(--ps-amber); font-weight: 700; }
 .ps-component-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ps-component-details { grid-column: 2 / -1; display: grid; grid-template-columns: minmax(150px, .3fr) minmax(300px, 1fr); align-items: start; gap: 28px; padding-top: 18px; border-top: 1px dashed var(--ps-line); color: var(--ps-muted); font-size: 11px; }
-.ps-component-details > div:first-child { display: grid; gap: 5px; }
-.ps-component-details > div:first-child strong { color: var(--ps-ink); }
-.ps-response-chart { min-width: 0; display: grid; gap: 10px; }
-.ps-response-chart svg { width: 100%; height: 112px; overflow: visible; }
-.ps-response-chart polyline { fill: none; stroke: var(--ps-green); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-.ps-response-chart svg line { stroke: var(--ps-line); stroke-width: .6; vector-effect: non-scaling-stroke; }
-.ps-response-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.ps-response-stats > span { display: grid; gap: 3px; color: var(--ps-muted); font-size: 9px; text-align: left; }
-.ps-response-stats strong { color: var(--ps-ink); font-size: 14px; }
+.ps-component-details { grid-column: 2 / -1; min-width: 0; display: grid; gap: 13px; padding-top: 18px; border-top: 1px dashed var(--ps-line); color: var(--ps-muted); font-size: 11px; }
+.ps-component-details__heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.ps-component-details__heading > div { display: grid; gap: 4px; }
+.ps-component-details__heading strong { color: var(--ps-ink); font-size: 12px; }
+.ps-component-details__heading span { color: var(--ps-muted); font-size: 10px; }
+.ps-combined-chart { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--ps-line); border-radius: 14px; background: color-mix(in srgb, var(--ps-panel) 95%, #13b8c8); box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%); }
+.ps-combined-chart svg { width: 100%; height: auto; display: block; outline: none; touch-action: pan-y; }
+.ps-combined-chart svg:focus-visible { outline: 2px solid color-mix(in srgb, var(--ps-green) 75%, white); outline-offset: -3px; }
+.ps-combined-chart__legend { position: absolute; z-index: 2; top: 10px; right: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; pointer-events: none; }
+.ps-combined-chart__legend span { min-height: 23px; display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid color-mix(in srgb, var(--ps-line) 76%, transparent); border-radius: 999px; color: var(--ps-muted); background: color-mix(in srgb, var(--ps-panel) 88%, transparent); box-shadow: 0 5px 15px rgb(10 22 39 / 7%); font-size: 8px; font-weight: 750; backdrop-filter: blur(9px); }
+.ps-combined-chart__legend i,
+.ps-combined-chart__tooltip i { width: 8px; height: 8px; display: inline-block; flex: 0 0 auto; border-radius: 50%; background: var(--ps-green); }
+.ps-combined-chart__legend i.is-reports,
+.ps-combined-chart__tooltip i.is-reports { background: #13b8c8; }
+.ps-combined-chart__legend i.is-baseline,
+.ps-combined-chart__tooltip i.is-baseline { width: 10px; height: 0; border-top: 2px dashed color-mix(in srgb, var(--ps-ink) 72%, transparent); border-radius: 0; background: transparent; }
+.ps-combined-chart__axis line { stroke: var(--ps-line); stroke-width: .75; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__axis--time line { stroke-dasharray: 4 7; }
+.ps-combined-chart__axis text { fill: var(--ps-muted); font-size: 10px; font-weight: 650; }
+.ps-combined-chart__watermark { fill: var(--ps-ink); opacity: .065; font-size: 46px; font-weight: 850; letter-spacing: -2px; }
+.ps-combined-chart__reports { fill: none; stroke: #13b8c8; stroke-width: 2.1; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__baseline { fill: none; stroke: color-mix(in srgb, var(--ps-ink) 74%, transparent); stroke-width: 2; stroke-dasharray: 6 6; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__response-shadow { fill: none; stroke: var(--ps-panel); stroke-width: 7; opacity: .82; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__response { fill: none; stroke: var(--ps-green); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__selection line { stroke: color-mix(in srgb, var(--ps-ink) 58%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__selection circle { stroke: var(--ps-panel); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.ps-combined-chart__selection circle.is-report { fill: #13b8c8; }
+.ps-combined-chart__selection circle.is-baseline { fill: color-mix(in srgb, var(--ps-ink) 80%, transparent); }
+.ps-combined-chart__selection circle.is-response { fill: var(--ps-green); }
+.ps-combined-chart__tooltip { position: absolute; z-index: 3; top: 47px; min-width: 178px; display: grid; gap: 7px; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--ps-line) 72%, var(--ps-ink)); border-radius: 10px; color: var(--ps-muted); background: color-mix(in srgb, var(--ps-panel) 91%, #08121c); box-shadow: 0 15px 34px rgb(7 17 31 / 22%); font-size: 9px; pointer-events: none; transform: translateX(8px); backdrop-filter: blur(12px); }
+.ps-combined-chart__tooltip.is-right { transform: translateX(calc(-100% - 8px)); }
+.ps-combined-chart__tooltip time { padding-bottom: 6px; border-bottom: 1px solid var(--ps-line); color: var(--ps-ink); font-size: 10px; font-weight: 750; }
+.ps-combined-chart__tooltip span { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; }
+.ps-combined-chart__tooltip strong { color: var(--ps-ink); font-size: 10px; }
 .ps-problem-report { grid-column: 2 / -1; display: grid; gap: 12px; padding-top: 17px; border-top: 1px dashed var(--ps-line); }
 .ps-problem-report__heading { display: flex; align-items: center; gap: 9px; color: var(--ps-amber); }
 .ps-problem-report__heading > div { display: grid; gap: 2px; }

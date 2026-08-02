@@ -844,6 +844,7 @@ export interface PublicStatusComponent {
   last_checked_at?: ISODateTime
   history_24h?: Array<'up' | 'down' | 'warning' | 'empty'>
   response_time?: Array<{ at: ISODateTime; average_ms: number }>
+  report_activity?: Array<{ at: ISODateTime; count: number }>
   response_issues?: string[]
 	 report_options?: PublicStatusReportOption[]
 }

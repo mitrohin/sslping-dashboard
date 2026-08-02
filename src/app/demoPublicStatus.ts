@@ -45,7 +45,7 @@ export const demoPublicStatusApi: PublicStatusApi = {
       },
       password_protected: page.accessLevel === 'password',
       overall_status: demoMonitors.some((monitor) => monitor.status === 'down') ? 'degraded' : 'up',
-      components: locked ? null : demoMonitors.slice(0, page.monitorCount).map((monitor) => ({
+      components: locked ? null : demoMonitors.slice(0, page.monitorCount).map((monitor, monitorIndex) => ({
         name: monitor.name,
         target: monitor.target,
         status: monitor.status,
@@ -53,6 +53,7 @@ export const demoPublicStatusApi: PublicStatusApi = {
         last_checked_at: monitor.lastCheckedAt,
         history_24h: monitor.last24Hours.slice(-30).map((bar) => bar.status === 'degraded' ? 'warning' as const : bar.status === 'no-data' ? 'empty' as const : bar.status === 'maintenance' ? 'empty' as const : bar.status),
         response_time: monitor.last24Hours.slice(-30).flatMap((bar) => bar.responseTimeMs === undefined ? [] : [{ at: bar.startedAt, average_ms: bar.responseTimeMs }]),
+        report_activity: monitorIndex === 0 ? monitor.last24Hours.slice(-30).flatMap((bar, index) => [5, 12, 13, 21].includes(index) ? [{ at: bar.startedAt, count: index === 13 ? 3 : 1 }] : []) : [],
         response_issues: monitor.status === 'degraded' ? monitor.regions.slice(0, 2) as string[] : [],
       })),
       announcements: locked ? null : demoIncidents.slice(0, 3).map((incident) => ({
