@@ -83,6 +83,9 @@ describe('MonitorDetailPage live controls', () => {
     expect(screen.getByText('Frankfurt')).toBeInTheDocument()
     expect(screen.getByText('Bangalore')).toBeInTheDocument()
     expect(screen.queryByText('blr-1')).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Monitoring regions: Frankfurt, Bangalore' })).toBeInTheDocument()
+    expect(screen.getByTestId('region-marker-local')).toHaveStyle({ left: '52.41%' })
+    expect(screen.getByTestId('region-marker-blr-1')).toHaveStyle({ left: '71.55%' })
   })
 
   it('shows an in-progress first compliance scan instead of a false violation', () => {

@@ -12,7 +12,6 @@ import {
   Download,
   ExternalLink,
   Gauge,
-  Globe2,
   KeyRound,
   LoaderCircle,
   MoreVertical,
@@ -47,6 +46,7 @@ import { Badge, Button, EmptyState, Field, IconButton, Modal, PageLoadingSkeleto
 import { HeartbeatCredentialModal, type HeartbeatCredential } from './HeartbeatCredentialModal'
 import { ComplianceManualChecklist } from './ComplianceReport'
 import { useI18n } from '../../app/I18nProvider'
+import { RegionMap } from './RegionMap'
 
 export interface MonitorDetailPageProps {
   monitor?: MonitorViewModel
@@ -225,6 +225,11 @@ export function MonitorDetailPage({
       : t('monitorDetail.regionsCount', { count: selectedRegions.length })
   const exportFileName = `${monitor.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'monitor'}-incidents.csv`
   const exportHref = `data:text/csv;charset=utf-8,${encodeURIComponent(incidentCsv(incidents))}`
+  const mappedRegions = monitor.regions.map((region) => ({
+    id: region,
+    label: locationNames[region] ?? (region === 'local' ? 'Frankfurt' : region),
+    color: responseTime.find((series) => series.regionId === region)?.color,
+  }))
 
   const runAction = async (action: () => Promise<void>) => {
     setActionBusy(true)
@@ -379,7 +384,7 @@ export function MonitorDetailPage({
         <aside className="monitor-detail-side">
           {!evidenceOnly && <Panel className="side-card domain-card"><h2>{t('monitorDetail.domainSsl')}<span className="title-dot">.</span></h2>{monitor.domainRegistration ? <div><span>{t('monitorDetail.domainValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.domainRegistration.expiresAt, { includeYear: true })}</strong></div> : <p className="muted">{t('monitorDetail.noDomainEvidence')}</p>}{monitor.sslCertificate ? <div><span>{t('monitorDetail.sslValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.sslCertificate.expiresAt, { includeYear: true })}</strong><small>{monitor.sslCertificate.issuer}</small></div> : null}</Panel>}
           <Panel className="side-card"><h2>{t('monitorDetail.nextMaintenance')}<span className="title-dot">.</span></h2><CalendarDays size={26} className="side-card__feature-icon" />{nextMaintenance ? <div className="side-card__resource"><strong>{nextMaintenance.name}</strong><span>{formatDate(nextMaintenance.startsAt)}</span><small>{formatDuration(nextMaintenance.durationMinutes * 60)} · {nextMaintenance.timezone}</small></div> : <p>{suppliedMonitor ? t('monitorDetail.noMaintenance') : demoMaintenanceWindows[1]?.name ?? t('monitorDetail.noMaintenance')}</p>}<Button variant="secondary" size="sm" onClick={() => navigate(`/maintenance?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.setupMaintenance')}</Button></Panel>
-          <Panel className="side-card"><h2>{t('monitorDetail.regions')}<span className="title-dot">.</span></h2><div className="region-map" aria-label={t('monitorDetail.monitoringRegions')}><Globe2 size={90} /><span className="region-map__one" /><span className="region-map__two" /></div>{monitor.regions.map((region) => <Badge key={region} tone="success">{locationNames[region] ?? (region === 'local' ? 'Frankfurt' : region)}</Badge>)}</Panel>
+          <Panel className="side-card region-card"><h2>{t('monitorDetail.regions')}<span className="title-dot">.</span></h2><RegionMap regions={mappedRegions} label={t('monitorDetail.monitoringRegions')} /></Panel>
           <Panel className="side-card"><h2>{t('monitorDetail.toBeNotified')}<span className="title-dot">.</span></h2>{notifications.length ? <div className="side-card__resource-list">{notifications.slice(0, 3).map((integration) => <div key={integration.id}><BellRing size={16} /><span><strong>{integration.name}</strong><small>{integration.destinationLabel}</small></span></div>)}</div> : <div className="notification-logos"><span>—</span></div>}<Button variant="secondary" size="sm" onClick={() => navigate(`/integrations?monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.manageNotifications')}</Button></Panel>
 		  {!evidenceOnly && <Panel className="side-card"><h2>{t('monitorDetail.appearsOn')}<span className="title-dot">.</span></h2>{statusPages.length ? <div className="side-card__resource-list">{statusPages.slice(0, 3).map((page) => <div key={page.id}><RadioTower size={16} /><span><strong>{page.name}</strong><small>{formatStatus(page.status)}</small></span></div>)}</div> : <><RadioTower size={25} className="side-card__feature-icon" /><p>{suppliedMonitor ? t('monitorDetail.notOnStatusPage') : t('monitorDetail.systemStatus')}</p></>}<Button variant="secondary" size="sm" onClick={() => navigate(`/status-pages?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.manageStatusPages')}</Button></Panel>}
         </aside>
