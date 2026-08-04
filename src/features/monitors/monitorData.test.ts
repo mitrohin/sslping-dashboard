@@ -221,6 +221,33 @@ describe('monitor edit and chart adapters', () => {
     expect(series[0]).toMatchObject({ regionId: 'eu-west', regionLabel: 'Amsterdam', color: '#c084fc', averageMs: 200, minimumMs: 100, maximumMs: 300 })
   })
 
+  it('reuses the previous chart value for an isolated timeout when another location is reachable', () => {
+    const series = toResponseTimeSeries([
+      { id: 'eu-1', workspace_id: 'w', monitor_id: 'm', region: 'eu', status: 'ok', latency_ms: 100, started_at: '2026-08-04T10:00:00.000Z', finished_at: '2026-08-04T10:00:01.000Z' },
+      { id: 'eu-2', workspace_id: 'w', monitor_id: 'm', region: 'eu', status: 'failed', root_cause: 'timeout', latency_ms: 15_000, started_at: '2026-08-04T10:01:00.000Z', finished_at: '2026-08-04T10:01:15.000Z' },
+      { id: 'eu-3', workspace_id: 'w', monitor_id: 'm', region: 'eu', status: 'ok', latency_ms: 120, started_at: '2026-08-04T10:02:00.000Z', finished_at: '2026-08-04T10:02:01.000Z' },
+      { id: 'us-1', workspace_id: 'w', monitor_id: 'm', region: 'us', status: 'degraded', latency_ms: 200, started_at: '2026-08-04T10:00:10.000Z', finished_at: '2026-08-04T10:00:11.000Z' },
+      { id: 'us-2', workspace_id: 'w', monitor_id: 'm', region: 'us', status: 'degraded', latency_ms: 210, started_at: '2026-08-04T10:01:10.000Z', finished_at: '2026-08-04T10:01:11.000Z' },
+      { id: 'us-3', workspace_id: 'w', monitor_id: 'm', region: 'us', status: 'degraded', latency_ms: 220, started_at: '2026-08-04T10:02:10.000Z', finished_at: '2026-08-04T10:02:11.000Z' },
+    ])
+    const eu = series.find((item) => item.regionId === 'eu')
+
+    expect(eu?.points.map((point) => point.valueMs)).toEqual([100, 100, 120])
+    expect(eu).toMatchObject({ averageMs: 107, minimumMs: 100, maximumMs: 120 })
+  })
+
+  it('keeps timeout values when no peer location is reachable in the same attempt', () => {
+    const series = toResponseTimeSeries([
+      { id: 'eu-1', workspace_id: 'w', monitor_id: 'm', region: 'eu', status: 'ok', latency_ms: 100, started_at: '2026-08-04T10:00:00.000Z', finished_at: '2026-08-04T10:00:01.000Z' },
+      { id: 'us-1', workspace_id: 'w', monitor_id: 'm', region: 'us', status: 'ok', latency_ms: 110, started_at: '2026-08-04T10:00:00.000Z', finished_at: '2026-08-04T10:00:01.000Z' },
+      { id: 'eu-2', workspace_id: 'w', monitor_id: 'm', region: 'eu', status: 'failed', root_cause: 'timeout', latency_ms: 15_000, started_at: '2026-08-04T10:01:00.000Z', finished_at: '2026-08-04T10:01:15.000Z' },
+      { id: 'us-2', workspace_id: 'w', monitor_id: 'm', region: 'us', status: 'failed', root_cause: 'timeout', latency_ms: 15_000, started_at: '2026-08-04T10:01:00.000Z', finished_at: '2026-08-04T10:01:15.000Z' },
+    ])
+
+    expect(series.find((item) => item.regionId === 'eu')?.maximumMs).toBe(15_000)
+    expect(series.find((item) => item.regionId === 'us')?.maximumMs).toBe(15_000)
+  })
+
   it('keeps fallback colors stable when the check response order changes', () => {
     const eu = { id: 'eu', workspace_id: 'w', monitor_id: 'm', region: 'eu-west', status: 'ok' as const, latency_ms: 100, started_at: '2026-07-26T10:00:00.000Z', finished_at: '2026-07-26T10:00:01.000Z' }
     const us = { id: 'us', workspace_id: 'w', monitor_id: 'm', region: 'us-east', status: 'ok' as const, latency_ms: 120, started_at: '2026-07-26T10:00:00.000Z', finished_at: '2026-07-26T10:00:01.000Z' }

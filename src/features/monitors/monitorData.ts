@@ -302,6 +302,52 @@ export function monitorToDraft(monitor: Monitor): MonitorDraft {
   }
 }
 
+function checkStartedAt(check: CheckResult): number {
+  return Date.parse(check.started_at)
+}
+
+function availabilityHealthy(check: CheckResult): boolean {
+  return check.status === 'ok' || check.status === 'degraded'
+}
+
+function containsTimestampInRange(timestamps: readonly number[], from: number, to: number): boolean {
+  let low = 0
+  let high = timestamps.length
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (timestamps[middle] < from) low = middle + 1
+    else high = middle
+  }
+  return low < timestamps.length && timestamps[low] <= to
+}
+
+function hasHealthyPeerInAttempt(
+  region: string,
+  sorted: readonly CheckResult[],
+  index: number,
+  healthyTimestampsByRegion: ReadonlyMap<string, readonly number[]>,
+): boolean {
+  const at = checkStartedAt(sorted[index])
+  if (!Number.isFinite(at)) return false
+  const previousAt = index > 0 ? checkStartedAt(sorted[index - 1]) : Number.NaN
+  const nextAt = index + 1 < sorted.length ? checkStartedAt(sorted[index + 1]) : Number.NaN
+  const from = Number.isFinite(previousAt)
+    ? (previousAt + at) / 2
+    : Number.isFinite(nextAt)
+      ? at - (nextAt - at) / 2
+      : at
+  const to = Number.isFinite(nextAt)
+    ? (at + nextAt) / 2
+    : Number.isFinite(previousAt)
+      ? at + (at - previousAt) / 2
+      : at
+
+  for (const [peerRegion, timestamps] of healthyTimestampsByRegion) {
+    if (peerRegion !== region && containsTimestampInRange(timestamps, from, to)) return true
+  }
+  return false
+}
+
 export function toResponseTimeSeries(checks: readonly CheckResult[], locations: readonly Pick<Region, 'id' | 'name' | 'color'>[] = []): readonly ResponseTimeSeries[] {
   const grouped = new Map<string, CheckResult[]>()
   const locationNames = new Map(locations.map((location) => [location.id, location.name] as const))
@@ -313,18 +359,45 @@ export function toResponseTimeSeries(checks: readonly CheckResult[], locations: 
     grouped.set(region, values)
   }
 
-  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([region, values]) => {
-    const sorted = [...values].sort((left, right) => Date.parse(left.started_at) - Date.parse(right.started_at))
-    const latencies = sorted.map((check) => Math.max(0, check.latency_ms))
+  const sortedByRegion = new Map(
+    [...grouped.entries()].map(([region, values]) => [
+      region,
+      [...values].sort((left, right) => checkStartedAt(left) - checkStartedAt(right)),
+    ] as const),
+  )
+  const healthyTimestampsByRegion = new Map(
+    [...sortedByRegion.entries()].map(([region, values]) => [
+      region,
+      values.filter(availabilityHealthy).map(checkStartedAt).filter(Number.isFinite),
+    ] as const),
+  )
+
+  return [...sortedByRegion.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([region, sorted]) => {
+    let previousValue: number | undefined
+    const points = sorted.map((check, index) => {
+      const rawValue = Math.max(0, check.latency_ms)
+      let valueMs = rawValue
+      if (
+        check.status === 'failed'
+        && check.root_cause === 'timeout'
+        && previousValue !== undefined
+        && hasHealthyPeerInAttempt(region, sorted, index, healthyTimestampsByRegion)
+      ) {
+        valueMs = previousValue
+      }
+      previousValue = valueMs
+      return {
+        timestamp: check.started_at,
+        valueMs,
+        status: check.status,
+      }
+    })
+    const latencies = points.map((point) => point.valueMs)
     return {
       regionId: region,
       regionLabel: locationNames.get(region) ?? (region === 'local' ? 'Frankfurt' : region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())),
       color: locationColors.get(region) ?? stableSeriesColor(region),
-      points: sorted.map((check) => ({
-        timestamp: check.started_at,
-        valueMs: Math.max(0, check.latency_ms),
-        status: check.status,
-      })),
+      points,
       averageMs: latencies.length
         ? Math.round(latencies.reduce((total, value) => total + value, 0) / latencies.length)
         : 0,
