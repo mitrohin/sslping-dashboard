@@ -6,6 +6,7 @@ import {
   monitorDraftToUpdateRequest,
   monitorToDraft,
   toResponseTimeSeries,
+  toResponseTimeSeriesFromHistory,
 } from './monitorData'
 
 function draft(overrides: Partial<MonitorDraft>): MonitorDraft {
@@ -219,6 +220,17 @@ describe('monitor edit and chart adapters', () => {
     ], [{ id: 'eu-west', name: 'Amsterdam', color: '#c084fc' }])
     expect(series).toHaveLength(1)
     expect(series[0]).toMatchObject({ regionId: 'eu-west', regionLabel: 'Amsterdam', color: '#c084fc', averageMs: 200, minimumMs: 100, maximumMs: 300 })
+  })
+
+  it('builds weighted response charts from bounded aggregate buckets', () => {
+    const series = toResponseTimeSeriesFromHistory([
+      { at: '2026-08-04T10:00:00.000Z', region: 'eu-west', status: 'ok', latency_sum_ms: 400, samples: 2 },
+      { at: '2026-08-04T10:15:00.000Z', region: 'eu-west', status: 'degraded', latency_sum_ms: 900, samples: 3 },
+    ], [{ id: 'eu-west', name: 'Amsterdam', color: '#c084fc' }])
+
+    expect(series).toHaveLength(1)
+    expect(series[0]?.points.map((point) => point.valueMs)).toEqual([200, 300])
+    expect(series[0]).toMatchObject({ averageMs: 260, minimumMs: 200, maximumMs: 300 })
   })
 
   it('reuses the previous chart value for an isolated timeout when another location is reachable', () => {

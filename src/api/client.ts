@@ -374,6 +374,21 @@ export class ApiClient {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`)
   }
 
+  getMonitorDashboard(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.MonitorDashboard> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/dashboard`, query))
+  }
+
+  getMonitorOverview(
+    tenantId: Api.UUID,
+    monitorId: Api.UUID,
+    responseRange: '1h' | '24h' | '7d',
+  ): Promise<Api.MonitorOverview> {
+    return this.#request(withQuery(
+      `/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/overview`,
+      { response_range: responseRange },
+    ))
+  }
+
   updateMonitor(
     tenantId: Api.UUID,
     monitorId: Api.UUID,

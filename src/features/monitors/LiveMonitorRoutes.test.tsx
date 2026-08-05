@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiClient } from '../../api/client'
-import type { CheckResult, HistoryQuery, Monitor, MonitorSubscription, User, Workspace } from '../../api/types'
+import type { Monitor, MonitorOverview, MonitorSubscription, UptimeStats, User, Workspace, WorkspaceEntitlements } from '../../api/types'
 import type { AuthContextValue } from '../../app/AuthProvider'
 
 const authMocks = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('../../app/DashboardGate', async (importOriginal) => {
   return { ...original, isDemoSession: authMocks.isDemoSession }
 })
 
-import { LiveMonitorDetailPage, LiveMonitorsPage, loadMonitorCheckHistory } from './LiveMonitorRoutes'
+import { LiveMonitorDetailPage, LiveMonitorsPage } from './LiveMonitorRoutes'
 
 const now = '2026-07-26T08:00:00.000Z'
 const workspace: Workspace = {
@@ -71,19 +71,6 @@ function baseMonitor(): Monitor {
   }
 }
 
-function checkResult(id: string, latencyMs: number, startedAt = new Date().toISOString()): CheckResult {
-  return {
-    id,
-    workspace_id: workspace.id,
-    monitor_id: 'monitor-1',
-    region: 'eu-west',
-    status: 'ok',
-    latency_ms: latencyMs,
-    started_at: startedAt,
-    finished_at: startedAt,
-  }
-}
-
 function followedMonitor(): MonitorSubscription {
   return {
     subscription_id: 'subscription-1',
@@ -114,20 +101,60 @@ function followedMonitor(): MonitorSubscription {
   }
 }
 
+const stats: UptimeStats = {
+  from: now,
+  to: now,
+  availability: 100,
+  average_latency_ms: 120,
+  p50_latency_ms: 100,
+  p95_latency_ms: 180,
+  p99_latency_ms: 200,
+  checks: 24,
+  failures: 0,
+  incidents: 0,
+  downtime_seconds: 0,
+  mtbf_seconds: 86_400,
+}
+
+const entitlements: WorkspaceEntitlements = {
+  plan_code: 'business',
+  plan_name: 'Business',
+  limits: { max_monitors: 500, min_interval_seconds: 30, max_team_members: 15, max_status_pages: 20, max_integrations: 50, max_locations: 10, data_retention_days: 365, allow_manual_tests: true },
+}
+
+function overviewFor(monitor: Monitor): MonitorOverview {
+  return {
+    monitor,
+    uptime_history: [],
+    response_history: [],
+    response_bucket_seconds: 60,
+    periods: { '24h': stats, '7d': stats, '30d': stats, '365d': stats },
+    incidents: [],
+    maintenance: [],
+    integrations: [],
+    status_pages: [],
+    entitlements,
+    regions: [{ id: 'eu-west', name: 'Europe West', color: '#35d67b' }],
+  }
+}
+
 function fakeApi() {
   let stored = baseMonitor()
   const api = {
     baseUrl: 'https://api.sslping.test',
     listMonitors: vi.fn(async () => ({ items: [stored] })),
+    getMonitorDashboard: vi.fn(async () => ({
+      from: now,
+      to: now,
+      items: [{ monitor: stored, stats, history: [] }],
+      entitlements,
+    })),
+    getMonitorOverview: vi.fn(async () => overviewFor(stored)),
     getMetricsSummary: vi.fn().mockResolvedValue({ from: now, to: now, items: [] }),
     listIncidents: vi.fn().mockResolvedValue({ items: [] }),
     listMonitorSubscriptions: vi.fn().mockResolvedValue({ items: [] }),
     listMonitorChecks: vi.fn().mockResolvedValue({ items: [] }),
-    getWorkspaceEntitlements: vi.fn().mockResolvedValue({
-      plan_code: 'business',
-      plan_name: 'Business',
-      limits: { max_monitors: 500, min_interval_seconds: 30, max_team_members: 15, max_status_pages: 20, max_integrations: 50, max_locations: 10, data_retention_days: 365, allow_manual_tests: true },
-    }),
+    getWorkspaceEntitlements: vi.fn().mockResolvedValue(entitlements),
     listRegions: vi.fn().mockResolvedValue({
       items: [{ id: 'eu-west', name: 'Europe West', capabilities: ['http', 'tcp', 'tls', 'dns', 'domain', 'reachability'], status: 'available' }],
     }),
@@ -179,50 +206,6 @@ beforeEach(() => {
   authMocks.isDemoSession.mockReturnValue(false)
 })
 
-describe('monitor check-history pagination', () => {
-  it('loads every cursor page in the requested time range', async () => {
-    const first = checkResult('check-1', 100)
-    const second = checkResult('check-2', 300)
-    const listMonitorChecks = vi.fn(async (_workspaceId: string, _monitorId: string, query?: HistoryQuery) => (
-      query?.cursor === 'next-page'
-        ? { items: [second] }
-        : { items: [first], next_cursor: 'next-page' }
-    ))
-    const query = { from: '2026-07-25T08:00:00.000Z', to: '2026-07-26T08:00:00.000Z' }
-
-    await expect(loadMonitorCheckHistory(
-      { listMonitorChecks } as unknown as Pick<ApiClient, 'listMonitorChecks'>,
-      workspace.id,
-      'monitor-1',
-      query,
-    )).resolves.toEqual([first, second])
-
-    expect(listMonitorChecks).toHaveBeenNthCalledWith(1, workspace.id, 'monitor-1', { ...query, limit: 250, cursor: undefined })
-    expect(listMonitorChecks).toHaveBeenNthCalledWith(2, workspace.id, 'monitor-1', { ...query, limit: 250, cursor: 'next-page' })
-  })
-
-  it('fails explicitly instead of silently truncating or looping forever', async () => {
-    const overLimit = vi.fn().mockResolvedValue({ items: [checkResult('check-1', 100), checkResult('check-2', 200)] })
-    await expect(loadMonitorCheckHistory(
-      { listMonitorChecks: overLimit } as unknown as Pick<ApiClient, 'listMonitorChecks'>,
-      workspace.id,
-      'monitor-1',
-      {},
-      { maxItems: 1 },
-    )).rejects.toThrow(/too large to display safely/i)
-
-    const repeatedCursor = vi.fn()
-      .mockResolvedValueOnce({ items: [], next_cursor: 'same-page' })
-      .mockResolvedValueOnce({ items: [], next_cursor: 'same-page' })
-    await expect(loadMonitorCheckHistory(
-      { listMonitorChecks: repeatedCursor } as unknown as Pick<ApiClient, 'listMonitorChecks'>,
-      workspace.id,
-      'monitor-1',
-      {},
-    )).rejects.toThrow(/repeated check-history cursor/i)
-  })
-})
-
 describe('LiveMonitorsPage controls', () => {
   it('loads followed monitors in one extra list request and unsubscribes by subscription id', async () => {
     const api = fakeApi()
@@ -244,15 +227,14 @@ describe('LiveMonitorsPage controls', () => {
 
   it('renders the new-workspace empty state when list endpoints return null items', async () => {
     const api = fakeApi()
-    api.listMonitors.mockResolvedValue({ items: null as never })
-    api.getMetricsSummary.mockResolvedValue({ from: now, to: now, items: null as never })
-    api.listIncidents.mockResolvedValue({ items: null as never })
+    api.getMonitorDashboard.mockResolvedValue({ from: now, to: now, items: null as never, entitlements })
     mockAuth(api)
 
     render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
 
     expect(await screen.findByText('No monitors found')).toBeInTheDocument()
     expect(screen.getByText('Try another filter or create a new monitor.')).toBeInTheDocument()
+    expect(api.getMonitorDashboard).toHaveBeenCalledTimes(1)
     expect(api.listMonitorChecks).not.toHaveBeenCalled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -280,15 +262,20 @@ describe('LiveMonitorsPage controls', () => {
     fireEvent.click(within(openMenu()).getByRole('menuitem', { name: /delete/i }))
     await waitFor(() => expect(api.deleteMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
     expect(window.confirm).toHaveBeenCalledWith('Delete “Checkout API”? This cannot be undone.')
-    expect(api.listMonitors.mock.calls.length).toBeGreaterThanOrEqual(5)
+    expect(api.getMonitorDashboard.mock.calls.length).toBeGreaterThanOrEqual(5)
   })
 
   it('hides manual test actions when the active plan does not include them', async () => {
     const api = fakeApi()
-    api.getWorkspaceEntitlements.mockResolvedValue({
-      plan_code: 'starter',
-      plan_name: 'Starter',
-      limits: { max_monitors: 100, min_interval_seconds: 60, max_team_members: 3, max_status_pages: 3, max_integrations: 10, max_locations: 3, data_retention_days: 90, allow_manual_tests: false },
+    api.getMonitorDashboard.mockResolvedValue({
+      from: now,
+      to: now,
+      items: [{ monitor: baseMonitor(), stats, history: [] }],
+      entitlements: {
+        plan_code: 'starter',
+        plan_name: 'Starter',
+        limits: { max_monitors: 100, min_interval_seconds: 60, max_team_members: 3, max_status_pages: 3, max_integrations: 10, max_locations: 3, data_retention_days: 90, allow_manual_tests: false },
+      },
     })
     mockAuth(api)
 
@@ -345,7 +332,7 @@ describe('LiveMonitorsPage controls', () => {
 
     expect(await screen.findByText('Paused Marketing website.')).toBeInTheDocument()
     expect(api.pauseMonitor).not.toHaveBeenCalled()
-    expect(api.listMonitors).not.toHaveBeenCalled()
+    expect(api.getMonitorDashboard).not.toHaveBeenCalled()
   })
 
   it('applies bulk tag updates through the monitor API', async () => {
@@ -370,30 +357,21 @@ describe('LiveMonitorsPage controls', () => {
 })
 
 describe('LiveMonitorDetailPage refresh', () => {
-  it('uses all paginated checks for the 24-hour bars and response chart', async () => {
+  it('loads a bounded aggregate overview without requesting raw check pages', async () => {
     const api = fakeApi()
     const monitor = {
       ...baseMonitor(),
       last_check_at: new Date().toISOString(),
     }
-    const first = checkResult('check-page-1', 100, new Date(Date.now() - 30_000).toISOString())
-    const second = checkResult('check-page-2', 300, new Date(Date.now() - 15_000).toISOString())
-    const listMonitorChecks = vi.fn(async (_workspaceId: string, _monitorId: string, query?: HistoryQuery) => (
-      query?.cursor === 'next-page'
-        ? { items: [second] }
-        : { items: [first], next_cursor: 'next-page' }
-    ))
+    const firstAt = new Date(Date.now() - 30_000).toISOString()
+    const secondAt = new Date(Date.now() - 15_000).toISOString()
+    const overview = overviewFor(monitor)
+    overview.response_history = [
+      { at: firstAt, region: 'eu-west', status: 'ok', latency_sum_ms: 100, samples: 1 },
+      { at: secondAt, region: 'eu-west', status: 'ok', latency_sum_ms: 300, samples: 1 },
+    ]
     Object.assign(api, {
-      getMonitor: vi.fn().mockResolvedValue(monitor),
-      listMonitorChecks,
-      getMonitorMetrics: vi.fn().mockResolvedValue({ availability: 100, incidents: 0, downtime_seconds: 0 }),
-      listCertificateEvidence: vi.fn().mockResolvedValue({ items: [] }),
-      listDnsEvidence: vi.fn().mockResolvedValue({ items: [] }),
-      listDomainEvidence: vi.fn().mockResolvedValue({ items: [] }),
-      listMaintenanceWindows: vi.fn().mockResolvedValue({ items: [] }),
-      listIntegrations: vi.fn().mockResolvedValue({ items: [] }),
-      listStatusPages: vi.fn().mockResolvedValue({ items: [] }),
-      listStatusPageComponents: vi.fn().mockResolvedValue({ items: [] }),
+      getMonitorOverview: vi.fn().mockResolvedValue(overview),
     })
     mockAuth(api)
 
@@ -404,11 +382,9 @@ describe('LiveMonitorDetailPage refresh', () => {
     )
 
     expect(await screen.findByText('Checkout API')).toBeInTheDocument()
-    await waitFor(() => expect(listMonitorChecks).toHaveBeenCalledWith(
-      workspace.id,
-      'monitor-1',
-      expect.objectContaining({ cursor: 'next-page', limit: 250 }),
-    ))
+    expect(api.getMonitorOverview).toHaveBeenCalledTimes(1)
+    expect(api.getMonitorOverview).toHaveBeenCalledWith(workspace.id, 'monitor-1', '1h')
+    expect(api.listMonitorChecks).not.toHaveBeenCalled()
     expect(await screen.findByText('200 ms')).toBeInTheDocument()
   })
 
@@ -418,17 +394,9 @@ describe('LiveMonitorDetailPage refresh', () => {
       ...baseMonitor(),
       last_check_at: new Date(Date.now() - 61_000).toISOString(),
     }
-    const getMonitor = vi.fn().mockResolvedValue(monitor)
+    const getMonitorOverview = vi.fn().mockResolvedValue(overviewFor(monitor))
     Object.assign(api, {
-      getMonitor,
-      getMonitorMetrics: vi.fn().mockResolvedValue({ availability: 100, incidents: 0, downtime_seconds: 0 }),
-      listCertificateEvidence: vi.fn().mockResolvedValue({ items: [] }),
-      listDnsEvidence: vi.fn().mockResolvedValue({ items: [] }),
-      listDomainEvidence: vi.fn().mockResolvedValue({ items: [] }),
-      listMaintenanceWindows: vi.fn().mockResolvedValue({ items: [] }),
-      listIntegrations: vi.fn().mockResolvedValue({ items: [] }),
-      listStatusPages: vi.fn().mockResolvedValue({ items: [] }),
-      listStatusPageComponents: vi.fn().mockResolvedValue({ items: [] }),
+      getMonitorOverview,
     })
     mockAuth(api)
 
@@ -439,7 +407,7 @@ describe('LiveMonitorDetailPage refresh', () => {
     )
 
     expect(await screen.findByText('Checkout API')).toBeInTheDocument()
-    await waitFor(() => expect(getMonitor).toHaveBeenCalledTimes(2), { timeout: 2500 })
+    await waitFor(() => expect(getMonitorOverview).toHaveBeenCalledTimes(2), { timeout: 2500 })
     expect(screen.getByText(/refreshing from backend|checked every/i)).toBeInTheDocument()
   })
 })

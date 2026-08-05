@@ -630,6 +630,43 @@ export interface MetricsSummary {
   items: MetricsSummaryItem[]
 }
 
+export interface MonitorDashboardItem {
+  monitor: Monitor
+  stats: UptimeStats
+  history: CheckResultHour[]
+  latest?: MonitorLatestSummary
+  active_incident?: Pick<Incident, 'id'>
+  latest_incident?: Pick<Incident, 'started_at' | 'resolved_at'>
+}
+
+export interface MonitorDashboard {
+  from: ISODateTime
+  to: ISODateTime
+  items: MonitorDashboardItem[]
+  entitlements: WorkspaceEntitlements
+}
+
+export interface MonitorStatusPageSummary {
+  page: StatusPage
+  component_count: number
+}
+
+export interface MonitorOverview {
+  monitor: Monitor
+  latest?: MonitorLatestSummary
+  evidence_check?: CheckResult
+  uptime_history: CheckResultHour[]
+  response_history: CheckResultHour[]
+  response_bucket_seconds: number
+  periods: Record<'24h' | '7d' | '30d' | '365d', UptimeStats>
+  incidents: Incident[]
+  maintenance: MaintenanceWindow[]
+  integrations: Integration[]
+  status_pages: MonitorStatusPageSummary[]
+  entitlements: WorkspaceEntitlements
+  regions: Array<Pick<Region, 'id' | 'name' | 'color'>>
+}
+
 export type IncidentStatus = 'investigating' | 'identified' | 'monitoring' | 'resolved'
 
 export interface Incident {

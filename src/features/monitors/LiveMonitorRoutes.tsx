@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import type { ApiClient } from '../../api/client'
-import type { CheckResult, HistoryQuery, Monitor, UptimeStats } from '../../api/types'
+import type { Monitor } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
 import { isDemoSession } from '../../app/DashboardGate'
 import {
@@ -32,8 +31,6 @@ import {
   type MonitorDetailData,
 } from './monitorData'
 
-const periods: readonly UptimePeriodSummary['period'][] = ['24h', '7d', '30d', '365d']
-
 function fromForPeriod(period: UptimePeriodSummary['period'], now: Date): string {
   const duration = period === '24h'
     ? 86_400_000
@@ -43,73 +40,6 @@ function fromForPeriod(period: UptimePeriodSummary['period'], now: Date): string
         ? 30 * 86_400_000
         : 365 * 86_400_000
   return new Date(now.getTime() - duration).toISOString()
-}
-
-function fromForResponseRange(range: string, now: Date): string {
-  const duration = range === '7d' ? 7 * 86_400_000 : range === '24h' ? 86_400_000 : 3_600_000
-  return new Date(now.getTime() - duration).toISOString()
-}
-
-function emptyCheckPage(): { items: CheckResult[] } {
-  return { items: [] }
-}
-
-const checkHistoryPageSize = 250
-const checkHistoryMaxItems = 75_000
-const checkHistoryMaxPages = 300
-
-interface CheckHistoryGuard {
-  maxItems?: number
-  maxPages?: number
-}
-
-export async function loadMonitorCheckHistory(
-  api: Pick<ApiClient, 'listMonitorChecks'>,
-  workspaceId: string,
-  monitorId: string,
-  query: Omit<HistoryQuery, 'cursor' | 'limit'>,
-  guard: CheckHistoryGuard = {},
-): Promise<CheckResult[]> {
-  const maxItems = Math.max(1, Math.floor(guard.maxItems ?? checkHistoryMaxItems))
-  const maxPages = Math.max(1, Math.floor(guard.maxPages ?? checkHistoryMaxPages))
-  const checks: CheckResult[] = []
-  const seenCursors = new Set<string>()
-  let cursor: string | undefined
-
-  for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
-    const page = await api.listMonitorChecks(workspaceId, monitorId, {
-      ...query,
-      limit: checkHistoryPageSize,
-      cursor,
-    })
-    const items = page.items ?? []
-    if (checks.length + items.length > maxItems) {
-      throw new Error(`The selected check history is too large to display safely (over ${maxItems.toLocaleString('en-US')} results).`)
-    }
-    checks.push(...items)
-
-    const nextCursor = page.next_cursor
-    if (!nextCursor) return checks
-    if (nextCursor === cursor || seenCursors.has(nextCursor)) {
-      throw new Error('The monitoring service returned a repeated check-history cursor.')
-    }
-    if (pageNumber + 1 >= maxPages) {
-      throw new Error(`The selected check history exceeded the safe pagination limit of ${maxPages} pages.`)
-    }
-    if (cursor) seenCursors.add(cursor)
-    cursor = nextCursor
-  }
-
-  return checks
-}
-
-function checksWithinRange(checks: readonly CheckResult[], from: string, to: string): CheckResult[] {
-  const fromTime = Date.parse(from)
-  const toTime = Date.parse(to)
-  return checks.filter((check) => {
-    const startedAt = Date.parse(check.started_at)
-    return Number.isFinite(startedAt) && startedAt >= fromTime && startedAt < toTime
-  })
 }
 
 export function resolveHeartbeatUrl(baseUrl: string, heartbeatUrl: string, origin = window.location.origin): string {
@@ -148,42 +78,23 @@ export function LiveMonitorsPage() {
     try {
       const now = new Date()
       const from = fromForPeriod('24h', now)
-      const [page, summary, incidentsPage, entitlements, subscriptionList] = await Promise.all([
-        api.listMonitors(workspace.id, { limit: 100 }),
-        api.getMetricsSummary(workspace.id, { from, to: now.toISOString() }),
-        api.listIncidents(workspace.id, { from, to: now.toISOString(), limit: 100 }),
-        api.getWorkspaceEntitlements(workspace.id),
+      const [dashboard, subscriptionList] = await Promise.all([
+        api.getMonitorDashboard(workspace.id, { from, to: now.toISOString(), limit: 100 }),
         api.listMonitorSubscriptions(workspace.id),
       ])
-      setManualTestEnabled(entitlements.limits.allow_manual_tests)
-      const monitors = page.items ?? []
+      setManualTestEnabled(dashboard.entitlements.limits.allow_manual_tests)
+      const dashboardItems = dashboard.items ?? []
+      const monitors = dashboardItems.map((item) => item.monitor)
       setRawMonitors(monitors)
-      const metricItems = summary.items ?? []
-      const incidents = incidentsPage.items ?? []
-      const metrics = new Map(metricItems.map((item) => [item.monitor_id, item] as const))
-      const activeIncidents = new Map(
-        incidents
-          .filter((incident) => incident.status !== 'resolved')
-          .map((incident) => [incident.monitor_id, incident] as const),
-      )
-      const latestIncidents = new Map<string, (typeof incidents)[number]>()
-      incidents.forEach((incident) => {
-        const current = latestIncidents.get(incident.monitor_id)
-        if (!current || Date.parse(incident.started_at) > Date.parse(current.started_at)) {
-          latestIncidents.set(incident.monitor_id, incident)
-        }
-      })
-      const owned = monitors.map((monitor) => {
-        const metric = metrics.get(monitor.id)
-        return toMonitorViewModel(monitor, {
-          history: metric?.history ?? [],
-          latest: metric?.latest,
-          stats: metric?.stats,
-          activeIncident: activeIncidents.get(monitor.id),
-          latestIncident: latestIncidents.get(monitor.id),
+      const owned = dashboardItems.map((item) =>
+        toMonitorViewModel(item.monitor, {
+          history: item.history ?? [],
+          latest: item.latest,
+          stats: item.stats,
+          activeIncident: item.active_incident,
+          latestIncident: item.latest_incident,
           now,
-        })
-      })
+        }))
       const followed = (subscriptionList.items ?? []).map(toSubscribedMonitorViewModel)
       setData([...owned, ...followed])
     } catch (loadError) {
@@ -316,96 +227,29 @@ export function LiveMonitorDetailPage() {
     else setLoading(true)
     setError(null)
     try {
-      const monitor = await api.getMonitor(workspace.id, monitorId)
+      const overview = await api.getMonitorOverview(workspace.id, monitorId, responseRange as '1h' | '24h' | '7d')
+      const monitor = overview.monitor
       setRawMonitor(monitor)
-      const now = new Date()
-      const to = now.toISOString()
-      const responseFrom = fromForResponseRange(responseRange, now)
-      const uptimeFrom = fromForPeriod('24h', now)
-      const historyFrom = Date.parse(responseFrom) < Date.parse(uptimeFrom) ? responseFrom : uptimeFrom
-      const evidenceOnly = monitor.type === 'leakcheck' || monitor.type === 'compliance'
-      const metricsPromise = Promise.all(periods.map((period) =>
-        api.getMonitorMetrics(workspace.id, monitor.id, { from: fromForPeriod(period, now), to }),
-      ))
-      const httpConfig = monitor.config.http
-      const certificatePromise = monitor.type === 'tls' || (
-        /^https:\/\//i.test(httpConfig?.url ?? '') && (
-          httpConfig?.validate_tls === true || httpConfig?.tls_expiry_warn_days != null
-        )
-      )
-        ? api.listCertificateEvidence(workspace.id, monitor.id, { limit: 30 })
-        : Promise.resolve(emptyCheckPage())
-      const dnsPromise = monitor.type === 'dns'
-        ? api.listDnsEvidence(workspace.id, monitor.id, { limit: 30 })
-        : Promise.resolve(emptyCheckPage())
-      const domainPromise = monitor.type === 'domain' || monitor.type === 'http' || monitor.type === 'keyword'
-        ? api.listDomainEvidence(workspace.id, monitor.id, { limit: 30 })
-        : Promise.resolve(emptyCheckPage())
-
-      const [
-        historyChecks,
-        metrics,
-        incidentsPage,
-        certificates,
-        dns,
-        domains,
-        maintenanceList,
-        integrationList,
-        statusPageList,
-        entitlements,
-        locationCatalog,
-      ] = await Promise.all([
-        evidenceOnly
-          ? api.listMonitorChecks(workspace.id, monitor.id, { limit: 1 }).then((page) => page.items ?? [])
-          : loadMonitorCheckHistory(api, workspace.id, monitor.id, { from: historyFrom, to }),
-        metricsPromise,
-        api.listIncidents(workspace.id, { from: fromForPeriod('365d', now), to, limit: 100 }),
-        certificatePromise,
-        dnsPromise,
-        domainPromise,
-        api.listMaintenanceWindows(workspace.id),
-        api.listIntegrations(workspace.id),
-        evidenceOnly ? Promise.resolve({ items: [] }) : api.listStatusPages(workspace.id),
-        api.getWorkspaceEntitlements(workspace.id),
-        api.listRegions(),
-      ])
-      setManualTestEnabled(entitlements.limits.allow_manual_tests)
-      const stats = Object.fromEntries(periods.map((period, index) => [period, metrics[index]])) as Record<UptimePeriodSummary['period'], UptimeStats>
-      const checks = evidenceOnly ? historyChecks : checksWithinRange(historyChecks, uptimeFrom, to)
-      const responseChecks = evidenceOnly ? [] : checksWithinRange(historyChecks, responseFrom, to)
+      setManualTestEnabled(overview.entitlements.limits.allow_manual_tests)
+      const evidenceChecks = overview.evidence_check ? [overview.evidence_check] : []
       setData(toLiveMonitorDetail({
         monitor,
-        checks,
-        responseChecks,
-        certificateEvidence: certificates.items ?? [],
-        dnsEvidence: dns.items ?? [],
-        domainEvidence: domains.items ?? [],
-        incidents: (incidentsPage.items ?? []).filter((incident) => incident.monitor_id === monitor.id),
-        stats,
-        locations: locationCatalog.items ?? [],
+        checks: evidenceChecks,
+        history: overview.uptime_history ?? [],
+        latest: overview.latest,
+        responseHistory: overview.response_history ?? [],
+        incidents: overview.incidents ?? [],
+        stats: overview.periods,
+        locations: overview.regions ?? [],
       }))
-      const monitorWindows = (maintenanceList.items ?? [])
-        .filter((window) => window.active && window.monitor_ids.includes(monitor.id))
+      const monitorWindows = (overview.maintenance ?? [])
         .map((window) => toMaintenanceWindowViewModel(window, { monitors: [monitor] }))
         .filter((window) => window.state === 'active' || window.state === 'upcoming')
         .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime())
       setNextMaintenance(monitorWindows[0])
-      setNotifications((integrationList.items ?? [])
-        .filter((integration) => !integration.monitor_ids?.length || integration.monitor_ids.includes(monitor.id))
-        .map(toIntegrationViewModel))
-
-      const rawStatusPages = statusPageList.items ?? []
-      const componentLists = await Promise.allSettled(
-        rawStatusPages.map((page) => api.listStatusPageComponents(workspace.id, page.id)),
-      )
-      setStatusPages(rawStatusPages.flatMap((page, index) => {
-        const components = componentLists[index].status === 'fulfilled'
-          ? componentLists[index].value.items ?? []
-          : []
-        return components.some((component) => component.monitor_id === monitor.id)
-          ? [toStatusPageViewModel(page, { componentCount: components.length })]
-          : []
-      }))
+      setNotifications((overview.integrations ?? []).map(toIntegrationViewModel))
+      setStatusPages((overview.status_pages ?? []).map(({ page, component_count }) =>
+        toStatusPageViewModel(page, { componentCount: component_count })))
     } catch (loadError) {
       setError(monitorErrorMessage(loadError, 'The monitor details could not be loaded.'))
     } finally {
@@ -422,7 +266,7 @@ export function LiveMonitorDetailPage() {
       if (!monitor || monitor.type === 'leakcheck' || monitor.status === 'paused' || autoRefresh.current.inFlight) return
       if (!monitor.lastCheckedAt) {
         const now = Date.now()
-        if (now - autoRefresh.current.lastAttemptAt < 3000) return
+        if (now - autoRefresh.current.lastAttemptAt < 10_000) return
         autoRefresh.current.inFlight = true
         autoRefresh.current.lastAttemptAt = now
         void reload(true).finally(() => { autoRefresh.current.inFlight = false })
@@ -431,7 +275,7 @@ export function LiveMonitorDetailPage() {
       const checkedAt = new Date(monitor.lastCheckedAt).getTime()
       const dueAt = checkedAt + Math.max(1, monitor.intervalSeconds) * 1000
       const now = Date.now()
-      if (!Number.isFinite(checkedAt) || now < dueAt || now - autoRefresh.current.lastAttemptAt < 5000) return
+      if (!Number.isFinite(checkedAt) || now < dueAt || now - autoRefresh.current.lastAttemptAt < 15_000) return
       autoRefresh.current.inFlight = true
       autoRefresh.current.lastAttemptAt = now
       void reload(true).finally(() => { autoRefresh.current.inFlight = false })

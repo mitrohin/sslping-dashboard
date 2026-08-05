@@ -1,10 +1,12 @@
 import { ApiError } from '../../api/client'
 import type {
   CheckResult,
+  CheckResultHour,
   DNSConfig,
   HTTPConfig,
   Incident,
   Monitor,
+  MonitorLatestSummary,
   MonitorCreateRequest,
   MonitorUpdateRequest,
   Region,
@@ -407,6 +409,41 @@ export function toResponseTimeSeries(checks: readonly CheckResult[], locations: 
   })
 }
 
+export function toResponseTimeSeriesFromHistory(history: readonly CheckResultHour[], locations: readonly Pick<Region, 'id' | 'name' | 'color'>[] = []): readonly ResponseTimeSeries[] {
+  const grouped = new Map<string, CheckResultHour[]>()
+  const locationNames = new Map(locations.map((location) => [location.id, location.name] as const))
+  const locationColors = new Map(locations.flatMap((location) => location.color ? [[location.id, location.color] as const] : []))
+  for (const bucket of history) {
+    const region = bucket.region || 'default'
+    const values = grouped.get(region) ?? []
+    values.push(bucket)
+    grouped.set(region, values)
+  }
+
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([region, values]) => {
+    const sorted = [...values].sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
+    const points = sorted.map((bucket) => ({
+      timestamp: bucket.at,
+      valueMs: bucket.samples > 0 ? Math.round(bucket.latency_sum_ms / bucket.samples) : 0,
+      status: bucket.status,
+    }))
+    const sampled = sorted.filter((bucket) => bucket.samples > 0)
+    const totalSamples = sampled.reduce((total, bucket) => total + bucket.samples, 0)
+    const latencies = points.filter((_point, index) => sorted[index].samples > 0).map((point) => point.valueMs)
+    return {
+      regionId: region,
+      regionLabel: locationNames.get(region) ?? (region === 'local' ? 'Frankfurt' : region.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())),
+      color: locationColors.get(region) ?? stableSeriesColor(region),
+      points,
+      averageMs: totalSamples > 0
+        ? Math.round(sampled.reduce((total, bucket) => total + bucket.latency_sum_ms, 0) / totalSamples)
+        : 0,
+      minimumMs: latencies.length ? Math.min(...latencies) : 0,
+      maximumMs: latencies.length ? Math.max(...latencies) : 0,
+    }
+  })
+}
+
 export function toUptimePeriod(
   period: UptimePeriodSummary['period'],
   stats: UptimeStats,
@@ -421,18 +458,23 @@ export function toUptimePeriod(
 
 export function toLiveMonitorDetail(options: {
   monitor: Monitor
-  checks: readonly CheckResult[]
+  checks?: readonly CheckResult[]
+  history?: readonly CheckResultHour[]
+  latest?: MonitorLatestSummary
   responseChecks?: readonly CheckResult[]
+  responseHistory?: readonly CheckResultHour[]
   certificateEvidence?: readonly CheckResult[]
   domainEvidence?: readonly CheckResult[]
   dnsEvidence?: readonly CheckResult[]
   incidents: readonly Incident[]
   stats: Readonly<Record<UptimePeriodSummary['period'], UptimeStats>>
-  locations?: readonly Pick<Region, 'id' | 'name'>[]
+  locations?: readonly Pick<Region, 'id' | 'name' | 'color'>[]
 }): MonitorDetailData {
   const openIncident = options.incidents.find((incident) => incident.status !== 'resolved')
   const base = toMonitorViewModel(options.monitor, {
-    checks: options.checks,
+    checks: options.checks ?? [],
+    history: options.history,
+    latest: options.latest,
     stats: options.stats['24h'],
     activeIncident: openIncident,
   })
@@ -449,7 +491,9 @@ export function toLiveMonitorDetail(options: {
       sslCertificate: certificate ?? base.sslCertificate,
       domainRegistration: domain ?? base.domainRegistration,
     },
-    responseTime: toResponseTimeSeries(options.responseChecks ?? options.checks, options.locations),
+    responseTime: options.responseHistory
+      ? toResponseTimeSeriesFromHistory(options.responseHistory, options.locations)
+      : toResponseTimeSeries(options.responseChecks ?? options.checks ?? [], options.locations),
     locationNames: Object.fromEntries((options.locations ?? []).map((location) => [location.id, location.name])),
     uptimePeriods: (['24h', '7d', '30d', '365d'] as const).map((period) =>
       toUptimePeriod(period, options.stats[period]),
