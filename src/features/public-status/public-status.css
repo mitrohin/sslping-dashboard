@@ -90,7 +90,7 @@
 .ps-subscribe-card h2 { margin: 0; color: var(--ps-ink); font-size: clamp(22px, 3vw, 28px); letter-spacing: -.6px; }
 .ps-section-heading > span { color: var(--ps-muted); font-size: 12px; }
 .ps-components-card { overflow: hidden; border: 1px solid var(--ps-line); border-radius: 17px; background: var(--ps-panel); box-shadow: 0 9px 34px rgb(40 58 85 / 6%); }
-.ps-component-row { min-height: 106px; display: grid; grid-template-columns: auto minmax(170px, 1fr) minmax(220px, 1.2fr) 72px 130px; align-items: center; gap: 17px; padding: 18px 22px; border-top: 1px solid var(--ps-line); }
+.ps-component-row { min-height: 106px; display: grid; grid-template-columns: auto minmax(170px, 1fr) minmax(200px, 1.2fr) 72px 120px auto; align-items: center; gap: 17px; padding: 18px 22px; border-top: 1px solid var(--ps-line); }
 .ps-component-row:first-child { border-top: 0; }
 .ps-component-state { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #4f6076; background: #eef2f6; }
 .ps-component-state--up { color: var(--ps-green-dark); background: var(--ps-green-soft); }
@@ -101,6 +101,8 @@
 .ps-component-copy p { margin: 0; color: var(--ps-muted); font-size: 11px; }
 .ps-component-copy .ps-response-issue { display: flex; align-items: center; gap: 4px; margin-top: 7px; color: var(--ps-amber); font-weight: 700; }
 .ps-component-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-component-follow { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--ps-green) 44%, var(--ps-line)); border-radius: 9px; color: var(--ps-green-dark); background: var(--ps-green-soft); font-size: 10px; font-weight: 800; white-space: nowrap; transition: border-color .15s ease, transform .15s ease; }
+.ps-component-follow:hover { border-color: var(--ps-green); transform: translateY(-1px); }
 .ps-component-details { grid-column: 2 / -1; min-width: 0; display: grid; gap: 13px; padding-top: 18px; border-top: 1px dashed var(--ps-line); color: var(--ps-muted); font-size: 11px; }
 .ps-component-details__heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .ps-component-details__heading > div { display: grid; gap: 4px; }
@@ -299,7 +301,7 @@
   .ps-main { padding-top: 35px; }
   .ps-overall { grid-template-columns: auto minmax(0, 1fr); padding: 25px; }
   .ps-overall > time { grid-column: 2; align-self: auto; }
-  .ps-component-row { grid-template-columns: auto minmax(150px, 1fr) minmax(180px, 1fr) 120px; }
+  .ps-component-row { grid-template-columns: auto minmax(150px, 1fr) minmax(160px, 1fr) 110px auto; }
   .ps-uptime-value { display: none; }
   .ps-subscribe-card { grid-template-columns: auto minmax(0, 1fr); }
   .ps-subscribe-card .ps-button { grid-column: 1 / -1; width: 100%; }
@@ -329,6 +331,7 @@
   .ps-uptime-value { display: none; }
   .ps-component-copy p { white-space: normal; }
   .ps-status-label { justify-self: end; }
+  .ps-component-follow { grid-column: 2 / -1; justify-self: stretch; }
   .ps-announcement { padding: 19px 17px 19px 46px; }
   .ps-announcement__top { align-items: flex-start; flex-direction: column; gap: 7px; }
   .ps-timeline-dot { left: 13px; }

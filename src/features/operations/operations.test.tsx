@@ -6,6 +6,31 @@ import { IncidentsPage } from './IncidentsPage'
 afterEach(cleanup)
 
 describe('IncidentsPage', () => {
+  it('shows only the safe public summary for a followed-monitor incident', () => {
+    const incident = {
+      ...demoIncidents[0],
+      id: 'shared-incident',
+      access: 'subscription' as const,
+      subscriptionId: 'subscription-1',
+      monitorName: 'Shared checkout',
+      rootCause: 'Public outage cause',
+      assignedTo: 'Private owner',
+      commentCount: 42,
+    }
+    render(<IncidentsPage incidents={[incident]} />)
+
+    expect(screen.queryByRole('columnheader', { name: 'Comments' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Assignee' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Private owner')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Shared checkout' }))
+
+    expect(screen.getByText('Public incident summary')).toBeInTheDocument()
+    expect(screen.getAllByText('Public outage cause')).not.toHaveLength(0)
+    expect(screen.queryByText('Timeline')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /resolve/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add comment/i })).not.toBeInTheDocument()
+  })
+
   it('shows the assignee for an open incident and removes the visibility column', () => {
     render(<IncidentsPage incidents={[demoIncidents[0]]} />)
 

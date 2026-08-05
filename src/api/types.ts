@@ -859,12 +859,14 @@ export interface PublicStatusPage {
   robots: StatusPageRobotsPolicy
   branding?: JsonValue
   settings: ResolvedStatusPageSettings
+  monitor_follow_enabled: boolean
 }
 
 export interface PublicStatusComponent {
 	 id?: UUID
   name: string
   target?: string
+  follow_url?: string
   status: MonitorStatus
   uptime_24h?: number
   last_checked_at?: ISODateTime
@@ -909,6 +911,41 @@ export interface SubscriptionAcceptedResponse {
   confirmation_token?: string
 }
 
+export interface MonitorSubscriptionPreview {
+  kind: 'capability' | 'email'
+  page_name: string
+  monitor_name: string
+  monitor_status: MonitorStatus
+  email?: string
+  account_exists?: boolean
+}
+
+export interface MonitorSubscriptionRequestAccepted {
+  message: string
+  activation_token?: string
+}
+
+export interface MonitorSubscriberRegisterRequest {
+  token: string
+  name: string
+  password: string
+  locale: Locale
+  timezone: string
+}
+
+export interface MonitorSubscriptionAccepted {
+  subscription_id: UUID
+  read_only: true
+}
+
+export interface MonitorSubscriberRegistrationResponse {
+  user: User
+  tenant: Workspace
+  tokens: Tokens
+  subscription?: MonitorSubscriptionAccepted
+  subscription_pending?: boolean
+}
+
 export type IntegrationType =
   | 'webhook'
   | 'slack'
@@ -932,6 +969,67 @@ export type IntegrationEvent =
   | 'domain.expiry'
   | 'incident.updated'
   | 'maintenance.started'
+
+/** Safe monitor fields exposed to a tenant that follows a public monitor. */
+export interface MonitorSubscriptionMonitor {
+  id: UUID
+  name: string
+  type: MonitorType
+  status: MonitorStatus
+  target?: string
+  interval_seconds: number
+  timeout_seconds: number
+  regions: string[]
+  last_check_at?: ISODateTime
+  last_status_change_at?: ISODateTime
+  paused: boolean
+}
+
+export interface MonitorSubscription {
+  subscription_id: UUID
+  page_name: string
+  read_only: true
+  monitor: MonitorSubscriptionMonitor
+  stats?: UptimeStats
+  history: CheckResultHour[]
+  latest?: MonitorLatestSummary
+  events: IntegrationEvent[]
+  email_enabled: boolean
+  integration_ids: UUID[]
+}
+
+export interface MonitorSubscriptionPeriod {
+  period: '24h' | '7d' | '30d' | '365d'
+  stats: UptimeStats
+}
+
+export interface MonitorSubscriptionIncident {
+  id: UUID
+  subscription_id: UUID
+  monitor_id: UUID
+  monitor_name: string
+  monitor_type: MonitorType
+  status: IncidentStatus
+  title: string
+  root_cause?: string
+  started_at: ISODateTime
+  resolved_at?: ISODateTime
+  read_only: true
+}
+
+export interface MonitorSubscriptionDetail {
+  item: MonitorSubscription
+  periods: MonitorSubscriptionPeriod[]
+  history: CheckResultHour[]
+  incidents: MonitorSubscriptionIncident[]
+}
+
+export interface MonitorSubscriptionNotificationsRequest {
+  events: IntegrationEvent[]
+  email_enabled: boolean
+  /** Omit when the caller may edit personal email/events but not shared workspace integrations. */
+  integration_ids?: UUID[]
+}
 
 export interface WebhookIntegrationConfig {
   url: string

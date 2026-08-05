@@ -14,6 +14,7 @@
 .ops-notice svg { flex: 0 0 auto; margin-top: 1px; }
 .ops-notice div { display: grid; gap: 4px; }
 .ops-notice span { color: #c5d0f5; font-size: 13px; line-height: 1.45; }
+.ops-notice--compact { padding: 14px 16px; border-color: rgb(88 166 255 / 18%); background: rgb(88 166 255 / 8%); }
 
 .ops-toolbar {
   display: grid;
@@ -120,6 +121,7 @@ button.ops-incident-card:hover { border-color: #46536a; background: #202b3e; }
 .ops-detail-summary > div:last-child { border-right: 0; }
 .ops-detail-summary span:first-child { color: var(--muted); font-size: 11px; text-transform: uppercase; }
 .ops-detail-summary strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; }
+.ops-detail-summary--subscription { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ops-incident-activity { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: linear-gradient(145deg, color-mix(in srgb, var(--panel-strong) 96%, var(--green)), var(--panel-strong)); }
 .ops-incident-activity header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .ops-incident-activity header > div { display: grid; gap: 3px; }

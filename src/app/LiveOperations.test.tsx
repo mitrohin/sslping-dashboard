@@ -8,6 +8,7 @@ import type {
   MaintenanceWindow,
   Membership,
   Monitor,
+  MonitorSubscriptionIncident,
   StatusPage,
   StatusPageDetail,
   User,
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
     listIncidents: vi.fn(),
     listMembers: vi.fn(),
     listIncidentComments: vi.fn(),
+    listMonitorSubscriptionIncidents: vi.fn(),
     acknowledgeIncident: vi.fn(),
     assignIncident: vi.fn(),
     addIncidentComment: vi.fn(),
@@ -258,6 +260,7 @@ beforeEach(() => {
   mocks.statusPagesProps = undefined
   mocks.editorProps = undefined
   Object.values(mocks.api).forEach((method) => method.mockReset())
+  mocks.api.listMonitorSubscriptionIncidents.mockResolvedValue({ items: [] })
 })
 
 afterEach(() => {
@@ -327,6 +330,43 @@ describe('empty workspace list responses', () => {
 })
 
 describe('LiveIncidentsPage', () => {
+  it('merges safe followed-monitor incidents without loading private incident details', async () => {
+    const sharedIncident: MonitorSubscriptionIncident = {
+      id: 'shared-incident-1',
+      subscription_id: 'subscription-1',
+      monitor_id: 'shared-monitor-1',
+      monitor_name: 'Vendor API',
+      monitor_type: 'http',
+      status: 'investigating',
+      title: 'Vendor API is unavailable',
+      root_cause: 'Public upstream outage',
+      started_at: now,
+      read_only: true,
+    }
+    mocks.api.listMonitors.mockResolvedValue({ items: [] })
+    mocks.api.listIncidents.mockResolvedValue({ items: [] })
+    mocks.api.listMembers.mockResolvedValue({ items: [] })
+    mocks.api.listMonitorSubscriptionIncidents.mockResolvedValue({ items: [sharedIncident] })
+
+    renderRoute(<LiveIncidentsPage />)
+    await waitFor(() => expect(mocks.incidentProps).toBeDefined())
+    const props = mocks.incidentProps as IncidentsPageProps
+
+    expect(props.incidents).toEqual([
+      expect.objectContaining({
+        id: sharedIncident.id,
+        access: 'subscription',
+        subscriptionId: sharedIncident.subscription_id,
+        monitorName: sharedIncident.monitor_name,
+        rootCause: sharedIncident.root_cause,
+        commentCount: 0,
+      }),
+    ])
+    expect(mocks.api.listIncidentComments).not.toHaveBeenCalled()
+    expect(props.initialComments).toEqual({})
+    expect(props.initialReports).toEqual({})
+  })
+
   it('loads adapted data and wires every incident mutation', async () => {
     mocks.api.listMonitors.mockResolvedValue({ items: [monitor] })
     mocks.api.listIncidents.mockResolvedValue({ items: [incident] })
@@ -532,7 +572,7 @@ describe('LiveStatusPageEditorPage', () => {
       passwordEnabled: true,
       monitorIds: [monitor.id, 'monitor-2'],
       branding: expect.objectContaining({ colorScheme: 'dark', removeProductLogo: true }),
-      features: expect.objectContaining({ enableFloatingStatusBar: true }),
+      features: expect.objectContaining({ enableFloatingStatusBar: true, enableSubscribe: true }),
     })
     expect(props.announcements?.[0]).toMatchObject({ id: announcement.id, title: announcement.title })
 
@@ -563,7 +603,7 @@ describe('LiveStatusPageEditorPage', () => {
           name: 'Updated health',
           language: 'ru',
           branding: expect.objectContaining({ password_enabled: true }),
-          settings: expect.objectContaining({ show_bar_charts: false }),
+          settings: expect.objectContaining({ show_bar_charts: false, enable_subscribe: true }),
         }),
         password: 'replacement-password',
         monitor_ids: [monitor.id],

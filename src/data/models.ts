@@ -33,6 +33,10 @@ export interface ExpirySnapshot {
 
 export interface MonitorViewModel {
   id: string
+  /** Owned monitors are editable; subscribed monitors are shared read-only views. */
+  access?: 'owner' | 'subscription'
+  subscriptionId?: string
+  subscriptionPageName?: string
   name: string
   type: MonitorType
   typeLabel: string
@@ -126,6 +130,9 @@ export interface IncidentLocationQuorum {
 
 export interface IncidentViewModel {
   id: string
+  /** Subscription incidents intentionally contain only their public summary. */
+  access?: 'owner' | 'subscription'
+  subscriptionId?: string
   monitorId: string
   monitorName: string
   monitorType: MonitorType

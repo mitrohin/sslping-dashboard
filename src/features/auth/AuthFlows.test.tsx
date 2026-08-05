@@ -157,6 +157,47 @@ describe('auth UI controllers', () => {
     expect(await screen.findByText('Monitor dashboard')).toBeInTheDocument()
   })
 
+  it('keeps the monitor-follow return token when restarting sign-in from 2FA', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input) === '/v1/auth/login') {
+        return json({
+          user: { ...user, two_factor_enabled: true },
+          two_factor_required: true,
+          challenge_token: 'challenge-token',
+          challenge_expires_at: '2035-01-01T00:00:00Z',
+        })
+      }
+      throw new Error(`Unexpected URL ${String(input)}`)
+    })
+    const api = new ApiClient({ fetch: fetchMock, sessionStore: new SessionStore(localStorage) })
+    renderWithAuth(
+      api,
+      {
+        pathname: '/login',
+        state: {
+          from: {
+            pathname: '/follow-monitor',
+            state: { monitorSubscriptionToken: 'follow-secret' },
+          },
+        },
+      },
+      <>
+        <Route path="/login" element={<><LoginController /><CurrentLocationState /></>} />
+        <Route path="/login/2fa" element={<TwoFactorController />} />
+      </>,
+    )
+
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: user.email } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1234' } })
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByRole('heading', { name: /two-factor authentication/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /back to sign in/i }))
+
+    expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
+    expect(screen.getByTestId('location-state')).toHaveTextContent('"monitorSubscriptionToken":"follow-secret"')
+  })
+
   it('routes an unverified registration to an explicit email confirmation action', async () => {
     const unverifiedUser = { ...user, email_verified_at: undefined }
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {

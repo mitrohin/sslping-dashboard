@@ -19,6 +19,7 @@ import type {
 } from '../../data'
 import { MonitorDetailPage } from './MonitorDetailPage'
 import { MonitorEditPage } from './MonitorEditPage'
+import { toSubscribedMonitorViewModel } from '../subscriptions/adapters'
 import type { HeartbeatCredential } from './HeartbeatCredentialModal'
 import type { MonitorDraft } from './MonitorForm'
 import { MonitorsPage } from './MonitorsPage'
@@ -147,11 +148,12 @@ export function LiveMonitorsPage() {
     try {
       const now = new Date()
       const from = fromForPeriod('24h', now)
-      const [page, summary, incidentsPage, entitlements] = await Promise.all([
+      const [page, summary, incidentsPage, entitlements, subscriptionList] = await Promise.all([
         api.listMonitors(workspace.id, { limit: 100 }),
         api.getMetricsSummary(workspace.id, { from, to: now.toISOString() }),
         api.listIncidents(workspace.id, { from, to: now.toISOString(), limit: 100 }),
         api.getWorkspaceEntitlements(workspace.id),
+        api.listMonitorSubscriptions(workspace.id),
       ])
       setManualTestEnabled(entitlements.limits.allow_manual_tests)
       const monitors = page.items ?? []
@@ -171,7 +173,7 @@ export function LiveMonitorsPage() {
           latestIncidents.set(incident.monitor_id, incident)
         }
       })
-      setData(monitors.map((monitor) => {
+      const owned = monitors.map((monitor) => {
         const metric = metrics.get(monitor.id)
         return toMonitorViewModel(monitor, {
           history: metric?.history ?? [],
@@ -181,7 +183,9 @@ export function LiveMonitorsPage() {
           latestIncident: latestIncidents.get(monitor.id),
           now,
         })
-      }))
+      })
+      const followed = (subscriptionList.items ?? []).map(toSubscribedMonitorViewModel)
+      setData([...owned, ...followed])
     } catch (loadError) {
       setError(monitorErrorMessage(loadError, 'The monitoring service did not respond.'))
     } finally {
@@ -233,6 +237,12 @@ export function LiveMonitorsPage() {
     await reload()
   }
 
+  const unsubscribe = async (monitor: MonitorViewModel) => {
+    if (!workspace || !monitor.subscriptionId) throw new Error('The monitor subscription is unavailable.')
+    await api.deleteMonitorSubscription(workspace.id, monitor.subscriptionId)
+    await reload()
+  }
+
   const bulkAction = async (monitors: readonly MonitorViewModel[], action: 'pause' | 'resume' | 'test' | 'delete') => {
     if (!workspace) throw new Error('No active workspace is selected.')
     await Promise.all(monitors.map((monitor) => action === 'pause'
@@ -275,6 +285,7 @@ export function LiveMonitorsPage() {
       onTogglePause={togglePause}
       onTest={test}
       onDelete={remove}
+      onUnsubscribe={unsubscribe}
       onBulkAction={bulkAction}
       onBulkTags={bulkTags}
       manualTestEnabled={manualTestEnabled}

@@ -8,6 +8,7 @@ import { billingTranslations } from './billingTranslations'
 import { accountTranslations } from './accountTranslations'
 import { secondaryTranslations } from './secondaryTranslations'
 import { adminTranslations } from './adminTranslations'
+import { subscriptionTranslations } from './subscriptionTranslations'
 
 export const localeOptions: Array<{ code: Locale; label: string; native: string }> = [
   { code: 'en', label: 'English', native: 'English' },
@@ -73,7 +74,7 @@ const translations: Record<Locale, Messages> = {
   },
 }
 
-for (const option of localeOptions) Object.assign(translations[option.code], featureTranslations[option.code], billingTranslations[option.code], accountTranslations[option.code], secondaryTranslations[option.code], adminTranslations[option.code])
+for (const option of localeOptions) Object.assign(translations[option.code], featureTranslations[option.code], billingTranslations[option.code], accountTranslations[option.code], secondaryTranslations[option.code], adminTranslations[option.code], subscriptionTranslations[option.code])
 
 function storedLocale(): Locale {
   const stored = window.localStorage.getItem('sslping.locale') as Locale | null

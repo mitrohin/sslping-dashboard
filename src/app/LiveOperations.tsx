@@ -38,6 +38,7 @@ import {
 } from '../features/operations'
 import { useAuth } from './AuthProvider'
 import { isDemoSession } from './DashboardGate'
+import { toSubscribedIncidentViewModel } from '../features/subscriptions/adapters'
 import {
   toIncidentViewModel,
   toMaintenanceWindowViewModel,
@@ -122,10 +123,11 @@ interface IncidentData {
 
 function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceId?: string }) {
   const load = useCallback(async (activeWorkspaceId: string): Promise<IncidentData> => {
-    const [monitorPage, incidentPage, memberList] = await Promise.all([
+    const [monitorPage, incidentPage, memberList, subscriptionIncidentList] = await Promise.all([
       api.listMonitors(activeWorkspaceId, { limit: 100 }),
       api.listIncidents(activeWorkspaceId, { limit: 100 }),
       api.listMembers(activeWorkspaceId),
+      api.listMonitorSubscriptionIncidents(activeWorkspaceId),
     ])
     const rawMonitors = monitorPage.items ?? []
     const memberships = memberList.items ?? []
@@ -165,14 +167,14 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
       members: memberships.map((membership) => toTeamMemberViewModel(membership)),
       comments: Object.fromEntries(commentsByIncident),
 		reports: Object.fromEntries(reportsByIncident),
-      incidents: (incidentPage.items ?? []).map((incident) => {
+      incidents: [...(incidentPage.items ?? []).map((incident) => {
         const membership = incident.assigned_to ? memberById.get(incident.assigned_to) : undefined
         return toIncidentViewModel(incident, {
           monitor: monitorById.get(incident.monitor_id),
           assignee: membership?.user,
           commentCount: commentsByIncident.get(incident.id)?.length,
         })
-      }),
+      }), ...(subscriptionIncidentList.items ?? []).map((incident) => toSubscribedIncidentViewModel(incident))],
     }
   }, [api])
   const { state, retry } = useRemoteData(workspaceId, load)
@@ -504,7 +506,7 @@ function editorUpdateRequest(value: StatusPageEditorValue): StatusPageUpdateRequ
         enable_details_page: value.features.enableDetailsPage,
         show_monitor_url: value.features.showMonitorUrl,
         hide_paused_monitors: value.features.hidePausedMonitors,
-        enable_subscribe: false,
+        enable_subscribe: value.features.enableSubscribe,
         show_latest_downtime: value.features.showLatestDowntime,
         small_cookie_dialog: value.features.smallCookieDialog,
         share_analytics: value.features.shareAnalytics,

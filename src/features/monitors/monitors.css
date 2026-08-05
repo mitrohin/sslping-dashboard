@@ -39,7 +39,9 @@
 .monitor-row:hover { background: rgb(255 255 255 / 1.5%); }
 .monitor-row--selected { background: rgb(59 43 224 / 8%); }
 .monitor-row--selected:hover { background: rgb(59 43 224 / 11%); }
+.monitor-row--subscription { box-shadow: inset 3px 0 0 rgb(88 166 255 / 55%); }
 .monitor-row__lead { display: flex; align-items: center; gap: 10px; }
+.monitor-checkbox--spacer { display: inline-block; flex: 0 0 auto; visibility: hidden; }
 .monitor-row__status { display: grid; place-items: center; width: 28px; height: 28px; }
 .monitor-row__identity { min-width: 0; display: grid; gap: 6px; }
 .monitor-row__identity > a { overflow: hidden; color: #f2f5f9; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }

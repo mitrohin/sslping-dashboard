@@ -607,6 +607,11 @@ input[type="date"], input[type="datetime-local"], input[type="time"] { color-sch
 .auth-demo-link:hover { border-color: var(--green); color: var(--green); }
 .auth-legal { margin: 35px 0 0; color: var(--muted-2); font-size: 11px; }
 .auth-mobile-brand { display: none; }
+.follow-monitor-summary { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); background: var(--panel-strong); font-size: 13px; line-height: 1.5; }
+.follow-monitor-spinner { animation: follow-monitor-spin .9s linear infinite; }
+.follow-monitor-language { margin-top: 24px; }
+.follow-monitor-language .language-select { width: 100%; }
+@keyframes follow-monitor-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1280px) {
   .app-shell { padding-left: 92px; }

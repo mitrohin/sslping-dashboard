@@ -42,7 +42,7 @@ export type StatusPageEditorTab = 'monitors' | 'appearance' | 'global' | 'announ
 // first production release. Keep the inactive controls visible so the roadmap
 // is clear without letting a customer verify a domain that cannot be served.
 const customStatusDomainsAvailable = true
-const statusSubscriptionsAvailable = false
+const statusSubscriptionsAvailable = true
 
 export interface StatusPageEditorPageProps {
   page?: StatusPageViewModel
@@ -455,7 +455,7 @@ export function StatusPageEditorPage({
                   <SettingsToggle checked={value.features.showOverallPercentage} onChange={(next) => updateFeature('showOverallPercentage', next)} title="Show overall percentage" description="Show 24-hour, 7-day and 30-day availability." />
                   <SettingsToggle checked={value.features.hidePausedMonitors} onChange={(next) => updateFeature('hidePausedMonitors', next)} title="Hide paused monitors" description="Do not display paused components." />
                   <SettingsToggle checked={value.features.showLatestDowntime} onChange={(next) => updateFeature('showLatestDowntime', next)} title="Show outage updates and latest downtime" description="Group recent outages in the announcement feed." />
-                  <SettingsToggle checked={statusSubscriptionsAvailable && value.features.enableSubscribe} onChange={(next) => updateFeature('enableSubscribe', next)} title="Enable subscribe feature" description="Available soon after subscriber abuse protection is enabled." disabled={!statusSubscriptionsAvailable} />
+                  <SettingsToggle checked={statusSubscriptionsAvailable && value.features.enableSubscribe} onChange={(next) => updateFeature('enableSubscribe', next)} title="Allow monitor followers" description="Let visitors add individual public monitors to their SSLPing account." disabled={!statusSubscriptionsAvailable} />
                 </div>
               </EditorSection>
 

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiClient } from '../../api/client'
-import type { CheckResult, HistoryQuery, Monitor, User, Workspace } from '../../api/types'
+import type { CheckResult, HistoryQuery, Monitor, MonitorSubscription, User, Workspace } from '../../api/types'
 import type { AuthContextValue } from '../../app/AuthProvider'
 
 const authMocks = vi.hoisted(() => ({
@@ -84,6 +84,36 @@ function checkResult(id: string, latencyMs: number, startedAt = new Date().toISO
   }
 }
 
+function followedMonitor(): MonitorSubscription {
+  return {
+    subscription_id: 'subscription-1',
+    page_name: 'Vendor status',
+    read_only: true,
+    monitor: {
+      id: 'shared-monitor-1',
+      name: 'Vendor API',
+      type: 'http',
+      status: 'up',
+      target: 'https://vendor.example.com/health',
+      interval_seconds: 60,
+      timeout_seconds: 10,
+      regions: ['eu-west'],
+      last_check_at: now,
+      paused: false,
+    },
+    stats: {
+      from: now, to: now, availability: 100, average_latency_ms: 120, p50_latency_ms: 100,
+      p95_latency_ms: 180, p99_latency_ms: 200, checks: 24, failures: 0, incidents: 0,
+      downtime_seconds: 0, mtbf_seconds: 86_400,
+    },
+    history: [],
+    latest: { monitor_id: 'shared-monitor-1', checked_at: now, latency_ms: 120 },
+    events: ['monitor.down', 'monitor.up'],
+    email_enabled: true,
+    integration_ids: [],
+  }
+}
+
 function fakeApi() {
   let stored = baseMonitor()
   const api = {
@@ -91,6 +121,7 @@ function fakeApi() {
     listMonitors: vi.fn(async () => ({ items: [stored] })),
     getMetricsSummary: vi.fn().mockResolvedValue({ from: now, to: now, items: [] }),
     listIncidents: vi.fn().mockResolvedValue({ items: [] }),
+    listMonitorSubscriptions: vi.fn().mockResolvedValue({ items: [] }),
     listMonitorChecks: vi.fn().mockResolvedValue({ items: [] }),
     getWorkspaceEntitlements: vi.fn().mockResolvedValue({
       plan_code: 'business',
@@ -112,6 +143,7 @@ function fakeApi() {
     }),
     testMonitor: vi.fn().mockResolvedValue(undefined),
     deleteMonitor: vi.fn().mockResolvedValue(undefined),
+    deleteMonitorSubscription: vi.fn().mockResolvedValue(undefined),
     updateMonitor: vi.fn(async (_workspaceId: string, _monitorId: string, request: Record<string, unknown>) => {
       stored = { ...stored, ...request, tags: request.tags as string[] ?? stored.tags }
       return stored
@@ -192,6 +224,24 @@ describe('monitor check-history pagination', () => {
 })
 
 describe('LiveMonitorsPage controls', () => {
+  it('loads followed monitors in one extra list request and unsubscribes by subscription id', async () => {
+    const api = fakeApi()
+    api.listMonitorSubscriptions.mockResolvedValue({ items: [followedMonitor()] })
+    mockAuth(api)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+
+    expect(await screen.findByText('Vendor API')).toBeInTheDocument()
+    expect(api.listMonitorSubscriptions).toHaveBeenCalledTimes(1)
+    expect(api.listMonitorSubscriptions).toHaveBeenCalledWith(workspace.id)
+    expect(screen.queryByRole('checkbox', { name: 'Select Vendor API' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Vendor API' }))
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Actions for Vendor API' })).getByRole('menuitem', { name: 'Stop following' }))
+
+    await waitFor(() => expect(api.deleteMonitorSubscription).toHaveBeenCalledWith(workspace.id, 'subscription-1'))
+  })
+
   it('renders the new-workspace empty state when list endpoints return null items', async () => {
     const api = fakeApi()
     api.listMonitors.mockResolvedValue({ items: null as never })

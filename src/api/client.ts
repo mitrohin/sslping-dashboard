@@ -693,6 +693,70 @@ export class ApiClient {
 		})
 	}
 
+  previewMonitorSubscription(token: string): Promise<Api.MonitorSubscriptionPreview> {
+    return this.#request('/v1/public/monitor-subscription-requests/preview', {
+      method: 'POST',
+      body: { token },
+      auth: false,
+    })
+  }
+
+  requestMonitorSubscription(token: string, email: string, turnstileToken?: string): Promise<Api.MonitorSubscriptionRequestAccepted> {
+    return this.#request('/v1/public/monitor-subscription-requests', {
+      method: 'POST',
+      body: { token, email, turnstile_token: turnstileToken },
+      auth: false,
+    })
+  }
+
+  acceptMonitorSubscription(tenantId: Api.UUID, token: string): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions`, {
+      method: 'POST',
+      body: { token },
+    })
+  }
+
+  listMonitorSubscriptions(tenantId: Api.UUID): Promise<Api.ItemList<Api.MonitorSubscription>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions`)
+  }
+
+  getMonitorSubscription(tenantId: Api.UUID, subscriptionId: Api.UUID): Promise<Api.MonitorSubscriptionDetail> {
+    return this.#request(
+      `/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions/${encodePath(subscriptionId)}/detail`,
+    )
+  }
+
+  listMonitorSubscriptionIncidents(tenantId: Api.UUID): Promise<Api.ItemList<Api.MonitorSubscriptionIncident>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscription-incidents`)
+  }
+
+  updateMonitorSubscriptionNotifications(
+    tenantId: Api.UUID,
+    subscriptionId: Api.UUID,
+    input: Api.MonitorSubscriptionNotificationsRequest,
+  ): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions/${encodePath(subscriptionId)}/notifications`, {
+      method: 'PUT',
+      body: input,
+    })
+  }
+
+  deleteMonitorSubscription(tenantId: Api.UUID, subscriptionId: Api.UUID): Promise<void> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions/${encodePath(subscriptionId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async registerMonitorSubscriber(input: Api.MonitorSubscriberRegisterRequest): Promise<Api.MonitorSubscriberRegistrationResponse> {
+    const response = await this.#request<Api.MonitorSubscriberRegistrationResponse>('/v1/public/monitor-subscription-requests/register', {
+      method: 'POST',
+      body: input,
+      auth: false,
+    })
+    this.session.setTokens(response.tokens)
+    return response
+  }
+
   subscribeStatusPage(slug: string, email: string): Promise<Api.SubscriptionAcceptedResponse> {
     return this.#request(`/v1/public/status-pages/${encodePath(slug)}/subscribers`, {
       method: 'POST',

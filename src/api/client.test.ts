@@ -196,6 +196,72 @@ describe('ApiClient', () => {
     })
   })
 
+  it('uses the monitor-subscription onboarding contract and persists registration tokens', async () => {
+    const store = new SessionStore(localStorage)
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ kind: 'capability', page_name: 'Status', monitor_name: 'API', monitor_status: 'up' }))
+      .mockResolvedValueOnce(jsonResponse({ message: 'accepted' }, 202))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ user: {}, tenant: {}, tokens: newTokens, subscription_pending: true }, 201))
+    const client = new ApiClient({ baseUrl: '/api', sessionStore: store, fetch: fetchMock })
+
+    await client.previewMonitorSubscription('preview-token')
+    await client.requestMonitorSubscription('capability-token', 'user@example.com', 'captcha-token')
+    await client.acceptMonitorSubscription('workspace/1', 'activation-token')
+    const registration = await client.registerMonitorSubscriber({
+      token: 'email-token',
+      name: 'Alex',
+      password: 'SecurePassword1',
+      locale: 'en',
+      timezone: 'Europe/Moscow',
+    })
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/public/monitor-subscription-requests/preview',
+      '/api/v1/public/monitor-subscription-requests',
+      '/api/v1/tenants/workspace%2F1/monitor-subscriptions',
+      '/api/v1/public/monitor-subscription-requests/register',
+    ])
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'preview-token' }) })
+    expect(authorization(fetchMock.mock.calls[0]?.[1])).toBeNull()
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'capability-token', email: 'user@example.com', turnstile_token: 'captcha-token' }) })
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'activation-token' }) })
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'email-token', name: 'Alex', password: 'SecurePassword1', locale: 'en', timezone: 'Europe/Moscow' }) })
+    expect(store.getTokens()).toEqual(newTokens)
+    expect(registration.subscription_pending).toBe(true)
+  })
+
+  it('uses the read-only monitor subscription dashboard contract', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ item: {}, periods: [], history: [], incidents: [] }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ events: ['monitor.down'], email_enabled: true, integration_ids: [] }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })
+
+    await client.listMonitorSubscriptions('workspace/1')
+    await client.getMonitorSubscription('workspace/1', 'subscription/1')
+    await client.listMonitorSubscriptionIncidents('workspace/1')
+    await client.updateMonitorSubscriptionNotifications('workspace/1', 'subscription/1', {
+      events: ['monitor.down'], email_enabled: true, integration_ids: [],
+    })
+    await client.deleteMonitorSubscription('workspace/1', 'subscription/1')
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/tenants/workspace%2F1/monitor-subscriptions',
+      '/api/v1/tenants/workspace%2F1/monitor-subscriptions/subscription%2F1/detail',
+      '/api/v1/tenants/workspace%2F1/monitor-subscription-incidents',
+      '/api/v1/tenants/workspace%2F1/monitor-subscriptions/subscription%2F1/notifications',
+      '/api/v1/tenants/workspace%2F1/monitor-subscriptions/subscription%2F1',
+    ])
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ events: ['monitor.down'], email_enabled: true, integration_ids: [] }),
+    })
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: 'DELETE' })
+  })
+
   it('uses the check-location administration contract and omits a blank rotation key', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse({ items: [] }))
     const client = new ApiClient({ baseUrl: '/api', fetch: fetchMock })

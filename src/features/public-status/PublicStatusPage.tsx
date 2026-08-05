@@ -525,7 +525,7 @@ function ProblemReportPanel({ component, copy, locale, pageSlug, onReport }: { c
   )
 }
 
-function ComponentRow({ component, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, pageSlug, generatedAt, onReport }: { component: PublicStatusComponent; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; pageSlug: string; generatedAt: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
+function ComponentRow({ component, followEnabled, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, pageSlug, generatedAt, onReport }: { component: PublicStatusComponent; followEnabled: boolean; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; pageSlug: string; generatedAt: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
   const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
   return (
     <article className="ps-component-row">
@@ -534,6 +534,7 @@ function ComponentRow({ component, showBars, showPercentage, showResponseTime, s
       {showBars && <div className="ps-uptime-bars" aria-label={`${copy.uptime24h}: ${formatUptime(component.uptime_24h, 3, locale)}`}>{bars.map((status, index) => <span key={index} className={`is-${status}`} />)}</div>}
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
       <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
+	  {followEnabled && component.follow_url && <a className="ps-component-follow" href={component.follow_url} aria-label={`${copy.followMonitor ?? 'Follow'}: ${component.name}`}><Bell size={14} /> {copy.followMonitor ?? 'Follow'}</a>}
 	  {showResponseTime && <div className="ps-component-details"><div className="ps-component-details__heading"><div><strong>{copy.activityAndResponse}</strong><span>{copy.last24Hours}</span></div></div><CombinedActivityChart responsePoints={component.response_time ?? []} reportPoints={component.report_activity ?? []} copy={copy} locale={locale} generatedAt={generatedAt} /></div>}
 	  {onReport && <ProblemReportPanel component={component} copy={copy} locale={locale} pageSlug={pageSlug} onReport={onReport} />}
     </article>
@@ -742,7 +743,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
         <section className="ps-section">
           <div className="ps-section-heading"><div><p className="ps-kicker">{copy.liveMonitoring}</p><h2>{copy.services}</h2></div><span>{visibleComponents.length} {copy.components}</span></div>
           <div className="ps-components-card">
-			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} pageSlug={slug} generatedAt={snapshot.generated_at} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
+			{visibleComponents.length > 0 ? visibleComponents.map((component) => <ComponentRow key={component.id || component.name} component={component} followEnabled={snapshot.page.monitor_follow_enabled} showBars={settings.show_bar_charts} showPercentage={settings.show_uptime_percentage} showResponseTime={settings.show_response_time} showOutageDetails={settings.show_outage_details} copy={copy} locale={locale} pageSlug={slug} generatedAt={snapshot.generated_at} onReport={customDomain ? undefined : (reasonKey, token) => reportProblem(component.id ?? '', reasonKey, token)} />) : <div className="ps-empty"><Clock3 size={27} /><h3>{copy.noComponents}</h3><p>{copy.noComponentsBody}</p></div>}
           </div>
         </section>
 

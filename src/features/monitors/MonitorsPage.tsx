@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import {
   Activity,
+  Bell,
   BellRing,
   CircleCheck,
   Clock3,
@@ -22,6 +23,7 @@ import {
   ShieldCheck,
   Tags,
   Trash2,
+  Unlink,
   X,
 } from 'lucide-react'
 import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
@@ -46,6 +48,7 @@ export interface MonitorsPageProps {
   onTogglePause?: (monitor: MonitorViewModel, pause: boolean) => Promise<void>
   onTest?: (monitor: MonitorViewModel) => Promise<void>
   onDelete?: (monitor: MonitorViewModel) => Promise<void>
+  onUnsubscribe?: (monitor: MonitorViewModel) => Promise<void>
   onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void>
   onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void>
   manualTestEnabled?: boolean
@@ -64,6 +67,7 @@ export function MonitorsPage({
   onTogglePause,
   onTest,
   onDelete,
+  onUnsubscribe,
   onBulkAction,
   onBulkTags,
   manualTestEnabled = true,
@@ -71,6 +75,7 @@ export function MonitorsPage({
   const { locale, t } = useI18n()
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
+  const ownedMonitors = useMemo(() => monitors.filter((monitor) => monitor.access !== 'subscription'), [monitors])
   const availableTags = useMemo(() => [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(), [monitors])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MonitorStatus>('all')
@@ -150,10 +155,10 @@ export function MonitorsPage({
     }
   }, [monitors])
 
-  const visibleIds = useMemo(() => filtered.map((monitor) => monitor.id), [filtered])
+  const visibleIds = useMemo(() => filtered.filter((monitor) => monitor.access !== 'subscription').map((monitor) => monitor.id), [filtered])
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
-  const selectedMonitors = useMemo(() => monitors.filter((monitor) => selectedIds.has(monitor.id)), [monitors, selectedIds])
+  const selectedMonitors = useMemo(() => monitors.filter((monitor) => monitor.access !== 'subscription' && selectedIds.has(monitor.id)), [monitors, selectedIds])
   const selectedCanTest = selectedMonitors.length > 0 && selectedMonitors.every((monitor) => monitor.type === 'leakcheck' || manualTestEnabled)
   const selectedTagUnion = useMemo(() => [...new Set(selectedMonitors.flatMap((monitor) => monitor.tags))].sort(), [selectedMonitors])
   const bulkTagCandidates = bulkTagMode === 'remove' ? selectedTagUnion : availableTags
@@ -163,7 +168,7 @@ export function MonitorsPage({
 
   useEffect(() => {
     setSelectedIds((current) => {
-      const available = new Set(monitors.map((monitor) => monitor.id))
+      const available = new Set(monitors.filter((monitor) => monitor.access !== 'subscription').map((monitor) => monitor.id))
       const next = new Set([...current].filter((id) => available.has(id)))
       return next.size === current.size ? current : next
     })
@@ -284,6 +289,25 @@ export function MonitorsPage({
     }
   }
 
+  const unsubscribeMonitor = async (monitor: MonitorViewModel) => {
+    setOpenActionId(null)
+    if (!window.confirm(t('subscriptions.confirmUnsubscribe', { name: monitor.name }))) return
+    setBusyActionId(monitor.id)
+    setActionFeedback(null)
+    try {
+      if (onUnsubscribe) await onUnsubscribe(monitor)
+      else setDemoMonitorState((current) => current.filter((item) => item.id !== monitor.id))
+      setActionFeedback({ tone: 'success', message: t('subscriptions.unsubscribed', { name: monitor.name }) })
+    } catch (actionError) {
+      setActionFeedback({
+        tone: 'danger',
+        message: actionError instanceof Error ? actionError.message : t('subscriptions.unsubscribeFailed'),
+      })
+    } finally {
+      setBusyActionId(null)
+    }
+  }
+
   const runBulkAction = async (action: MonitorRowAction) => {
     if (!selectedMonitors.length) return
     if (action === 'delete' && !window.confirm(t('monitors.confirmBulkDelete', { count: selectedMonitors.length }))) return
@@ -348,23 +372,30 @@ export function MonitorsPage({
   const renderRows = (rows: MonitorViewModel[]) => rows.map((monitor) => {
     const leakFound = monitor.leakFound ?? monitor.leakReport?.found
     const complianceSummary = monitor.complianceSummary ?? monitor.complianceReport?.summary
+    const subscribed = monitor.access === 'subscription'
+    const detailPath = subscribed && monitor.subscriptionId
+      ? `/monitors/followed/${monitor.subscriptionId}`
+      : `/monitors/${monitor.id}`
     return (
-    <article className={`monitor-row ${selectedIds.has(monitor.id) ? 'monitor-row--selected' : ''}`} key={monitor.id}>
+    <article className={`monitor-row ${selectedIds.has(monitor.id) ? 'monitor-row--selected' : ''} ${subscribed ? 'monitor-row--subscription' : ''}`} key={`${monitor.access ?? 'owner'}:${monitor.subscriptionId ?? monitor.id}`}>
       <div className="monitor-row__lead">
-        <input
-          className="monitor-checkbox"
-          type="checkbox"
-          checked={selectedIds.has(monitor.id)}
-          onChange={() => toggleMonitorSelection(monitor.id)}
-          aria-label={t('monitors.select', { name: monitor.name })}
-        />
-        <Link to={`/monitors/${monitor.id}`} className="monitor-row__status" aria-label={t('monitors.open', { name: monitor.name })}><StatusDot status={monitor.type === 'compliance' && !monitor.lastCheckedAt ? 'checking' : monitor.status} /></Link>
+        {subscribed
+          ? <span className="monitor-checkbox monitor-checkbox--spacer" aria-hidden="true" />
+          : <input
+              className="monitor-checkbox"
+              type="checkbox"
+              checked={selectedIds.has(monitor.id)}
+              onChange={() => toggleMonitorSelection(monitor.id)}
+              aria-label={t('monitors.select', { name: monitor.name })}
+            />}
+        <Link to={detailPath} className="monitor-row__status" aria-label={t('monitors.open', { name: monitor.name })}><StatusDot status={monitor.type === 'compliance' && !monitor.lastCheckedAt ? 'checking' : monitor.status} /></Link>
       </div>
       <div className="monitor-row__identity">
-        <Link to={`/monitors/${monitor.id}`}>{monitor.name}</Link>
-        <div><Badge>{monitor.typeLabel}</Badge><span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : locale === 'en' ? monitor.status : t(`status.${monitor.status}`)}</span></div>
+        <Link to={detailPath}>{monitor.name}</Link>
+        <div><Badge>{monitor.typeLabel}</Badge>{subscribed && <Badge tone="info">{t('subscriptions.readOnly')}</Badge>}<span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : locale === 'en' ? monitor.status : t(`status.${monitor.status}`)}</span></div>
       </div>
       <div className="monitor-row__meta">
+        {subscribed && monitor.subscriptionPageName && <Badge>{monitor.subscriptionPageName}</Badge>}
         {monitor.tags.slice(0, 2).map((tag) => <Badge key={tag}>{tag}</Badge>)}
         {monitor.sslCertificate?.state === 'warning' && <Badge tone="warning">{t('monitors.sslExpires', { days: monitor.sslCertificate.daysRemaining ?? 0 })}</Badge>}
         {monitor.domainRegistration?.state === 'warning' && <Badge tone="warning">{t('monitors.domainExpires')}</Badge>}
@@ -403,14 +434,20 @@ export function MonitorsPage({
         ><MoreHorizontal size={19} /></IconButton>
         {openActionId === monitor.id && (
           <div className="monitor-action-menu" role="menu" aria-label={t('monitors.actionsFor', { name: monitor.name })}>
-            <Link role="menuitem" to={`/monitors/${monitor.id}`} onClick={() => { setOpenActionId(null); onView?.(monitor) }}><Eye size={16} /> {t('common.view')}</Link>
-            <Link role="menuitem" to={`/monitors/${monitor.id}/edit`} onClick={() => { setOpenActionId(null); onEdit?.(monitor) }}><Pencil size={16} /> {t('common.edit')}</Link>
-            <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, monitor.status === 'paused' ? 'resume' : 'pause')}>
-              {monitor.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
-              {monitor.status === 'paused' ? t('monitors.action.resume') : t('monitors.action.pause')}
-            </button>
-            {(manualTestEnabled || monitor.type === 'leakcheck') && <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}>{monitor.type === 'leakcheck' ? <ShieldAlert size={16} /> : monitor.type === 'compliance' ? <Scale size={16} /> : <BellRing size={16} />} {monitor.type === 'leakcheck' ? t('monitorDetail.scanLeaks') : monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitors.action.test')}</button>}
-            <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'delete')}><Trash2 size={16} /> {t('common.delete')}</button>
+            {subscribed ? <>
+              <Link role="menuitem" to={detailPath} onClick={() => setOpenActionId(null)}><Eye size={16} /> {t('common.view')}</Link>
+              <Link role="menuitem" to={`${detailPath}#notifications`} onClick={() => setOpenActionId(null)}><Bell size={16} /> {t('subscriptions.notifications')}</Link>
+              <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void unsubscribeMonitor(monitor)}><Unlink size={16} /> {t('subscriptions.unsubscribe')}</button>
+            </> : <>
+              <Link role="menuitem" to={detailPath} onClick={() => { setOpenActionId(null); onView?.(monitor) }}><Eye size={16} /> {t('common.view')}</Link>
+              <Link role="menuitem" to={`/monitors/${monitor.id}/edit`} onClick={() => { setOpenActionId(null); onEdit?.(monitor) }}><Pencil size={16} /> {t('common.edit')}</Link>
+              <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, monitor.status === 'paused' ? 'resume' : 'pause')}>
+                {monitor.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
+                {monitor.status === 'paused' ? t('monitors.action.resume') : t('monitors.action.pause')}
+              </button>
+              {(manualTestEnabled || monitor.type === 'leakcheck') && <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}>{monitor.type === 'leakcheck' ? <ShieldAlert size={16} /> : monitor.type === 'compliance' ? <Scale size={16} /> : <BellRing size={16} />} {monitor.type === 'leakcheck' ? t('monitorDetail.scanLeaks') : monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitors.action.test')}</button>}
+              <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'delete')}><Trash2 size={16} /> {t('common.delete')}</button>
+            </>}
           </div>
         )}
       </div>
@@ -483,7 +520,7 @@ export function MonitorsPage({
             <h2>{t('monitors.currentStatus')}<span className="title-dot">.</span></h2>
             <div className={`status-summary__visual status-summary__visual--${summary.down ? 'down' : summary.degraded ? 'degraded' : summary.up ? 'up' : 'idle'}`}><span>{summary.down ? '!' : summary.degraded ? '~' : summary.up ? '✓' : '–'}</span></div>
             <div className="status-summary__counts"><div><strong className="danger-text">{summary.down}</strong><span>{t('status.down')}</span></div><div><strong>{summary.up}</strong><span>{t('status.up')}</span></div><div><strong>{summary.paused}</strong><span>{t('status.paused')}</span></div></div>
-            <p>{t('monitors.usage', { used: monitors.length, total: 100 })}</p>
+            <p>{t('monitors.usage', { used: ownedMonitors.length, total: 100 })}</p>
             {(summary.leaks.total > 0 || summary.compliance.total > 0) && <div className="status-summary__secondary">
               {summary.leaks.total > 0 && <div className="status-summary__secondary-row">
                 <span className="status-summary__secondary-type" title={t('monitors.leakStatus')} aria-hidden="true"><ShieldAlert size={16} /></span>

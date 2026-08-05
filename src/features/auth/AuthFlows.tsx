@@ -18,6 +18,7 @@ type LocationState = {
   verificationToken?: unknown
   inviteToken?: unknown
   resetToken?: unknown
+  monitorSubscriptionToken?: unknown
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,7 +66,7 @@ export function sensitiveTokenFromLocation(search: string, hash: string): string
   return fragmentSearchParams(hash)?.get('token')?.trim() || null
 }
 
-function useConsumedSensitiveToken(stateKey: 'verificationToken' | 'inviteToken' | 'resetToken'): string | null {
+export function useConsumedSensitiveToken(stateKey: 'verificationToken' | 'inviteToken' | 'resetToken' | 'monitorSubscriptionToken'): string | null {
   const location = useLocation()
   const navigate = useNavigate()
   const state = isRecord(location.state) ? location.state : undefined
@@ -249,7 +250,7 @@ export function ForgotPasswordController() {
   return <AuthPage mode="forgot" busy={busy} error={error} success={success} onSubmit={submit} />
 }
 
-function validPassword(value: string): boolean {
+export function validPassword(value: string): boolean {
   return value.length >= 12 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /[0-9]/.test(value)
 }
 
@@ -382,7 +383,7 @@ export function AcceptInvitationController() {
   )
 }
 
-function SecureAuthFrame({
+export function SecureAuthFrame({
   icon,
   title,
   description,
@@ -477,7 +478,7 @@ export function TwoFactorController() {
           {!busy && <ArrowRight size={18} aria-hidden="true" />}
         </Button>
       </form>
-      <p className="auth-switch"><Link to="/login">{t('auth.backSignIn')}</Link></p>
+      <p className="auth-switch"><Link to="/login" state={{ from: forwardedFrom(location.state) }}>{t('auth.backSignIn')}</Link></p>
     </SecureAuthFrame>
   )
 }

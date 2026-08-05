@@ -43,7 +43,11 @@ export function AuthPage(props: AuthPageProps) {
   const { locale, setLocale, t } = useI18n()
   const location = useLocation()
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => {
+    if (typeof location.state !== 'object' || location.state === null || Array.isArray(location.state)) return ''
+    const suggestedEmail = (location.state as Record<string, unknown>).email
+    return typeof suggestedEmail === 'string' ? suggestedEmail.trim() : ''
+  })
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [workspaceName, setWorkspaceName] = useState('')

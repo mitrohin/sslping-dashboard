@@ -19,7 +19,9 @@ import { useI18n } from './I18nProvider'
 const LiveMonitorsPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorsPage })))
 const LiveMonitorDetailPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorDetailPage })))
 const LiveMonitorEditPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorEditPage })))
+const SubscribedMonitorDetailPage = lazy(() => import('../features/subscriptions/SubscribedMonitorDetailPage'))
 const PublicStatusPageRoute = lazy(() => import('../features/public-status/PublicStatusPage').then((module) => ({ default: module.PublicStatusPageRoute })))
+const FollowMonitorPage = lazy(() => import('../features/subscriptions/FollowMonitorPage'))
 const LiveIncidentsPage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveIncidentsPage })))
 const LiveMaintenancePage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveMaintenancePage })))
 const LiveStatusPagesPage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveStatusPagesPage })))
@@ -67,6 +69,7 @@ function RootRoute() {
 
 const workspaceChildren = [
   { path: 'monitors', element: <RouteSuspense><LiveMonitorsPage /></RouteSuspense> },
+  { path: 'monitors/followed/:subscriptionId', element: <RouteSuspense><SubscribedMonitorDetailPage /></RouteSuspense> },
   { path: 'monitors/:monitorId', element: <RouteSuspense><LiveMonitorDetailPage /></RouteSuspense> },
   { path: 'monitors/:monitorId/edit', element: <RouteSuspense><LiveMonitorEditPage /></RouteSuspense> },
   { path: 'incidents', element: <RouteSuspense><LiveIncidentsPage /></RouteSuspense> },
@@ -98,6 +101,7 @@ export const router = createBrowserRouter([
   { path: '/verify-email', element: <EmailVerificationController /> },
   { path: '/reset-password', element: <ResetPasswordController /> },
   { path: '/accept-invite', element: <AcceptInvitationController /> },
+  { path: '/follow-monitor', element: <RouteSuspense><FollowMonitorPage /></RouteSuspense> },
   { path: '/status/:slug', element: <LegacyPublicStatusRoute /> },
   { path: '/:slug', element: <PublicStatusRoute /> },
   {

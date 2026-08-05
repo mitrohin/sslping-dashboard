@@ -391,6 +391,7 @@ export function IncidentsPage({
   }
 
   const openCount = incidents.filter((incident) => incident.status !== 'resolved').length
+  const showPrivateColumns = incidents.some((incident) => incident.access !== 'subscription')
   const filtersActive = query.trim() !== '' || tag !== 'all' || status !== 'all' || sort !== 'newest'
 
   const resetFilters = () => {
@@ -453,11 +454,11 @@ export function IncidentsPage({
                 <th>{t('common.status')}</th>
                 <th>{t('incidents.monitor')}</th>
                 <th>{t('incidents.rootCause')}</th>
-                <th>{t('incidents.comments')}</th>
+                {showPrivateColumns && <th>{t('incidents.comments')}</th>}
                 <th>{t('incidents.started')}</th>
                 <th>{t('incidents.resolved')}</th>
                 <th>{t('incidents.duration')}</th>
-                <th>{t('incidents.assignee')}</th>
+                {showPrivateColumns && <th>{t('incidents.assignee')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -466,13 +467,13 @@ export function IncidentsPage({
                   <td><Badge tone={incidentTone(incident.status)}>{formatStatus(incident.status)}</Badge></td>
                   <td><button className="ops-link-button" type="button" onClick={() => setSelectedId(incident.id)}>{incident.monitorName}</button></td>
                   <td><span className="ops-root-cause"><Badge tone="danger">{incident.rootCauseCode}</Badge>{incident.rootCause}</span></td>
-                  <td><span className="ops-inline-meta"><MessageSquareText size={15} />{incident.commentCount}</span></td>
+                  {showPrivateColumns && <td>{incident.access === 'subscription' ? '—' : <span className="ops-inline-meta"><MessageSquareText size={15} />{incident.commentCount}</span>}</td>}
                   <td>{formatDate(incident.startedAt, { includeSeconds: true })}</td>
                   <td>{incident.resolvedAt ? formatDate(incident.resolvedAt, { includeSeconds: true }) : '—'}</td>
                   <td>{formatDuration(incident.durationSeconds)}</td>
-                  <td>{incident.status !== 'resolved' && (assignments[incident.id] || incident.assignedTo) ? (
+                  {showPrivateColumns && <td>{incident.access !== 'subscription' && incident.status !== 'resolved' && (assignments[incident.id] || incident.assignedTo) ? (
                     <span className="ops-assignee-badge"><UserRoundCheck size={15} />{memberById.get(assignments[incident.id])?.name ?? incident.assignedTo}</span>
-                  ) : '—'}</td>
+                  ) : '—'}</td>}
                 </tr>
               ))}
             </tbody>
@@ -485,10 +486,10 @@ export function IncidentsPage({
               <span className="ops-card-row"><Badge tone={incidentTone(incident.status)}>{formatStatus(incident.status)}</Badge><span>{formatDuration(incident.durationSeconds)}</span></span>
               <strong>{incident.monitorName}</strong>
               <span>{incident.rootCause}</span>
-              {incident.status !== 'resolved' && (assignments[incident.id] || incident.assignedTo) && (
+              {incident.access !== 'subscription' && incident.status !== 'resolved' && (assignments[incident.id] || incident.assignedTo) && (
                 <span className="ops-card-assignee"><UserRoundCheck size={15} />{memberById.get(assignments[incident.id])?.name ?? incident.assignedTo}</span>
               )}
-              <span className="ops-card-row ops-card-row--muted"><span>{formatDate(incident.startedAt)}</span><span>{t('incidents.commentCount', { count: incident.commentCount })}</span></span>
+              <span className="ops-card-row ops-card-row--muted"><span>{formatDate(incident.startedAt)}</span>{incident.access !== 'subscription' && <span>{t('incidents.commentCount', { count: incident.commentCount })}</span>}</span>
             </button>
           ))}
         </div>
@@ -517,6 +518,19 @@ export function IncidentsPage({
               <div><span>{t('incidents.started')}</span><strong>{formatDate(selected.startedAt, { includeSeconds: true })}</strong></div>
               <div><span>{t('incidents.duration')}</span><strong>{formatDuration(selected.durationSeconds)}</strong></div>
             </div>
+
+            {selected.access === 'subscription' ? (
+              <>
+                <div className="ops-notice ops-notice--compact" role="note">
+                  <ShieldCheck size={20} aria-hidden="true" />
+                  <div><strong>{t('subscriptions.readOnlyIncident')}</strong><span>{t('subscriptions.readOnlyIncidentHint')}</span></div>
+                </div>
+                <div className="ops-detail-summary ops-detail-summary--subscription">
+                  <div><span>{t('incidents.monitor')}</span><strong>{selected.monitorName}</strong></div>
+                  <div><span>{t('incidents.resolved')}</span><strong>{selected.resolvedAt ? formatDate(selected.resolvedAt, { includeSeconds: true }) : '—'}</strong></div>
+                </div>
+              </>
+            ) : <>
 
             <div className="ops-action-row">
               <label className="ops-assign-control">
@@ -639,6 +653,7 @@ export function IncidentsPage({
                 <MessageSquareText size={17} /> {t('incidents.addComment')}
               </Button>
             </form>
+            </>}
           </div>
         )}
       </Modal>

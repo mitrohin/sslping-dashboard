@@ -216,6 +216,33 @@ describe('MonitorsPage monitor creation', () => {
 })
 
 describe('MonitorsPage row actions', () => {
+  it('keeps followed monitors read-only and offers only view, notification, and unsubscribe actions', async () => {
+    const followed: MonitorViewModel = {
+      ...demoMonitors[0],
+      id: 'shared-monitor-1',
+      name: 'Shared checkout',
+      access: 'subscription',
+      subscriptionId: 'subscription-1',
+      subscriptionPageName: 'Acme status',
+    }
+    const onUnsubscribe = vi.fn().mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage({ data: [followed], onUnsubscribe })
+
+    expect(screen.queryByRole('checkbox', { name: 'Select Shared checkout' })).not.toBeInTheDocument()
+    expect(screen.getByText('Following · read only')).toBeInTheDocument()
+    expect(screen.getByText('Acme status')).toBeInTheDocument()
+    const menu = actionsFor(followed.name)
+    expect(within(menu).getByRole('menuitem', { name: 'View' })).toHaveAttribute('href', '/monitors/followed/subscription-1')
+    expect(within(menu).getByRole('menuitem', { name: 'Notification settings' })).toHaveAttribute('href', '/monitors/followed/subscription-1#notifications')
+    expect(within(menu).queryByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: /pause|test now|delete/i })).not.toBeInTheDocument()
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Stop following' }))
+    await waitFor(() => expect(onUnsubscribe).toHaveBeenCalledWith(followed))
+    expect(window.confirm).toHaveBeenCalledWith('Stop following “Shared checkout”? You will no longer receive its incidents or notifications.')
+  })
+
   it('hides row and bulk manual-test actions when disabled by the plan', () => {
     const monitor = demoMonitors[0]
     renderPage({ data: [monitor], manualTestEnabled: false })
