@@ -3,6 +3,7 @@ import type {
   APIKey,
   AuditLog,
   CheckResult,
+  CheckResultHour,
   Incident,
   Integration,
   MaintenanceWindow,
@@ -216,6 +217,47 @@ describe('toMonitorViewModel', () => {
       now,
     })
     expect(confirmedFailure.last24Hours.at(-1)?.status).toBe('down')
+  })
+
+  it('builds the 24-hour bars from bounded server aggregates', () => {
+    const history: CheckResultHour[] = [
+      { monitor_id: monitor.id, at: '2026-07-25T11:00:00.000Z', region: 'eu', status: 'failed', latency_sum_ms: 300, samples: 3 },
+      { monitor_id: monitor.id, at: '2026-07-25T11:00:00.000Z', region: 'us', status: 'failed', latency_sum_ms: 100, samples: 1 },
+    ]
+    const result = toMonitorViewModel(
+      { ...monitor, regions: ['eu', 'us'] },
+      { checks: [checks[0]], history, now },
+    )
+
+    expect(result.last24Hours).toHaveLength(23)
+    expect(result.last24Hours.at(-1)).toMatchObject({
+      startedAt: '2026-07-25T11:00:00.000Z',
+      status: 'down',
+      responseTimeMs: 100,
+    })
+  })
+
+  it('adapts the compact latest summary without a full check payload', () => {
+    const result = toMonitorViewModel(monitor, {
+      latest: {
+        monitor_id: monitor.id,
+        checked_at: '2026-07-25T11:59:50.000Z',
+        latency_ms: 321,
+        incident_id: 'incident-compact',
+        certificate_expires_at: '2026-07-26T12:00:00.000Z',
+        certificate_issuer: 'Compact CA',
+        domain_expires_at: '2027-07-25T12:00:00.000Z',
+        domain_registrar: 'Compact Registrar',
+      },
+      now,
+    })
+
+    expect(result).toMatchObject({
+      responseTimeMs: 321,
+      incidentId: 'incident-compact',
+      sslCertificate: { issuer: 'Compact CA', state: 'warning' },
+      domainRegistration: { issuer: 'Compact Registrar', state: 'ok' },
+    })
   })
 
   it('adds the current-hour bar only after a check is recorded', () => {

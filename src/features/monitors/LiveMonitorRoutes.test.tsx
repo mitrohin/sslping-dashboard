@@ -214,6 +214,7 @@ describe('LiveMonitorsPage controls', () => {
 
     render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
     expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    expect(api.listMonitorChecks).not.toHaveBeenCalled()
 
     fireEvent.click(within(openMenu()).getByRole('menuitem', { name: /pause/i }))
     await waitFor(() => expect(api.pauseMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))

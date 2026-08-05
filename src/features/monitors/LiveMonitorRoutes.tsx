@@ -158,21 +158,7 @@ export function LiveMonitorsPage() {
       setRawMonitors(monitors)
       const metricItems = summary.items ?? []
       const incidents = incidentsPage.items ?? []
-      const checkResults = await Promise.allSettled(monitors.map(async (monitor) => {
-        const checks: CheckResult[] = []
-        let cursor: string | undefined
-        do {
-          const page = await api.listMonitorChecks(workspace.id, monitor.id, {
-            ...(monitor.type === 'leakcheck' || monitor.type === 'compliance' ? {} : { from, to: now.toISOString() }),
-            limit: monitor.type === 'leakcheck' || monitor.type === 'compliance' ? 1 : 250,
-            cursor,
-          })
-          checks.push(...(page.items ?? []))
-          cursor = page.next_cursor
-        } while (cursor)
-        return checks
-      }))
-      const metrics = new Map(metricItems.map((item) => [item.monitor_id, item.stats] as const))
+      const metrics = new Map(metricItems.map((item) => [item.monitor_id, item] as const))
       const activeIncidents = new Map(
         incidents
           .filter((incident) => incident.status !== 'resolved')
@@ -185,17 +171,17 @@ export function LiveMonitorsPage() {
           latestIncidents.set(incident.monitor_id, incident)
         }
       })
-      setData(monitors.map((monitor, index) =>
-        toMonitorViewModel(monitor, {
-          checks: checkResults[index].status === 'fulfilled'
-            ? checkResults[index].value
-            : [],
-          stats: metrics.get(monitor.id),
+      setData(monitors.map((monitor) => {
+        const metric = metrics.get(monitor.id)
+        return toMonitorViewModel(monitor, {
+          history: metric?.history ?? [],
+          latest: metric?.latest,
+          stats: metric?.stats,
           activeIncident: activeIncidents.get(monitor.id),
           latestIncident: latestIncidents.get(monitor.id),
           now,
-        }),
-      ))
+        })
+      }))
     } catch (loadError) {
       setError(monitorErrorMessage(loadError, 'The monitoring service did not respond.'))
     } finally {

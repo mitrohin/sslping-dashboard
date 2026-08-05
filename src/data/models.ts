@@ -58,9 +58,11 @@ export interface MonitorViewModel {
   sslCertificate?: ExpirySnapshot
   domainRegistration?: ExpirySnapshot
   leakReport?: import('../api/types').LeakCheckReport
+  leakFound?: number
   leakReportCached?: boolean
   leakCacheExpiresAt?: string
   complianceReport?: import('../api/types').ComplianceReport
+  complianceSummary?: { score: number; failed: number; warnings: number }
 }
 
 export interface MonitorSummary {

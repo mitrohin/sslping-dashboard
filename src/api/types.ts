@@ -591,11 +591,37 @@ export interface UptimeStats {
   mtbf_seconds: number
 }
 
+export interface CheckResultHour {
+  monitor_id?: UUID
+  at: ISODateTime
+  region: string
+  status: CheckStatus
+  latency_sum_ms: number
+  samples: number
+}
+
+export interface MonitorLatestSummary {
+  monitor_id: UUID
+  checked_at: ISODateTime
+  latency_ms: number
+  incident_id?: UUID
+  certificate_expires_at?: ISODateTime
+  certificate_issuer?: string
+  domain_expires_at?: ISODateTime
+  domain_registrar?: string
+  leak_found?: number
+  compliance_score?: number
+  compliance_failed?: number
+  compliance_warnings?: number
+}
+
 export interface MetricsSummaryItem {
   monitor_id: UUID
   name: string
   status: MonitorStatus
   stats: UptimeStats
+  history: CheckResultHour[]
+  latest?: MonitorLatestSummary
 }
 
 export interface MetricsSummary {

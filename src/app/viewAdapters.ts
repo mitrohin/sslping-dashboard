@@ -2,6 +2,7 @@ import type {
   APIKey,
   AuditLog,
   CheckResult,
+  CheckResultHour,
   Incident,
   Integration,
   JsonObject,
@@ -9,6 +10,7 @@ import type {
   MaintenanceWindow,
   Membership,
   Monitor,
+  MonitorLatestSummary,
   StatusPage,
   StatusPageDetail,
   User,
@@ -221,7 +223,12 @@ function uptimeBarStatus(status: unknown): UptimeBarStatus {
   }
 }
 
-function toUptimeBars(monitor: Pick<Monitor, 'id' | 'type' | 'regions'>, checks: readonly CheckResult[], referenceTime: number): readonly UptimeBar[] {
+function toUptimeBars(
+  monitor: Pick<Monitor, 'id' | 'type' | 'regions'>,
+  checks: readonly CheckResult[],
+  referenceTime: number,
+  history: readonly CheckResultHour[] = [],
+): readonly UptimeBar[] {
   const currentHour = new Date(referenceTime)
   currentHour.setUTCMinutes(0, 0, 0)
   const hourMs = 60 * 60 * 1000
@@ -230,22 +237,50 @@ function toUptimeBars(monitor: Pick<Monitor, 'id' | 'type' | 'regions'>, checks:
     id: `${monitor.id}-hour-${index}`,
     startedAt: new Date(firstHour + index * hourMs).toISOString(),
     latestByRegion: new Map<string, { status: UptimeBarStatus; timestamp: number }>(),
-    responseTimes: [] as number[],
+    responseTimeSum: 0,
+    responseTimeSamples: 0,
   }))
 
-  for (const check of checks) {
-    if (check.monitor_id && check.monitor_id !== monitor.id) continue
-    const timestamp = toTimestamp(check.finished_at) ?? toTimestamp(check.started_at)
-    if (timestamp === null) continue
+  const recordObservation = (
+    timestamp: number,
+    region: string,
+    status: UptimeBarStatus,
+    latencySum: number,
+    samples: number,
+  ) => {
     const bucketIndex = Math.floor((timestamp - firstHour) / hourMs)
-    if (bucketIndex < 0 || bucketIndex >= buckets.length) continue
-    const region = check.region || 'local'
+    if (bucketIndex < 0 || bucketIndex >= buckets.length) return
     const current = buckets[bucketIndex].latestByRegion.get(region)
     if (!current || timestamp >= current.timestamp) {
-      buckets[bucketIndex].latestByRegion.set(region, { status: uptimeBarStatus(check.status), timestamp })
+      buckets[bucketIndex].latestByRegion.set(region, { status, timestamp })
     }
-    const responseTime = optionalNonNegativeNumber(check.latency_ms)
-    if (responseTime !== undefined) buckets[bucketIndex].responseTimes.push(responseTime)
+    if (Number.isFinite(latencySum) && samples > 0) {
+      buckets[bucketIndex].responseTimeSum += Math.max(0, latencySum)
+      buckets[bucketIndex].responseTimeSamples += samples
+    }
+  }
+
+  if (history.length > 0) {
+    for (const hour of history) {
+      if (hour.monitor_id && hour.monitor_id !== monitor.id) continue
+      const timestamp = toTimestamp(hour.at)
+      if (timestamp === null) continue
+      recordObservation(timestamp, hour.region || 'local', uptimeBarStatus(hour.status), hour.latency_sum_ms, hour.samples)
+    }
+  } else {
+    for (const check of checks) {
+      if (check.monitor_id && check.monitor_id !== monitor.id) continue
+      const timestamp = toTimestamp(check.finished_at) ?? toTimestamp(check.started_at)
+      if (timestamp === null) continue
+      const responseTime = optionalNonNegativeNumber(check.latency_ms)
+      recordObservation(
+        timestamp,
+        check.region || 'local',
+        uptimeBarStatus(check.status),
+        responseTime ?? 0,
+        responseTime === undefined ? 0 : 1,
+      )
+    }
   }
 
   const requiresLocationConsensus = ['http', 'keyword', 'tcp', 'udp', 'tls', 'dns', 'domain', 'reachability'].includes(monitor.type)
@@ -264,8 +299,8 @@ function toUptimeBars(monitor: Pick<Monitor, 'id' | 'type' | 'regions'>, checks:
       id: bucket.id,
       startedAt: bucket.startedAt,
       status,
-      responseTimeMs: bucket.responseTimes.length > 0
-        ? bucket.responseTimes.reduce((total, value) => total + value, 0) / bucket.responseTimes.length
+      responseTimeMs: bucket.responseTimeSamples > 0
+        ? bucket.responseTimeSum / bucket.responseTimeSamples
         : undefined,
     }
   })
@@ -343,8 +378,22 @@ function expirySnapshot(
   }
 }
 
+function latestExpirySnapshot(expiresAt: string | undefined, issuer: string | undefined, referenceTime: number): ExpirySnapshot | undefined {
+  const expiresTimestamp = toTimestamp(expiresAt)
+  if (!expiresAt || expiresTimestamp === null) return undefined
+  const daysRemaining = Math.ceil((expiresTimestamp - referenceTime) / DAY_MS)
+  return {
+    expiresAt,
+    daysRemaining,
+    state: expiresTimestamp <= referenceTime ? 'expired' : daysRemaining <= 30 ? 'warning' : 'ok',
+    issuer,
+  }
+}
+
 export interface MonitorAdapterOptions {
   checks?: readonly CheckResult[]
+  history?: readonly CheckResultHour[]
+  latest?: MonitorLatestSummary
   stats?: UptimeStats
   activeIncident?: Pick<Incident, 'id'>
   latestIncident?: Pick<Incident, 'started_at' | 'resolved_at'>
@@ -358,6 +407,7 @@ export function toMonitorViewModel(
   const type = normaliseMonitorType(monitor.type)
   const checks = options.checks ?? []
   const lastCheck = latestCheck(monitor.id, checks)
+  const latest = options.latest
   const referenceTime = nowTimestamp(options.now)
   const httpConfig = monitor.config?.http
   const isSecureHttp = /^https:\/\//i.test(httpConfig?.url ?? '')
@@ -386,28 +436,41 @@ export function toMonitorViewModel(
     intervalSeconds: nonNegativeNumber(monitor.interval_seconds),
     timeoutSeconds: nonNegativeNumber(monitor.timeout_seconds),
     slowThresholdMs: optionalNonNegativeNumber(monitor.slow_threshold_ms),
-    lastCheckedAt: monitor.last_check_at ?? lastCheck?.finished_at ?? lastCheck?.started_at,
+    lastCheckedAt: monitor.last_check_at ?? latest?.checked_at ?? lastCheck?.finished_at ?? lastCheck?.started_at,
     statusChangedAt: monitor.last_status_change_at,
-    responseTimeMs: optionalNonNegativeNumber(lastCheck?.latency_ms),
+    responseTimeMs: optionalNonNegativeNumber(latest?.latency_ms ?? lastCheck?.latency_ms),
     uptime24h: evidenceOnly ? undefined : clampPercentage(options.stats?.availability),
     incidentCount24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.incidents),
     downtimeSeconds24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.downtime_seconds),
     mtbfSeconds24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.mtbf_seconds),
-    last24Hours: toUptimeBars(monitor, checks, referenceTime),
+    last24Hours: toUptimeBars(monitor, checks, referenceTime, options.history),
     regions: Array.isArray(monitor.regions) ? [...monitor.regions] : [],
-    incidentId: options.activeIncident?.id ?? lastCheck?.incident_id,
+    incidentId: options.activeIncident?.id ?? latest?.incident_id ?? lastCheck?.incident_id,
     lastIncidentAt: options.latestIncident?.resolved_at ?? options.latestIncident?.started_at,
     hasOpenIncident: Boolean(options.activeIncident),
-    sslCertificate:
-      tracksCertificateExpiry
-        ? expirySnapshot(lastCheck, 'certificate', referenceTime)
-        : undefined,
+    sslCertificate: tracksCertificateExpiry
+      ? latestExpirySnapshot(latest?.certificate_expires_at, latest?.certificate_issuer, referenceTime)
+        ?? expirySnapshot(lastCheck, 'certificate', referenceTime)
+      : undefined,
     domainRegistration:
-      tracksDomainExpiry ? expirySnapshot(lastCheck, 'domain', referenceTime) : undefined,
+      tracksDomainExpiry
+        ? latestExpirySnapshot(latest?.domain_expires_at, latest?.domain_registrar, referenceTime)
+          ?? expirySnapshot(lastCheck, 'domain', referenceTime)
+        : undefined,
     leakReport,
+    leakFound: latest?.leak_found ?? leakReport?.found,
     leakReportCached: leakEnvelope?.cached === true,
     leakCacheExpiresAt: recordString(leakEnvelope, 'cache_expires_at'),
     complianceReport,
+    complianceSummary: latest && (
+      latest.compliance_score !== undefined
+      || latest.compliance_failed !== undefined
+      || latest.compliance_warnings !== undefined
+    ) ? {
+        score: latest.compliance_score ?? 0,
+        failed: latest.compliance_failed ?? 0,
+        warnings: latest.compliance_warnings ?? 0,
+      } : complianceReport?.summary,
   }
 }
 

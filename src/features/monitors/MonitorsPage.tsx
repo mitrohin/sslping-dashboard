@@ -345,7 +345,10 @@ export function MonitorsPage({
     }
   }
 
-  const renderRows = (rows: MonitorViewModel[]) => rows.map((monitor) => (
+  const renderRows = (rows: MonitorViewModel[]) => rows.map((monitor) => {
+    const leakFound = monitor.leakFound ?? monitor.leakReport?.found
+    const complianceSummary = monitor.complianceSummary ?? monitor.complianceReport?.summary
+    return (
     <article className={`monitor-row ${selectedIds.has(monitor.id) ? 'monitor-row--selected' : ''}`} key={monitor.id}>
       <div className="monitor-row__lead">
         <input
@@ -355,11 +358,11 @@ export function MonitorsPage({
           onChange={() => toggleMonitorSelection(monitor.id)}
           aria-label={t('monitors.select', { name: monitor.name })}
         />
-        <Link to={`/monitors/${monitor.id}`} className="monitor-row__status" aria-label={t('monitors.open', { name: monitor.name })}><StatusDot status={monitor.type === 'compliance' && !monitor.complianceReport && !monitor.lastCheckedAt ? 'checking' : monitor.status} /></Link>
+        <Link to={`/monitors/${monitor.id}`} className="monitor-row__status" aria-label={t('monitors.open', { name: monitor.name })}><StatusDot status={monitor.type === 'compliance' && !monitor.lastCheckedAt ? 'checking' : monitor.status} /></Link>
       </div>
       <div className="monitor-row__identity">
         <Link to={`/monitors/${monitor.id}`}>{monitor.name}</Link>
-        <div><Badge>{monitor.typeLabel}</Badge><span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.complianceReport && !monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : locale === 'en' ? monitor.status : t(`status.${monitor.status}`)}</span></div>
+        <div><Badge>{monitor.typeLabel}</Badge><span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : locale === 'en' ? monitor.status : t(`status.${monitor.status}`)}</span></div>
       </div>
       <div className="monitor-row__meta">
         {monitor.tags.slice(0, 2).map((tag) => <Badge key={tag}>{tag}</Badge>)}
@@ -372,18 +375,18 @@ export function MonitorsPage({
       <div className="monitor-row__uptime">
         {monitor.type === 'leakcheck' ? (
           <div
-            className={`monitor-row__leak-result ${monitor.leakReport?.found ? 'is-exposed' : 'is-clear'}`}
-            aria-label={monitor.leakReport ? (monitor.leakReport.found ? t('monitorDetail.exposedRecords', { count: monitor.leakReport.found }) : t('monitorDetail.noLeaksFound')) : t('monitorDetail.noLeakReport')}
+            className={`monitor-row__leak-result ${leakFound ? 'is-exposed' : 'is-clear'}`}
+            aria-label={leakFound !== undefined ? (leakFound ? t('monitorDetail.exposedRecords', { count: leakFound }) : t('monitorDetail.noLeaksFound')) : t('monitorDetail.noLeakReport')}
           >
             <ShieldAlert size={16} />
             <small>{monitor.lastCheckedAt ? formatRelativeTime(monitor.lastCheckedAt) : '—'}</small>
           </div>
         ) : monitor.type === 'compliance' ? (
           <div
-            className={`monitor-row__compliance-result ${!monitor.complianceReport && !monitor.lastCheckedAt ? 'is-pending' : (monitor.complianceReport?.summary.failed ?? 0) + (monitor.complianceReport?.summary.warnings ?? 0) > 0 ? 'has-issues' : 'is-clear'}`}
-            aria-label={monitor.complianceReport ? t('monitorDetail.complianceResult', { score: monitor.complianceReport.summary.score, failed: monitor.complianceReport.summary.failed, warnings: monitor.complianceReport.summary.warnings }) : t('monitorDetail.noComplianceReport')}
+            className={`monitor-row__compliance-result ${!monitor.lastCheckedAt ? 'is-pending' : (complianceSummary?.failed ?? 0) + (complianceSummary?.warnings ?? 0) > 0 ? 'has-issues' : 'is-clear'}`}
+            aria-label={complianceSummary ? t('monitorDetail.complianceResult', { score: complianceSummary.score, failed: complianceSummary.failed, warnings: complianceSummary.warnings }) : t('monitorDetail.noComplianceReport')}
           >
-            {!monitor.complianceReport && !monitor.lastCheckedAt ? <LoaderCircle className="compliance-scan-spinner" size={16} /> : <Scale size={16} />}
+            {!monitor.lastCheckedAt ? <LoaderCircle className="compliance-scan-spinner" size={16} /> : <Scale size={16} />}
             <small>{monitor.lastCheckedAt ? formatRelativeTime(monitor.lastCheckedAt) : '—'}</small>
           </div>
         ) : (
@@ -412,7 +415,8 @@ export function MonitorsPage({
         )}
       </div>
     </article>
-  ))
+    )
+  })
 
   const grouped = useMemo(() => {
     if (!showGroups) return [] as Array<[string, MonitorViewModel[]]>
