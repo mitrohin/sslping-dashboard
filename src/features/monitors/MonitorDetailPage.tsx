@@ -99,22 +99,90 @@ export interface ResponseTimeChartRow {
   [regionId: string]: number | undefined
 }
 
-export function buildResponseTimeChartData(seriesList: readonly ResponseTimeSeries[]): ResponseTimeChartRow[] {
+const RESPONSE_TIME_DISPLAY_PREFIX = '__display__:'
+
+export function responseTimeDisplayKey(regionId: string): string {
+  return `${RESPONSE_TIME_DISPLAY_PREFIX}${regionId}`
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
+/**
+ * Hampel-style visual filter for a single high sample surrounded by normal
+ * samples. Sustained or adjacent spikes are left untouched so a real latency
+ * event remains visible.
+ */
+export function smoothIsolatedResponseTimeSpikes(values: readonly number[]): number[] {
+  if (values.length < 3) return [...values]
+
+  return values.map((current, index) => {
+    if (index === 0 || index === values.length - 1) return current
+
+    const start = Math.max(0, index - 2)
+    const end = Math.min(values.length, index + 3)
+    const neighbours = values.slice(start, end).filter((_, offset) => start + offset !== index)
+    const baseline = median(neighbours)
+    const medianDeviation = median(neighbours.map((value) => Math.abs(value - baseline)))
+    const threshold = Math.max(100, baseline, medianDeviation * 6)
+    const previous = values[index - 1]
+    const next = values[index + 1]
+    const isolated = current > baseline + threshold
+      && previous <= baseline + threshold
+      && next <= baseline + threshold
+
+    return isolated ? baseline : current
+  })
+}
+
+export function buildResponseTimeChartData(
+  seriesList: readonly ResponseTimeSeries[],
+  options: { smoothIsolatedSpikes?: boolean } = {},
+): ResponseTimeChartRow[] {
   const rows = new Map<number, ResponseTimeChartRow>()
   for (const series of seriesList) {
-    for (const point of series.points) {
-      const timestamp = Date.parse(point.timestamp)
-      if (!Number.isFinite(timestamp)) continue
+    const samples = series.points
+      .map((point) => ({ timestamp: Date.parse(point.timestamp), value: point.valueMs }))
+      .filter((point) => Number.isFinite(point.timestamp))
+      .sort((left, right) => left.timestamp - right.timestamp)
+    const displayValues = options.smoothIsolatedSpikes
+      ? smoothIsolatedResponseTimeSpikes(samples.map((point) => point.value))
+      : undefined
+
+    samples.forEach((sample, index) => {
+      const { timestamp } = sample
       const row = rows.get(timestamp) ?? { timestamp }
-      row[series.regionId] = point.valueMs
+      row[series.regionId] = sample.value
+      if (displayValues) row[responseTimeDisplayKey(series.regionId)] = displayValues[index]
       rows.set(timestamp, row)
-    }
+    })
   }
   return [...rows.values()].sort((left, right) => left.timestamp - right.timestamp)
 }
 
-function formatResponseTimeTick(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+export function formatResponseTimeTick(timestamp: number, range: string, locale = 'en') {
+  const date = new Date(timestamp)
+  if (range === '7d') {
+    return new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric' }).format(date)
+  }
+  return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date)
+}
+
+function formatResponseTimeTooltipLabel(timestamp: number, range: string, locale: string) {
+  const date = new Date(timestamp)
+  if (range === '7d') {
+    return new Intl.DateTimeFormat(locale, {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    }).format(date)
+  }
+  return new Intl.DateTimeFormat(locale, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(date)
 }
 
 export function MonitorDetailPage({
@@ -140,7 +208,7 @@ export function MonitorDetailPage({
   onExportLogs,
   manualTestEnabled = true,
 }: MonitorDetailPageProps = {}) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { monitorId } = useParams()
   const navigate = useNavigate()
   const fallbackMonitor = demoMonitors.find((item) => item.id === monitorId) ?? demoMonitors[0]
@@ -208,7 +276,11 @@ export function MonitorDetailPage({
     () => responseTime.filter((series) => selectedRegions.includes(series.regionId)),
     [responseTime, selectedRegions],
   )
-  const chartData = useMemo(() => buildResponseTimeChartData(activeResponseTime), [activeResponseTime])
+  const smoothChartSpikes = range === '1h' || range === '24h'
+  const chartData = useMemo(
+    () => buildResponseTimeChartData(activeResponseTime, { smoothIsolatedSpikes: smoothChartSpikes }),
+    [activeResponseTime, smoothChartSpikes],
+  )
   const uptimeValues = monitor.last24Hours.map((bar) =>
     bar.status === 'up' ? 100 : bar.status === 'down' ? 0 : 97,
   )
@@ -359,10 +431,21 @@ export function MonitorDetailPage({
               {chartData.length ? <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 15, right: 18, left: 0, bottom: 5 }}>
                   <CartesianGrid stroke="#2b374a" vertical={false} />
-                  <XAxis dataKey="timestamp" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(timestamp) => formatResponseTimeTick(Number(timestamp))} stroke="#6f829e" tickLine={false} axisLine={false} minTickGap={45} fontSize={11} />
+                  <XAxis dataKey="timestamp" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(timestamp) => formatResponseTimeTick(Number(timestamp), range, locale)} stroke="#6f829e" tickLine={false} axisLine={false} minTickGap={range === '7d' ? 28 : 45} fontSize={11} />
                   <YAxis stroke="#6f829e" tickLine={false} axisLine={false} width={52} fontSize={11} tickFormatter={(value) => `${value}ms`} />
-                  <Tooltip labelFormatter={(timestamp) => formatResponseTimeTick(Number(timestamp))} contentStyle={{ background: '#101925', border: '1px solid #354158', borderRadius: 10 }} />
-                  {activeResponseTime.map((series) => <Line key={series.regionId} dataKey={series.regionId} name={series.regionLabel} type="monotone" stroke={series.color} dot={false} strokeWidth={2} connectNulls />)}
+                  <Tooltip
+                    labelFormatter={(timestamp) => formatResponseTimeTooltipLabel(Number(timestamp), range, locale)}
+                    formatter={(value, name, item) => {
+                      const dataKey = String(item.dataKey ?? '')
+                      const rawKey = dataKey.startsWith(RESPONSE_TIME_DISPLAY_PREFIX)
+                        ? dataKey.slice(RESPONSE_TIME_DISPLAY_PREFIX.length)
+                        : dataKey
+                      const rawValue = (item.payload as ResponseTimeChartRow | undefined)?.[rawKey]
+                      return [`${Math.round(Number(rawValue ?? value))} ms`, name]
+                    }}
+                    contentStyle={{ background: '#101925', border: '1px solid #354158', borderRadius: 10 }}
+                  />
+                  {activeResponseTime.map((series) => <Line key={series.regionId} dataKey={smoothChartSpikes ? responseTimeDisplayKey(series.regionId) : series.regionId} name={series.regionLabel} type="monotone" stroke={series.color} dot={false} strokeWidth={2} connectNulls />)}
                 </LineChart>
               </ResponsiveContainer> : <div className="latest-incidents__empty"><span>{t('monitorDetail.noResponseSamples')}</span></div>}
             </div>

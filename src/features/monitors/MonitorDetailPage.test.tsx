@@ -2,7 +2,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { demoMonitors } from '../../data'
-import { MonitorDetailPage, buildResponseTimeChartData } from './MonitorDetailPage'
+import {
+  MonitorDetailPage,
+  buildResponseTimeChartData,
+  formatResponseTimeTick,
+  responseTimeDisplayKey,
+  smoothIsolatedResponseTimeSpikes,
+} from './MonitorDetailPage'
 
 afterEach(() => {
   cleanup()
@@ -34,6 +40,39 @@ describe('response-time chart data', () => {
       { timestamp: Date.parse('2026-07-29T09:01:00Z'), us: 200 },
       { timestamp: Date.parse('2026-07-29T09:02:00Z'), eu: 110, us: 220 },
     ])
+  })
+
+  it('uses calendar dates for the seven-day axis instead of repeating the bucket time', () => {
+    const first = formatResponseTimeTick(Date.UTC(2026, 7, 3, 0), '7d', 'en-US')
+    const second = formatResponseTimeTick(Date.UTC(2026, 7, 4, 0), '7d', 'en-US')
+
+    expect(first).toMatch(/Mon.*Aug.*3/)
+    expect(second).toMatch(/Tue.*Aug.*4/)
+    expect(first).not.toBe(second)
+    expect(formatResponseTimeTick(Date.UTC(2026, 7, 4, 9, 30), '24h', 'en-US')).toMatch(/\d{1,2}:30/)
+  })
+
+  it('suppresses only isolated visual spikes while keeping sustained latency visible', () => {
+    expect(smoothIsolatedResponseTimeSpikes([80, 82, 1_000, 79, 81])).toEqual([80, 82, 80.5, 79, 81])
+    expect(smoothIsolatedResponseTimeSpikes([80, 600, 650, 82])).toEqual([80, 600, 650, 82])
+  })
+
+  it('keeps the raw response value beside its smoothed display value', () => {
+    const series = [{
+      regionId: 'eu', regionLabel: 'Europe', color: '#34d77b', averageMs: 264, minimumMs: 79, maximumMs: 1_000,
+      points: [
+        { timestamp: '2026-07-29T09:00:00Z', valueMs: 80, status: 'ok' as const },
+        { timestamp: '2026-07-29T09:01:00Z', valueMs: 82, status: 'ok' as const },
+        { timestamp: '2026-07-29T09:02:00Z', valueMs: 1_000, status: 'ok' as const },
+        { timestamp: '2026-07-29T09:03:00Z', valueMs: 79, status: 'ok' as const },
+        { timestamp: '2026-07-29T09:04:00Z', valueMs: 81, status: 'ok' as const },
+      ],
+    }]
+    const data = buildResponseTimeChartData(series, { smoothIsolatedSpikes: true })
+    const spike = data.find((row) => row.timestamp === Date.parse('2026-07-29T09:02:00Z'))
+
+    expect(spike?.eu).toBe(1_000)
+    expect(spike?.[responseTimeDisplayKey('eu')]).toBe(80.5)
   })
 })
 
