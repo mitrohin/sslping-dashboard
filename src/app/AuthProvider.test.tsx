@@ -215,6 +215,59 @@ describe('AuthProvider', () => {
     expect(auth().workspace?.id).toBe(secondWorkspace.id)
     expect(api.tokens).toEqual(newTokens)
   })
+
+  it('keeps the active workspace session until a two-factor workspace switch is confirmed', async () => {
+    const store = new SessionStore(localStorage)
+    store.setTokens(oldTokens)
+    let meCalls = 0
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      if (url === '/v1/me') {
+        meCalls += 1
+        return response(identity(meCalls === 1 ? firstWorkspace.id : secondWorkspace.id))
+      }
+      if (url === '/v1/auth/login') {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          email: user.email,
+          password: 'Password1234',
+          tenant_id: secondWorkspace.id,
+        })
+        return response({
+          user,
+          two_factor_required: true,
+          challenge_token: 'workspace-challenge',
+          challenge_expires_at: '2035-01-01T00:00:00Z',
+        })
+      }
+      if (url === '/v1/auth/login/2fa') {
+        expect(JSON.parse(String(init?.body))).toEqual({ challenge_token: 'workspace-challenge', code: '654321' })
+        return response({ user, tokens: newTokens })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const api = new ApiClient({ sessionStore: store, fetch: fetchMock })
+    render(
+      <AuthProvider api={api}>
+        <CaptureAuth />
+      </AuthProvider>,
+    )
+    await waitFor(() => expect(auth().workspace?.id).toBe(firstWorkspace.id))
+
+    let outcome: LoginOutcome | undefined
+    await act(async () => {
+      outcome = await auth().changeWorkspace(secondWorkspace.id, 'Password1234')
+    })
+
+    expect(outcome?.status).toBe('two_factor_required')
+    expect(auth().authenticated).toBe(true)
+    expect(auth().workspace?.id).toBe(firstWorkspace.id)
+    expect(api.tokens).toEqual(oldTokens)
+
+    await act(async () => auth().complete2FA('654321'))
+
+    expect(auth().workspace?.id).toBe(secondWorkspace.id)
+    expect(api.tokens).toEqual(newTokens)
+  })
 })
 
 describe('auth route guards', () => {

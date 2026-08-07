@@ -1,4 +1,5 @@
 import type { MonitorStatus, StatusPageLanguage } from '../../api'
+import { extendedPublicStatusCopy, type ExtendedStatusPageLanguage } from './extended-i18n'
 
 export interface PublicStatusCopy {
   loadingStatusPage: string
@@ -117,7 +118,25 @@ const en: PublicStatusCopy = {
   },
 }
 
-const translations: Record<Exclude<StatusPageLanguage, 'en'>, PublicStatusCopy> = {
+const zhHant: PublicStatusCopy = {
+  loadingStatusPage: '正在載入狀態頁面', statusPageNotFound: '找不到狀態頁面', unableToLoadStatus: '無法載入狀態', statusPageUnavailable: '此狀態頁面無法使用。', latestStatusUnavailable: '無法取得最新狀態。', addressIncomplete: '狀態頁面網址不完整。', checkAddress: '請檢查網址，或向服務所有者索取更新的連結。', monitoringUnavailable: '監控服務沒有回應，請稍後再試。', tryAgain: '再試一次', goToSSLPing: '前往 SSLPing', poweredBy: '技術支援', millisecondsShort: '毫秒', subscriptionConfirmationSent: '如果此電郵地址可以訂閱，我們已寄出確認信。', subscriptionError: '無法完成訂閱，請再試一次。',
+  close: '關閉', currentStatus: '目前狀態', updated: '更新於', overallUptime: '整體可用率', last24Hours: '最近 24 小時', services: '服務', operational: '運作正常', activeIncidents: '進行中的事件', publishedUpdates: '已發布更新', liveMonitoring: '即時監控', components: '個元件', followMonitor: '追蹤', noComponents: '尚未發布任何元件', noComponentsBody: '服務所有者尚未在此頁面加入公開監控項目。', latestUpdates: '最新更新', incidentsAndAnnouncements: '事件與公告', noIncidents: '沒有事件回報', noIncidentsBody: '目前沒有已發布的事件或維護公告。', lastChecked: '上次檢查', waitingForFirstCheck: '等待第一次檢查', uptime24h: '24 小時可用率', averageResponseTime: '平均回應時間', averageShort: '平均', fastest: '最快', slowest: '最慢', last24HoursShort: '24 小時', highResponseTime: '回應時間過長', activityAndResponse: '使用者回報與回應時間', visitorReports: '使用者回報', baseline: '基準線', responseTime: '回應時間',
+  reportProblem: '回報問題', selectIssue: '選擇您遇到的問題', reportNotWorking: '完全無法使用', reportSlow: '可以使用，但速度很慢', reportThanks: '感謝您的回報', reportThanksBody: '您的訊號已記錄，並會計入此服務的事件觸發門檻。', reportError: '無法送出回報，請再試一次。', reportAlreadySent: '我們最近已收到來自您網路的相同回報。', reportVerifying: '正在驗證您的回報…', reportProcessing: '正在處理您的回報…', reportProcessingBody: '請稍候，問題選項暫時鎖定。', reportReceiptTitle: '感謝您—我們已收到您的訊號', reportReceiptSignal: '訊號', reportReceiptTime: '收到時間', resolved: '已解決',
+  subscribeToUpdates: '訂閱更新', stayInformed: '掌握最新資訊', emailUpdates: '透過電子郵件接收事件更新', emailUpdatesBody: '訂閱營運公告，並在我們寄出的電子郵件中確認您的地址。', subscribe: '訂閱', privacy: '隱私權', cookieSettings: 'Cookie 設定', generated: '產生於', footerLabel: '狀態頁面頁尾', privacyNotice: '隱私權聲明', privacyBody: '此狀態頁面只處理顯示服務健康狀況與防止濫用所需的資訊。', emailSubscriptions: '電子郵件訂閱', emailSubscriptionsBody: '您的電子郵件地址只用於狀態公告。必須先進行確認，每封郵件也都提供取消訂閱選項。', cookies: 'Cookie', cookiesBody: '必要儲存會記住您的隱私選擇、受保護頁面的存取行為，以及 24 小時內的問題回報收據。只有在您同意且頁面所有者已設定時，才會啟用選擇性分析。', understood: '了解', cookieConsent: 'Cookie 同意設定', privacyChoice: '您的隱私，由您選擇', privacyChoiceBody: '我們使用必要儲存來記住這項選擇。選擇性分析可幫助服務所有者了解狀態頁面的使用情況。', readPrivacyNotice: '閱讀隱私權聲明', necessaryOnly: '僅必要項目', acceptOptional: '接受選擇性項目',
+  privatePage: '私人狀態頁面', passwordPrompt: '請輸入服務所有者提供的密碼，以查看即時狀態與事件歷史。', password: '密碼', passwordPlaceholder: '狀態頁面密碼', unlocking: '正在解鎖…', viewStatusPage: '查看狀態頁面', passwordSecurity: '您的密碼會安全傳送，且不會儲存在此瀏覽器中。', protectedPage: '受保護的狀態頁面', passwordRejected: '此密碼未被接受。', incorrectPassword: '密碼不正確，請再試一次。', subscribeTitle: '訂閱狀態更新', subscriptionIntro: '服務所有者發布事件或維護更新時，我們會寄電子郵件通知您。', emailAddress: '電子郵件地址', subscriptionConsent: '我同意接收營運狀態電子郵件，並可隨時取消訂閱。', subscriptionConsentRequired: '請確認您同意接收狀態電子郵件。', subscribing: '正在訂閱…', sendConfirmation: '寄送確認信', checkInbox: '請檢查收件匣', done: '完成',
+  overall: {
+    up: { title: '所有系統運作正常', description: '所有受監控的服務都有正常回應。' },
+    down: { title: '服務中斷', description: '一個或多個服務目前無法使用。' },
+    degraded: { title: '部分系統效能下降', description: '我們正在調查效能下降的原因。' },
+    paused: { title: '部分監控已暫停', description: '一個或多個檢查已暫時停止。' },
+    pending: { title: '正在驗證狀態', description: '最新的監控結果尚未取得。' },
+  },
+}
+
+type OriginalStatusPageLanguage = Exclude<StatusPageLanguage, ExtendedStatusPageLanguage | 'en'>
+
+const translations: Record<OriginalStatusPageLanguage, PublicStatusCopy> = {
+  'zh-Hant': zhHant,
   zh: {
     loadingStatusPage: '正在加载状态页面', statusPageNotFound: '未找到状态页面', unableToLoadStatus: '无法加载状态', statusPageUnavailable: '此状态页面不可用。', latestStatusUnavailable: '无法获取最新状态。', addressIncomplete: '状态页面地址不完整。', checkAddress: '请检查地址，或向服务所有者索取新链接。', monitoringUnavailable: '监控服务未响应，请稍后重试。', tryAgain: '重试', goToSSLPing: '前往 SSLPing', poweredBy: '技术支持', millisecondsShort: '毫秒', subscriptionConfirmationSent: '如果此地址可以订阅，我们已发送确认邮件。', subscriptionError: '无法完成订阅，请重试。',
     currentStatus: '当前状态', updated: '更新于', overallUptime: '总体可用率', last24Hours: '最近 24 小时', services: '服务', operational: '运行正常', activeIncidents: '活动事件', publishedUpdates: '已发布更新', liveMonitoring: '实时监控', components: '个组件', noComponents: '尚未发布组件', noComponentsBody: '服务所有者尚未向此页面添加公开监控。', latestUpdates: '最新更新', incidentsAndAnnouncements: '事件和公告', noIncidents: '未报告事件', noIncidentsBody: '目前没有已发布的事件或维护公告。', lastChecked: '上次检查', waitingForFirstCheck: '等待首次检查', uptime24h: '24 小时可用率', resolved: '已解决', subscribeToUpdates: '订阅更新', stayInformed: '及时了解', emailUpdates: '通过电子邮件接收事件更新', emailUpdatesBody: '订阅运行公告，并在收到的邮件中确认地址。', subscribe: '订阅', privacy: '隐私', cookieSettings: 'Cookie 设置', generated: '生成于', privacyNotice: '隐私声明', cookieConsent: 'Cookie 同意', privacyChoice: '您的隐私，由您选择', necessaryOnly: '仅必要项', acceptOptional: '接受可选项', privatePage: '私有状态页面', password: '密码', unlocking: '解锁中…', viewStatusPage: '查看状态页面', protectedPage: '受保护的状态页面', subscribeTitle: '订阅状态更新', emailAddress: '电子邮件地址', subscribing: '订阅中…', sendConfirmation: '发送确认邮件', checkInbox: '请检查收件箱', done: '完成',
@@ -171,9 +190,28 @@ const translations: Record<Exclude<StatusPageLanguage, 'en'>, PublicStatusCopy> 
 }
 
 export function publicStatusCopy(language: StatusPageLanguage): PublicStatusCopy {
-  return language === 'en' ? en : translations[language]
+  if (language === 'en') return en
+  if (language in translations) return translations[language as OriginalStatusPageLanguage]
+  return extendedPublicStatusCopy[language as ExtendedStatusPageLanguage]
 }
 
-export function statusPageLocale(language: StatusPageLanguage): string {
-  return ({ en: 'en-US', zh: 'zh-CN', hi: 'hi-IN', es: 'es-ES', fr: 'fr-FR', ar: 'ar-SA', bn: 'bn-BD', pt: 'pt-BR', ru: 'ru-RU', id: 'id-ID' } as Record<StatusPageLanguage, string>)[language]
+const languageLocales: Record<StatusPageLanguage, string> = {
+  en: 'en-US', zh: 'zh-CN', 'zh-Hant': 'zh-Hant-TW', hi: 'hi-IN', es: 'es-ES', fr: 'fr-FR', ar: 'ar-SA', bn: 'bn-BD', pt: 'pt-BR', ru: 'ru-RU', id: 'id-ID',
+  de: 'de-DE', nl: 'nl-NL', cs: 'cs-CZ', da: 'da-DK', fi: 'fi-FI', el: 'el-GR', hr: 'hr-HR', hu: 'hu-HU', he: 'he-IL', it: 'it-IT', ja: 'ja-JP',
+  ms: 'ms-MY', no: 'nb-NO', fil: 'fil-PH', ur: 'ur-PK', pl: 'pl-PL', ro: 'ro-RO', sr: 'sr-RS', sv: 'sv-SE', sl: 'sl-SI', sk: 'sk-SK', tr: 'tr-TR', uk: 'uk-UA',
+}
+
+const supportedCountryCodes = new Set(['AE', 'AR', 'AT', 'AU', 'BE', 'BH', 'CA', 'CH', 'CL', 'CO', 'CZ', 'DE', 'DK', 'EC', 'ES', 'FI', 'FR', 'GB', 'GR', 'GT', 'HK', 'HR', 'HU', 'ID', 'IE', 'IL', 'IN', 'IT', 'JP', 'KE', 'MA', 'MX', 'MY', 'NG', 'NL', 'NO', 'NZ', 'PE', 'PH', 'PK', 'PL', 'PR', 'PT', 'PY', 'RO', 'RS', 'SE', 'SG', 'SI', 'SK', 'TR', 'TW', 'UA', 'UY', 'ZA'])
+
+export function statusPageCountryCode(slug: string): string {
+  const candidate = slug.split('-').at(-1)?.toUpperCase() ?? ''
+  return supportedCountryCodes.has(candidate) ? candidate : ''
+}
+
+export function statusPageLocale(language: StatusPageLanguage, countryCode = ''): string {
+  const normalizedLanguage = language === 'no' ? 'nb' : language
+  const base = language === 'no' ? 'nb-NO' : languageLocales[language]
+  const normalizedCountry = countryCode.toUpperCase()
+  if (!supportedCountryCodes.has(normalizedCountry)) return base
+  return `${normalizedLanguage}-${normalizedCountry}`
 }

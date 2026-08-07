@@ -7,6 +7,30 @@ import { StatusPagesPage } from './StatusPagesPage'
 afterEach(cleanup)
 
 describe('StatusPagesPage monitor eligibility', () => {
+  it('delegates server search and cursor page navigation for a large catalog', () => {
+    const onSearchQueryChange = vi.fn()
+    const onPreviousPage = vi.fn()
+    const onNextPage = vi.fn()
+    render(<MemoryRouter><StatusPagesPage
+      pages={[demoStatusPages[0]]}
+      pageNumber={2}
+      hasPreviousPage
+      hasNextPage
+      totalCount={15_579}
+      onSearchQueryChange={onSearchQueryChange}
+      onPreviousPage={onPreviousPage}
+      onNextPage={onNextPage}
+    /></MemoryRouter>)
+
+    expect(screen.getByText('1 of 15579 pages')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search status pages' }), { target: { value: 'accor au' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(onSearchQueryChange).toHaveBeenCalledWith('accor au')
+    expect(onPreviousPage).toHaveBeenCalledTimes(1)
+    expect(onNextPage).toHaveBeenCalledTimes(1)
+  })
+
   it('opens editable sections from the row menu', () => {
     const onEdit = vi.fn()
     render(<MemoryRouter><StatusPagesPage pages={[demoStatusPages[0]]} onEdit={onEdit} /></MemoryRouter>)

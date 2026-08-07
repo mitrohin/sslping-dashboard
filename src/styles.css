@@ -143,6 +143,35 @@ input[type="date"], input[type="datetime-local"], input[type="time"] { color-sch
 .language-select .select { min-height: 40px; padding-block: 8px; font-size: 13px; }
 .sidebar-language-select { padding: 0 3px; }
 .sidebar-language-select > svg { display: none; }
+.workspace-switcher-button {
+  min-width: 0;
+  width: 100%;
+  min-height: 51px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+  background: rgb(255 255 255 / 1.5%);
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+.workspace-switcher-button:hover { border-color: rgb(52 215 123 / 28%); background: var(--green-soft); }
+.workspace-switcher-button > svg { flex: 0 0 auto; color: var(--green); }
+.workspace-switcher-button__copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.workspace-switcher-button__copy small { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
+.workspace-switcher-button__copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-switcher-button__mark { color: var(--muted); font-size: 15px; }
+.workspace-switcher-form { display: grid; gap: 20px; }
+.workspace-switcher-form > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.workspace-switcher-form__target { display: grid; gap: 4px; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-strong); }
+.workspace-switcher-form__target span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.workspace-switcher-form__target strong { font-size: 14px; }
+.workspace-switcher-form__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 2px; }
+.workspace-switcher-button:focus-visible { outline: 3px solid rgb(88 166 255 / 36%); outline-offset: 2px; }
 .language-select--compact {
   position: relative;
   width: 51px;
@@ -167,6 +196,8 @@ input[type="date"], input[type="datetime-local"], input[type="time"] { color-sch
 .app-shell--collapsed .sidebar-language-select .select-control { position: absolute; inset: 0; width: 100%; height: 100%; }
 .app-shell--collapsed .sidebar-language-select .select { position: absolute; inset: 0; min-height: 0; padding: 0; opacity: 0; cursor: pointer; }
 .app-shell--collapsed .sidebar-language-select .select-control__chevron { display: none; }
+.app-shell--collapsed .workspace-switcher-button { width: 51px; justify-content: center; justify-self: center; padding: 0; }
+.app-shell--collapsed .workspace-switcher-button__copy, .app-shell--collapsed .workspace-switcher-button__mark { display: none; }
 .user-card { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 3px; }
 .avatar { width: 45px; height: 45px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #101927; color: #e9eef5; font-weight: 700; }
 .avatar span, .title-dot { color: var(--green); }
@@ -625,6 +656,8 @@ input[type="date"], input[type="datetime-local"], input[type="time"] { color-sch
   .sidebar .sidebar-language-select .select-control { position: absolute; inset: 0; width: 100%; height: 100%; }
   .sidebar .sidebar-language-select .select { position: absolute; inset: 0; min-height: 0; padding: 0; opacity: 0; cursor: pointer; }
   .sidebar .sidebar-language-select .select-control__chevron { display: none; }
+  .sidebar .workspace-switcher-button { width: 51px; justify-content: center; justify-self: center; padding: 0; }
+  .sidebar .workspace-switcher-button__copy, .sidebar .workspace-switcher-button__mark { display: none; }
   .sidebar .upgrade-button { width: 51px; min-height: 51px; display: grid; place-items: center; justify-self: center; padding: 0; }
   .sidebar .nav-item__unread { position: absolute; top: 4px; right: 5px; min-width: 18px; height: 18px; padding: 0 4px; font-size: 9px; }
   .sidebar .collapse-button { justify-content: center; }
@@ -656,6 +689,9 @@ input[type="date"], input[type="datetime-local"], input[type="time"] { color-sch
   .sidebar .sidebar-language-select .select-control { position: relative; inset: auto; width: 100%; height: auto; }
   .sidebar .sidebar-language-select .select { position: relative; inset: auto; min-height: 40px; padding: 8px 42px 8px 13px; opacity: 1; }
   .sidebar .sidebar-language-select .select-control__chevron { display: block; }
+  .sidebar .workspace-switcher-button { width: 100%; justify-content: flex-start; justify-self: stretch; padding: 8px 10px; }
+  .sidebar .workspace-switcher-button__copy { display: grid; }
+  .sidebar .workspace-switcher-button__mark { display: initial; }
   .sidebar .upgrade-button { width: 100%; min-height: 45px; display: block; padding: 0; }
   .sidebar .nav-item__unread { position: static; display: inline-flex; min-width: 22px; height: 22px; margin-left: auto; padding: 0 6px; font-size: 10px; }
   .sidebar .collapse-button { display: none; }

@@ -1,6 +1,9 @@
 import type { IncidentStatus } from '../../data'
 
-export type StatusPageLanguageCode = 'en' | 'zh' | 'hi' | 'es' | 'fr' | 'ar' | 'bn' | 'pt' | 'ru' | 'id'
+export type StatusPageLanguageCode =
+  | 'en' | 'zh' | 'zh-Hant' | 'hi' | 'es' | 'fr' | 'ar' | 'bn' | 'pt' | 'ru' | 'id'
+  | 'de' | 'nl' | 'cs' | 'da' | 'fi' | 'el' | 'hr' | 'hu' | 'he' | 'it' | 'ja'
+  | 'ms' | 'no' | 'fil' | 'ur' | 'pl' | 'ro' | 'sr' | 'sv' | 'sl' | 'sk' | 'tr' | 'uk'
 export type RobotsPolicy = 'index,follow' | 'noindex,nofollow' | 'noindex,follow'
 
 export interface StatusPageCreateInput {

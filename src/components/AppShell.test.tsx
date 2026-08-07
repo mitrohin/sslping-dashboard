@@ -11,19 +11,26 @@ const mocks = vi.hoisted(() => {
   const billingSubscription = vi.fn().mockResolvedValue({ id: 'sub-1', workspace_id: 'workspace-1', plan_code: 'free', billing_cycle: 'monthly', status: 'active', payment_provider: 'manual', current_period_amount_cents: 0, currency: 'USD', current_period_start: '2026-07-01T00:00:00Z', current_period_end: '2026-08-01T00:00:00Z', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' })
   const billingInvoices = vi.fn().mockResolvedValue({ items: [] })
   const listIncidents = vi.fn().mockResolvedValue({ items: [] })
+  const changeWorkspace = vi.fn().mockResolvedValue({ status: 'authenticated' })
+  const complete2FA = vi.fn().mockResolvedValue(undefined)
   return {
     logout: vi.fn().mockResolvedValue(undefined),
     supportSummary,
     adminSummary,
     listIncidents,
     billingPlans,
+    changeWorkspace,
+    complete2FA,
     auth: {
       api: { getSupportTicketSummary: supportSummary, adminGetSupportTicketSummary: adminSummary, listBillingPlans: billingPlans, getBillingSubscription: billingSubscription, listBillingInvoices: billingInvoices, listIncidents },
-    user: { id: 'user-1', name: 'Jordan Lee', system_role: 'user' },
-    workspace: { id: 'workspace-1', name: 'Production workspace', plan: 'free' },
-    authenticated: true,
-    workspaceRole: 'owner' as 'owner' | 'admin' | 'editor' | 'viewer' | 'notifier' | null,
-    impersonation: null as null | { reason: string },
+      user: { id: 'user-1', email: 'jordan@example.test', name: 'Jordan Lee', system_role: 'user' },
+      workspace: { id: 'workspace-1', name: 'Production workspace', plan: 'free' },
+      tenants: [{ id: 'workspace-1', name: 'Production workspace', plan: 'free' }],
+      authenticated: true,
+      workspaceRole: 'owner' as 'owner' | 'admin' | 'editor' | 'viewer' | 'notifier' | null,
+      impersonation: null as null | { reason: string },
+      changeWorkspace,
+      complete2FA,
     },
     demoSession: false,
   }
@@ -45,11 +52,14 @@ afterEach(() => {
   mocks.adminSummary.mockReset().mockResolvedValue({ unread_tickets: 0, unread_messages: 0 })
   mocks.listIncidents.mockReset().mockResolvedValue({ items: [] })
   mocks.billingPlans.mockReset().mockResolvedValue({ annual_discount_percent: 20, items: [{ id: 'plan-free', code: 'free', name: 'Free', description: 'Free monitoring', price_monthly_cents: 0, price_yearly_cents: 0, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 5, min_interval_seconds: 300, max_team_members: 1, max_status_pages: 1, max_integrations: 1, max_locations: 1, data_retention_days: 7, allow_manual_tests: false }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }, { id: 'plan-pro', code: 'pro', name: 'Pro', description: 'Production monitoring', price_monthly_cents: 2000, price_yearly_cents: 19200, annual_discount_percent: 20, currency: 'USD', public: true, active: true, limits: { max_monitors: 100, min_interval_seconds: 30, max_team_members: 10, max_status_pages: 10, max_integrations: 20, max_locations: 5, data_retention_days: 365, allow_manual_tests: false }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }] })
-  mocks.auth.user = { id: 'user-1', name: 'Jordan Lee', system_role: 'user' }
+  mocks.changeWorkspace.mockReset().mockResolvedValue({ status: 'authenticated' })
+  mocks.complete2FA.mockReset().mockResolvedValue(undefined)
+  mocks.auth.user = { id: 'user-1', email: 'jordan@example.test', name: 'Jordan Lee', system_role: 'user' }
   mocks.auth.authenticated = true
   mocks.auth.workspaceRole = 'owner'
   mocks.auth.impersonation = null
   mocks.auth.workspace = { id: 'workspace-1', name: 'Production workspace', plan: 'free' }
+  mocks.auth.tenants = [{ id: 'workspace-1', name: 'Production workspace', plan: 'free' }]
   mocks.demoSession = false
 })
 
@@ -70,6 +80,63 @@ function renderShell() {
 }
 
 describe('AppShell actions', () => {
+  it('offers a password-confirmed workspace switch when the account has multiple workspaces', async () => {
+    mocks.auth.tenants = [
+      mocks.auth.workspace,
+      { id: 'catalog-workspace', name: 'SSLPing Public Catalog', plan: 'public-catalog' },
+    ]
+    renderShell()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: Production workspace' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Switch workspace' })
+    expect(within(dialog).getByRole('combobox', { name: 'Workspace' })).toHaveValue('catalog-workspace')
+    const password = within(dialog).getByLabelText(/^Password/)
+    expect(password).toHaveAttribute('type', 'password')
+    expect(password).toHaveAttribute('autocomplete', 'current-password')
+    fireEvent.change(password, { target: { value: 'correct horse battery staple' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Switch workspace' }))
+
+    await waitFor(() => expect(mocks.changeWorkspace).toHaveBeenCalledWith('catalog-workspace', 'correct horse battery staple'))
+    expect(screen.queryByRole('dialog', { name: 'Switch workspace' })).not.toBeInTheDocument()
+    expect(screen.getByText('Monitor destination')).toBeInTheDocument()
+  })
+
+  it('completes a workspace switch with 2FA without discarding the current session first', async () => {
+    mocks.auth.tenants = [
+      mocks.auth.workspace,
+      { id: 'catalog-workspace', name: 'SSLPing Public Catalog', plan: 'public-catalog' },
+    ]
+    mocks.changeWorkspace.mockResolvedValue({ status: 'two_factor_required', challenge: { token: 'challenge-1' } })
+    renderShell()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: Production workspace' }))
+    const password = screen.getByLabelText(/^Password/)
+    fireEvent.change(password, { target: { value: 'correct horse battery staple' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch workspace' }))
+
+    const code = await screen.findByLabelText(/^Authentication code/)
+    expect(screen.queryByLabelText(/^Password/)).not.toBeInTheDocument()
+    expect(screen.getByText('SSLPing Public Catalog')).toBeInTheDocument()
+    expect(code).toHaveAttribute('autocomplete', 'one-time-code')
+    fireEvent.change(code, { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Verify and continue' }))
+
+    await waitFor(() => expect(mocks.complete2FA).toHaveBeenCalledWith('123456'))
+    expect(screen.queryByRole('dialog', { name: 'Switch workspace' })).not.toBeInTheDocument()
+  })
+
+  it('does not render a workspace selector for a single workspace or an impersonation session', () => {
+    const single = renderShell()
+    expect(screen.queryByRole('button', { name: /switch workspace/i })).not.toBeInTheDocument()
+
+    single.unmount()
+    mocks.auth.tenants = [mocks.auth.workspace, { id: 'catalog-workspace', name: 'SSLPing Public Catalog', plan: 'public-catalog' }]
+    mocks.auth.impersonation = { reason: 'Customer support' }
+    renderShell()
+    expect(screen.queryByRole('button', { name: /switch workspace/i })).not.toBeInTheDocument()
+  })
+
   it('marks the incidents navigation when an open incident is assigned to the current user', async () => {
     mocks.listIncidents.mockResolvedValue({ items: [{ id: 'incident-1', status: 'investigating', assigned_to: 'user-1' }] })
     renderShell()
@@ -120,6 +187,14 @@ describe('AppShell actions', () => {
     renderShell()
 
     expect(screen.getByRole('button', { name: 'Plans & billing' })).toBeInTheDocument()
+  })
+
+  it('does not offer customer billing changes inside the managed public catalog', () => {
+    mocks.auth.workspace = { ...mocks.auth.workspace, name: 'SSLPing Public Catalog', plan: 'public-catalog' }
+    mocks.auth.tenants = [mocks.auth.workspace]
+    renderShell()
+
+    expect(screen.queryByRole('button', { name: /plans & billing/i })).not.toBeInTheDocument()
   })
 
   it('shows the current paid plan name on the billing button', async () => {
@@ -186,7 +261,7 @@ describe('AppShell actions', () => {
   })
 
   it('shows administrator unread tickets only outside an impersonation session', async () => {
-    mocks.auth.user = { id: 'admin-1', name: 'Jordan Lee', system_role: 'superadmin' }
+    mocks.auth.user = { id: 'admin-1', email: 'admin@example.test', name: 'Jordan Lee', system_role: 'superadmin' }
     mocks.adminSummary.mockResolvedValue({ unread_tickets: 2, unread_messages: 4 })
     const view = renderShell()
 
@@ -200,7 +275,7 @@ describe('AppShell actions', () => {
   })
 
   it('restricts accountant navigation to billing administration', () => {
-    mocks.auth.user = { id: 'accountant-1', name: 'Accounts', system_role: 'accountant' }
+    mocks.auth.user = { id: 'accountant-1', email: 'accounts@example.test', name: 'Accounts', system_role: 'accountant' }
     mocks.auth.workspaceRole = null
     renderShell()
 

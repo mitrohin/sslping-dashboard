@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => {
     updateMaintenanceWindow: vi.fn(),
     deleteMaintenanceWindow: vi.fn(),
     listStatusPages: vi.fn(),
+    getStatusPageDashboard: vi.fn(),
     getStatusPage: vi.fn(),
     createStatusPage: vi.fn(),
     deleteStatusPage: vi.fn(),
@@ -300,9 +301,9 @@ describe('empty workspace list responses', () => {
     mocks.api.listIncidents.mockResolvedValue({ items: null })
     mocks.api.listMembers.mockResolvedValue({ items: null })
     mocks.api.listMaintenanceWindows.mockResolvedValue({ items: null })
-    mocks.api.listStatusPages.mockResolvedValue({ items: null })
+    mocks.api.getStatusPageDashboard.mockResolvedValue({ items: null })
     mocks.api.listAnnouncements.mockResolvedValue({ items: null })
-    mocks.api.getStatusPage.mockResolvedValue(statusPageDetail)
+    mocks.api.getStatusPage.mockResolvedValue({ ...statusPageDetail, components: [] })
 
     const incidentsView = renderRoute(<LiveIncidentsPage />)
     await waitFor(() => expect(mocks.incidentProps).toBeDefined())
@@ -488,7 +489,9 @@ describe('LiveMaintenancePage', () => {
 describe('LiveStatusPagesPage', () => {
   it('enriches pages and wires create, announcement, edit, and delete operations', async () => {
     mocks.api.listMonitors.mockResolvedValue({ items: [monitor] })
-    mocks.api.listStatusPages.mockResolvedValue({ items: [statusPage] })
+    mocks.api.getStatusPageDashboard.mockResolvedValue({
+      items: [{ page: statusPage, component_count: 2, announcement_count: 1, subscriber_count: 0 }],
+    })
     mocks.api.getStatusPage.mockResolvedValue(statusPageDetail)
     mocks.api.listAnnouncements.mockResolvedValue({ items: [announcement] })
     mocks.api.createStatusPage.mockResolvedValue({ ...statusPage, id: 'page-new', slug: 'new-page' })
@@ -505,6 +508,8 @@ describe('LiveStatusPagesPage', () => {
       accessLevel: 'password',
       url: 'https://status.example.com',
     })
+    expect(mocks.api.getStatusPage).not.toHaveBeenCalled()
+    expect(mocks.api.listAnnouncements).not.toHaveBeenCalled()
 
     const createInput = {
       name: 'New page',
@@ -574,6 +579,10 @@ describe('LiveStatusPageEditorPage', () => {
       branding: expect.objectContaining({ colorScheme: 'dark', removeProductLogo: true }),
       features: expect.objectContaining({ enableFloatingStatusBar: true, enableSubscribe: true }),
     })
+    expect(props.monitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: monitor.id, name: monitor.name }),
+      expect.objectContaining({ id: 'monitor-2', name: 'Secondary API' }),
+    ]))
     expect(props.announcements?.[0]).toMatchObject({ id: announcement.id, title: announcement.title })
 
     const changed = {

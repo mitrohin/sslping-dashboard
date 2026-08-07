@@ -173,6 +173,7 @@ export interface StatusPageViewModel {
   status: 'published' | 'draft'
   language: string
   languageCode?: import('../api/types').StatusPageLanguage
+  countryCode?: string
   customDomain?: string
   customDomainVerified: boolean
   announcementCount: number

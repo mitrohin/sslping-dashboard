@@ -58,6 +58,28 @@ describe('MonitorsPage selection', () => {
     expect(screen.getByRole('link', { name: staging.name })).toBeInTheDocument()
   })
 
+  it('shows cursor page controls and workspace-wide usage instead of the page size', () => {
+    const onPreviousPage = vi.fn()
+    const onNextPage = vi.fn()
+    renderPage({
+      data: demoMonitors.slice(0, 2),
+      pageNumber: 3,
+      hasPreviousPage: true,
+      hasNextPage: true,
+      onPreviousPage,
+      onNextPage,
+      totalMonitors: 1_091,
+      monitorLimit: 5_000,
+    })
+
+    expect(screen.getByText('Using 1091 of 5000 monitors.')).toBeInTheDocument()
+    expect(screen.getByText('Page 3')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(onPreviousPage).toHaveBeenCalledTimes(1)
+    expect(onNextPage).toHaveBeenCalledTimes(1)
+  })
+
   it('delegates bulk monitor and tag operations for the selected monitors', async () => {
     const data = demoMonitors.slice(0, 2)
     const onBulkAction = vi.fn().mockResolvedValue(undefined)

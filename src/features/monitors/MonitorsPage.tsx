@@ -5,6 +5,8 @@ import {
   Bell,
   BellRing,
   CircleCheck,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Eye,
   Filter,
@@ -52,6 +54,19 @@ export interface MonitorsPageProps {
   onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void>
   onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void>
   manualTestEnabled?: boolean
+  monitorLimit?: number
+  pageNumber?: number
+  hasPreviousPage?: boolean
+  hasNextPage?: boolean
+  onPreviousPage?: () => void
+  onNextPage?: () => void
+  totalMonitors?: number
+  availableTags?: readonly string[]
+  onSearchQueryChange?: (query: string) => void
+  onStatusFilterChange?: (status: 'all' | MonitorStatus) => void
+  onTagFilterChange?: (tag: string) => void
+  onSortChange?: (sort: 'status' | 'name' | 'response') => void
+  summaryPageScoped?: boolean
 }
 
 type MonitorRowAction = 'pause' | 'resume' | 'test' | 'delete'
@@ -71,12 +86,28 @@ export function MonitorsPage({
   onBulkAction,
   onBulkTags,
   manualTestEnabled = true,
+  monitorLimit = 100,
+  pageNumber = 1,
+  hasPreviousPage = false,
+  hasNextPage = false,
+  onPreviousPage,
+  onNextPage,
+  totalMonitors,
+  availableTags: workspaceTags,
+  onSearchQueryChange,
+  onStatusFilterChange,
+  onTagFilterChange,
+  onSortChange,
+  summaryPageScoped = false,
 }: MonitorsPageProps = {}) {
   const { locale, t } = useI18n()
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
   const ownedMonitors = useMemo(() => monitors.filter((monitor) => monitor.access !== 'subscription'), [monitors])
-  const availableTags = useMemo(() => [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(), [monitors])
+  const availableTags = useMemo(
+    () => workspaceTags ? [...workspaceTags] : [...new Set(monitors.flatMap((monitor) => monitor.tags))].sort(),
+    [monitors, workspaceTags],
+  )
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MonitorStatus>('all')
   const [tagFilter, setTagFilter] = useState('all')
@@ -490,10 +521,10 @@ export function MonitorsPage({
           <span>{selectedIds.size} / {monitors.length}</span>
         </label>
         <div className="monitor-toolbar__groups"><span>{t('monitors.showGroups')}</span><Toggle checked={showGroups} onChange={setShowGroups} label={t('monitors.showGroups')} /></div>
-        <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('monitors.search')} />
-        <div className="filter-dropdown"><Filter size={17} /><Select aria-label={t('monitors.filterStatus')} value={filter} onChange={(event) => setFilter(event.target.value as 'all' | MonitorStatus)}><option value="all">{t('status.all')}</option><option value="down">{t('status.down')}</option><option value="degraded">{t('status.degraded')}</option><option value="up">{t('status.up')}</option><option value="paused">{t('status.paused')}</option></Select></div>
-        <div className="filter-dropdown"><Tags size={17} /><Select aria-label={t('monitors.filterTag')} value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}><option value="all">{t('monitors.allTags')}</option>{availableTags.map((tag) => <option value={tag} key={tag}>{tag}</option>)}</Select></div>
-        <div className="filter-dropdown"><Select aria-label={t('monitors.sort')} value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="status">{t('monitors.sortDown')}</option><option value="name">{t('monitors.sortName')}</option><option value="response">{t('monitors.sortSlowest')}</option></Select></div>
+        <SearchInput value={query} onChange={(event) => { setQuery(event.target.value); onSearchQueryChange?.(event.target.value) }} placeholder={t('monitors.search')} />
+        <div className="filter-dropdown"><Filter size={17} /><Select aria-label={t('monitors.filterStatus')} value={filter} onChange={(event) => { const value = event.target.value as 'all' | MonitorStatus; setFilter(value); onStatusFilterChange?.(value) }}><option value="all">{t('status.all')}</option><option value="down">{t('status.down')}</option><option value="degraded">{t('status.degraded')}</option><option value="up">{t('status.up')}</option><option value="paused">{t('status.paused')}</option></Select></div>
+        <div className="filter-dropdown"><Tags size={17} /><Select aria-label={t('monitors.filterTag')} value={tagFilter} onChange={(event) => { setTagFilter(event.target.value); onTagFilterChange?.(event.target.value) }}><option value="all">{t('monitors.allTags')}</option>{availableTags.map((tag) => <option value={tag} key={tag}>{tag}</option>)}</Select></div>
+        <div className="filter-dropdown"><Select aria-label={t('monitors.sort')} value={sort} onChange={(event) => { const value = event.target.value as typeof sort; setSort(value); onSortChange?.(value) }}><option value="status">{t('monitors.sortDown')}</option><option value="name">{t('monitors.sortName')}</option><option value="response">{t('monitors.sortSlowest')}</option></Select></div>
       </div>
 
       {selectedMonitors.length > 0 && <div className="monitor-bulk-toolbar" role="toolbar" aria-label={t('monitors.bulkActions')}>
@@ -509,18 +540,25 @@ export function MonitorsPage({
       {actionFeedback && <FeedbackBanner tone={actionFeedback.tone === 'danger' ? 'error' : 'success'} className="feedback-banner--page" onDismiss={() => setActionFeedback(null)}>{actionFeedback.message}</FeedbackBanner>}
 
       <div className="monitor-layout">
-        <Panel className="monitor-list">
-          {error ? (
-            <EmptyState icon={<SearchX size={34} />} title={t('monitors.loadFailed')} description={error} action={onRetry ? <Button onClick={onRetry}>{t('common.tryAgain')}</Button> : undefined} />
-          ) : filtered.length === 0 ? <EmptyState icon={<SearchX size={34} />} title={t('monitors.empty')} description={t('monitors.emptyHint')} action={<Button onClick={() => setCreateOpen(true)}><Plus size={17} /> {t('monitors.create')}</Button>} /> : showGroups ? grouped.map(([group, rows]) => rows && <section key={group} className="monitor-group"><header><span><Layers3 size={17} /> {group}</span><Badge>{rows.length}</Badge></header>{renderRows(rows)}</section>) : renderRows(filtered)}
-        </Panel>
+        <div className="monitor-list-column">
+          <Panel className="monitor-list">
+            {error ? (
+              <EmptyState icon={<SearchX size={34} />} title={t('monitors.loadFailed')} description={error} action={onRetry ? <Button onClick={onRetry}>{t('common.tryAgain')}</Button> : undefined} />
+            ) : filtered.length === 0 ? <EmptyState icon={<SearchX size={34} />} title={t('monitors.empty')} description={t('monitors.emptyHint')} action={<Button onClick={() => setCreateOpen(true)}><Plus size={17} /> {t('monitors.create')}</Button>} /> : showGroups ? grouped.map(([group, rows]) => rows && <section key={group} className="monitor-group"><header><span><Layers3 size={17} /> {group}</span><Badge>{rows.length}</Badge></header>{renderRows(rows)}</section>) : renderRows(filtered)}
+          </Panel>
+          {(hasPreviousPage || hasNextPage) && <nav className="monitor-pagination" aria-label={t('monitors.pagination')}>
+            <Button variant="secondary" disabled={!hasPreviousPage || loading} onClick={onPreviousPage}><ChevronLeft size={16} /> {t('common.previous')}</Button>
+            <span className="monitor-pagination__scope" aria-current="page"><strong>{t('monitors.page', { page: pageNumber })}</strong><small>{t('monitors.pageScope')}</small></span>
+            <Button variant="secondary" disabled={!hasNextPage || loading} onClick={onNextPage}>{t('common.next')} <ChevronRight size={16} /></Button>
+          </nav>}
+        </div>
 
         <aside className="monitor-summary">
           <Panel className={`status-summary ${summary.leaks.total > 0 || summary.compliance.total > 0 ? 'status-summary--has-special' : ''}`}>
-            <h2>{t('monitors.currentStatus')}<span className="title-dot">.</span></h2>
+            <h2>{t(summaryPageScoped ? 'monitors.currentPageStatus' : 'monitors.currentStatus')}<span className="title-dot">.</span></h2>
             <div className={`status-summary__visual status-summary__visual--${summary.down ? 'down' : summary.degraded ? 'degraded' : summary.up ? 'up' : 'idle'}`}><span>{summary.down ? '!' : summary.degraded ? '~' : summary.up ? '✓' : '–'}</span></div>
             <div className="status-summary__counts"><div><strong className="danger-text">{summary.down}</strong><span>{t('status.down')}</span></div><div><strong>{summary.up}</strong><span>{t('status.up')}</span></div><div><strong>{summary.paused}</strong><span>{t('status.paused')}</span></div></div>
-            <p>{t('monitors.usage', { used: ownedMonitors.length, total: 100 })}</p>
+            <p>{t('monitors.usage', { used: totalMonitors ?? ownedMonitors.length, total: monitorLimit })}</p>
             {(summary.leaks.total > 0 || summary.compliance.total > 0) && <div className="status-summary__secondary">
               {summary.leaks.total > 0 && <div className="status-summary__secondary-row">
                 <span className="status-summary__secondary-type" title={t('monitors.leakStatus')} aria-hidden="true"><ShieldAlert size={16} /></span>
@@ -540,7 +578,7 @@ export function MonitorsPage({
             </div>}
           </Panel>
 		  <Panel className="status-summary status-summary--stats">
-            <h2>{t('monitors.last24h')}<span className="title-dot">.</span></h2>
+            <h2>{t(summaryPageScoped ? 'monitors.last24hPage' : 'monitors.last24h')}<span className="title-dot">.</span></h2>
             <div className="status-summary__metric-grid"><div><strong className={summary.uptime !== undefined && summary.uptime < 99 ? 'danger-text' : 'success-text'}>{summary.uptime === undefined ? '—' : formatUptime(summary.uptime)}</strong><span>{t('monitors.overallUptime')}</span></div><div><strong>{summary.mtbfSeconds === undefined ? '—' : formatDuration(summary.mtbfSeconds)}</strong><span>MTBF</span></div><div><strong>{summary.secondsWithoutIncident === undefined ? '—' : formatDuration(summary.secondsWithoutIncident)}</strong><span>{t('monitors.withoutIncidents')}</span></div><div><strong>{summary.incidents}</strong><span>{t('nav.incidents')}</span></div></div>
 		  </Panel>
 		</aside>

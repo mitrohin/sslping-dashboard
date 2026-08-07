@@ -143,10 +143,11 @@ function fakeApi() {
   const api = {
     baseUrl: 'https://api.sslping.test',
     listMonitors: vi.fn(async () => ({ items: [stored] })),
-    getMonitorDashboard: vi.fn(async () => ({
+    getMonitorDashboard: vi.fn<ApiClient['getMonitorDashboard']>(async () => ({
       from: now,
       to: now,
       items: [{ monitor: stored, stats, history: [] }],
+      total_count: 1,
       entitlements,
     })),
     getMonitorOverview: vi.fn(async () => overviewFor(stored)),
@@ -237,6 +238,53 @@ describe('LiveMonitorsPage controls', () => {
     expect(api.getMonitorDashboard).toHaveBeenCalledTimes(1)
     expect(api.listMonitorChecks).not.toHaveBeenCalled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('loads monitor dashboard pages by cursor and returns to the saved previous cursor', async () => {
+    const api = fakeApi()
+    const second = { ...baseMonitor(), id: 'monitor-2', name: 'Billing API' }
+    const firstResponse = {
+      from: now, to: now, items: [{ monitor: baseMonitor(), stats, history: [] }],
+      next_cursor: 'cursor-page-2', total_count: 2, entitlements,
+    }
+    const secondResponse = {
+      from: now, to: now, items: [{ monitor: second, stats, history: [] }],
+      total_count: 2, entitlements,
+    }
+    api.getMonitorDashboard
+      .mockResolvedValueOnce(firstResponse)
+      .mockResolvedValueOnce(secondResponse)
+      .mockResolvedValueOnce(firstResponse)
+    mockAuth(api)
+
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+    expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByText('Billing API')).toBeInTheDocument()
+    expect(api.getMonitorDashboard).toHaveBeenLastCalledWith(workspace.id, expect.objectContaining({ limit: 50, cursor: 'cursor-page-2' }))
+    expect(screen.getByText('Page 2')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(await screen.findByText('Checkout API')).toBeInTheDocument()
+    expect(api.getMonitorDashboard).toHaveBeenLastCalledWith(workspace.id, expect.objectContaining({ limit: 50, cursor: undefined }))
+  })
+
+  it('debounces search and resets cursor pagination for a workspace-wide server query', async () => {
+    const api = fakeApi()
+    const match = { ...baseMonitor(), id: 'monitor-2', name: 'Billing API' }
+    api.getMonitorDashboard
+      .mockResolvedValueOnce({ from: now, to: now, items: [{ monitor: baseMonitor(), stats, history: [] }], next_cursor: 'next', total_count: 2, entitlements })
+      .mockResolvedValueOnce({ from: now, to: now, items: [{ monitor: match, stats, history: [] }], total_count: 2, entitlements })
+    mockAuth(api)
+
+    render(<MemoryRouter><LiveMonitorsPage /></MemoryRouter>)
+    await screen.findByText('Checkout API')
+    fireEvent.change(screen.getByPlaceholderText(/search by name or url/i), { target: { value: 'Billing' } })
+
+    expect(await screen.findByText('Billing API', {}, { timeout: 1500 })).toBeInTheDocument()
+    expect(api.getMonitorDashboard).toHaveBeenLastCalledWith(workspace.id, expect.objectContaining({ search: 'Billing', cursor: undefined, limit: 50 }))
+    expect(screen.queryByText('Page 2')).not.toBeInTheDocument()
   })
 
   it('connects pause, resume, test and delete menu actions to the active workspace API', async () => {

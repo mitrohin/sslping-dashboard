@@ -65,6 +65,13 @@ describe('status formatting', () => {
     expect(formatStatus(undefined)).toBe('Unknown')
   })
 
+  it('keeps Traditional Chinese status labels for HK and TW locales', () => {
+    expect(formatStatus('degraded', 'zh-Hant-HK')).toBe('效能下降')
+    expect(formatStatus('resolved', 'zh-Hant-TW')).toBe('已解決')
+    expect(formatStatus('maintenance', 'zh-TW')).toBe('維護中')
+    expect(formatStatus('degraded', 'zh-CN')).toBe('性能下降')
+  })
+
   it('maps statuses to semantic tones', () => {
     expect(statusTone('up')).toBe('positive')
     expect(statusTone('down')).toBe('negative')

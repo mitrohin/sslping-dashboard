@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Globe2,
   LockKeyhole,
@@ -35,11 +37,20 @@ export interface StatusPagesPageProps {
   onAnnouncement?: (pageId: string, input: StatusPageAnnouncementInput) => MaybePromise<void>
   onEdit?: (pageId: string, tab: StatusPageEditorTab) => void
   onDelete?: (pageId: string) => MaybePromise<void>
+  pageNumber?: number
+  hasPreviousPage?: boolean
+  hasNextPage?: boolean
+  onPreviousPage?: () => void
+  onNextPage?: () => void
+  totalCount?: number
+  searchQuery?: string
+  onSearchQueryChange?: (query: string) => void
 }
 
 const languageOptions: ReadonlyArray<{ value: StatusPageLanguageCode; label: string }> = [
   { value: 'en', label: 'English' },
-  { value: 'zh', label: '中文' },
+  { value: 'zh', label: '简体中文' },
+  { value: 'zh-Hant', label: '繁體中文' },
   { value: 'hi', label: 'हिन्दी' },
   { value: 'es', label: 'Español' },
   { value: 'fr', label: 'Français' },
@@ -48,6 +59,14 @@ const languageOptions: ReadonlyArray<{ value: StatusPageLanguageCode; label: str
   { value: 'pt', label: 'Português' },
   { value: 'ru', label: 'Русский' },
   { value: 'id', label: 'Bahasa Indonesia' },
+  { value: 'de', label: 'Deutsch' }, { value: 'nl', label: 'Nederlands' },
+  { value: 'cs', label: 'Čeština' }, { value: 'da', label: 'Dansk' }, { value: 'fi', label: 'Suomi' },
+  { value: 'el', label: 'Ελληνικά' }, { value: 'hr', label: 'Hrvatski' }, { value: 'hu', label: 'Magyar' },
+  { value: 'he', label: 'עברית' }, { value: 'it', label: 'Italiano' }, { value: 'ja', label: '日本語' },
+  { value: 'ms', label: 'Bahasa Melayu' }, { value: 'no', label: 'Norsk' }, { value: 'fil', label: 'Filipino' },
+  { value: 'ur', label: 'اردو' }, { value: 'pl', label: 'Polski' }, { value: 'ro', label: 'Română' },
+  { value: 'sr', label: 'Српски' }, { value: 'sv', label: 'Svenska' }, { value: 'sl', label: 'Slovenščina' },
+  { value: 'sk', label: 'Slovenčina' }, { value: 'tr', label: 'Türkçe' }, { value: 'uk', label: 'Українська' },
 ]
 
 const makeId = (): string =>
@@ -88,10 +107,18 @@ export function StatusPagesPage({
   onAnnouncement,
   onEdit,
   onDelete,
+  pageNumber = 1,
+  hasPreviousPage = false,
+  hasNextPage = false,
+  onPreviousPage,
+  onNextPage,
+  totalCount,
+  searchQuery = '',
+  onSearchQueryChange,
 }: StatusPagesPageProps) {
   const { locale, t } = useI18n()
   const [pages, setPages] = useState<StatusPageViewModel[]>(() => [...initialPages])
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(searchQuery)
   const [createOpen, setCreateOpen] = useState(false)
   const [createDraft, setCreateDraft] = useState<StatusPageCreateInput>(emptyCreate)
   const [announcementPageId, setAnnouncementPageId] = useState<string | null>(null)
@@ -101,6 +128,9 @@ export function StatusPagesPage({
 	const [editMenuPageId, setEditMenuPageId] = useState<string | null>(null)
 	const editMenuRef = useRef<HTMLDivElement>(null)
 	const publishableMonitors = useMemo(() => monitors.filter((monitor) => monitor.type !== 'leakcheck' && monitor.type !== 'compliance'), [monitors])
+
+  useEffect(() => setPages([...initialPages]), [initialPages])
+  useEffect(() => setQuery(searchQuery), [searchQuery])
 
   useEffect(() => {
     if (!editMenuPageId) return
@@ -261,7 +291,7 @@ export function StatusPagesPage({
         actions={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button>}
       />
 
-      {pages.length === 0 ? (
+      {pages.length === 0 && !query.trim() && (totalCount ?? 0) === 0 ? (
         <Panel>
           <EmptyState
             icon={<Radio size={36} />}
@@ -273,8 +303,8 @@ export function StatusPagesPage({
       ) : (
         <>
           <div className="ops-toolbar ops-toolbar--compact">
-            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('statusPages.search')} aria-label={t('statusPages.search')} />
-            <span className="ops-result-count">{t('statusPages.count', { filtered: filteredPages.length, total: pages.length })}</span>
+            <SearchInput value={query} onChange={(event) => { setQuery(event.target.value); onSearchQueryChange?.(event.target.value) }} placeholder={t('statusPages.search')} aria-label={t('statusPages.search')} />
+            <span className="ops-result-count">{t('statusPages.count', { filtered: filteredPages.length, total: totalCount ?? pages.length })}</span>
           </div>
           {error && <FeedbackBanner tone="error">{error}</FeedbackBanner>}
           <Panel className="ops-table-panel">
@@ -285,7 +315,7 @@ export function StatusPagesPage({
                   {filteredPages.map((page) => (
                     <tr key={page.id}>
                       <td>
-                        <div className="ops-name-cell"><span className="ops-round-icon"><Radio size={18} /></span><span><strong>{page.name}</strong><small>{t('statusPages.stats', { monitors: page.monitorCount, subscribers: page.subscribers })}</small></span></div>
+                        <div className="ops-name-cell"><span className="ops-round-icon"><Radio size={18} /></span><span><strong>{page.name}{page.countryCode ? ` · ${page.countryCode}` : ''}</strong><small>/{page.slug} · {page.language} · {t('statusPages.stats', { monitors: page.monitorCount, subscribers: page.subscribers })}</small></span></div>
                       </td>
                       <td><span className="ops-inline-meta">{page.accessLevel === 'public' ? <Globe2 size={16} /> : <LockKeyhole size={16} />}{t(`statusPages.access.${page.accessLevel}`)}</span></td>
                       <td><Badge tone={page.status === 'published' ? 'success' : 'neutral'}>{t(`statusPages.status.${page.status}`)}</Badge></td>
@@ -324,6 +354,7 @@ export function StatusPagesPage({
                 <article className="ops-resource-card" key={page.id}>
                   <div className="ops-card-row"><span className="ops-round-icon"><Radio size={18} /></span><Badge tone={page.status === 'published' ? 'success' : 'neutral'}>{page.status}</Badge></div>
                   <h2>{page.name}</h2>
+                  <small>/{page.slug} · {page.countryCode ? `${page.countryCode} · ` : ''}{page.language}</small>
                   <p>{t('statusPages.mobileStats', { monitors: page.monitorCount, access: t(`statusPages.access.${page.accessLevel}`), subscribers: page.subscribers })}</p>
                   <div className="ops-card-actions">
                     <Button size="sm" type="button" onClick={() => setAnnouncementPageId(page.id)}><Megaphone size={16} /> {t('statusPages.announce')}</Button>
@@ -334,6 +365,11 @@ export function StatusPagesPage({
               ))}
             </div>
           </Panel>
+          {(hasPreviousPage || hasNextPage) && <nav className="ops-pagination" aria-label={t('statusPages.pagination')}>
+            <Button variant="secondary" disabled={!hasPreviousPage} onClick={onPreviousPage}><ChevronLeft size={16} /> {t('common.previous')}</Button>
+            <span aria-current="page">{t('monitors.page', { page: pageNumber })}</span>
+            <Button variant="secondary" disabled={!hasNextPage} onClick={onNextPage}>{t('common.next')} <ChevronRight size={16} /></Button>
+          </nav>}
         </>
       )}
 

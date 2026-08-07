@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type { ApiClient } from '../api/client'
 import type {
@@ -281,6 +281,8 @@ export function LiveMaintenancePage() {
 interface StatusPageData {
   monitors: readonly MonitorViewModel[]
   pages: readonly StatusPageViewModel[]
+  nextCursor?: string
+  totalCount: number
 }
 
 function objectValue(value: JsonValue | undefined): JsonObject | undefined {
@@ -328,33 +330,43 @@ function LiveStatusPagesContent({
   onEdit: (pageId: string, tab: StatusPageEditorTab) => void
   initialMonitorId?: string
 }) {
+  const [pageNumber, setPageNumber] = useState(1)
+  const [cursor, setCursor] = useState<string | undefined>()
+  const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([])
+  const [search, setSearch] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchTimer = useRef<number | undefined>(undefined)
+  const monitorPageCache = useRef<{ workspaceId: string; promise: ReturnType<ApiClient['listMonitors']> } | undefined>(undefined)
   const load = useCallback(async (activeWorkspaceId: string): Promise<StatusPageData> => {
-    const [monitorPage, pageList] = await Promise.all([
-      api.listMonitors(activeWorkspaceId, { limit: 100 }),
-      api.listStatusPages(activeWorkspaceId),
+    if (!monitorPageCache.current || monitorPageCache.current.workspaceId !== activeWorkspaceId) {
+      monitorPageCache.current = {
+        workspaceId: activeWorkspaceId,
+        promise: api.listMonitors(activeWorkspaceId, { limit: 100 }),
+      }
+    }
+    const [monitorPage, dashboard] = await Promise.all([
+      monitorPageCache.current.promise,
+      api.getStatusPageDashboard(activeWorkspaceId, { limit: 50, cursor, search }),
     ])
-    const rawPages = pageList.items ?? []
-    const pages = await Promise.all(rawPages.map(async (page) => {
-      const [detailResult, announcementsResult] = await Promise.allSettled([
-        api.getStatusPage(activeWorkspaceId, page.id),
-        api.listAnnouncements(activeWorkspaceId, page.id),
-      ])
-      const source = detailResult.status === 'fulfilled' ? detailResult.value : page
-      const announcementCount = announcementsResult.status === 'fulfilled'
-        ? announcementsResult.value.items?.length ?? 0
-        : 0
-      return toStatusPageViewModel(source, {
-        announcementCount,
-        passwordProtected: statusPagePasswordProtected(page),
+    const pages = (dashboard.items ?? []).map((item) =>
+      toStatusPageViewModel(item.page, {
+        componentCount: item.component_count,
+        announcementCount: item.announcement_count,
+        subscribers: item.subscriber_count,
+        passwordProtected: statusPagePasswordProtected(item.page),
       })
-    }))
+    )
 
     return {
       monitors: (monitorPage.items ?? []).map((monitor) => toMonitorViewModel(monitor)),
       pages,
+      nextCursor: dashboard.next_cursor,
+      totalCount: dashboard.total_count ?? pages.length,
     }
-  }, [api])
+  }, [api, cursor, search])
   const { state, retry } = useRemoteData(workspaceId, load)
+
+  useEffect(() => () => window.clearTimeout(searchTimer.current), [])
 
   if (state.status === 'loading') return <LoadingOperations label="status pages" />
   if (state.status === 'error') return <FailedOperations error={state.error} retry={retry} />
@@ -368,6 +380,34 @@ function LiveStatusPagesContent({
     <StatusPagesPage
       pages={state.data.pages}
       monitors={state.data.monitors}
+      pageNumber={pageNumber}
+      hasPreviousPage={pageNumber > 1}
+      hasNextPage={Boolean(state.data.nextCursor)}
+      totalCount={state.data.totalCount}
+      searchQuery={searchQuery}
+      onSearchQueryChange={(value) => {
+        setSearchQuery(value)
+        window.clearTimeout(searchTimer.current)
+        searchTimer.current = window.setTimeout(() => {
+          setPreviousCursors([])
+          setCursor(undefined)
+          setPageNumber(1)
+          setSearch(value.trim())
+        }, 300)
+      }}
+      onPreviousPage={() => {
+        if (pageNumber <= 1) return
+        const previous = previousCursors[previousCursors.length - 1]
+        setPreviousCursors((current) => current.slice(0, -1))
+        setCursor(previous)
+        setPageNumber((current) => Math.max(1, current - 1))
+      }}
+      onNextPage={() => {
+        if (!state.data.nextCursor) return
+        setPreviousCursors((current) => [...current, cursor])
+        setCursor(state.data.nextCursor)
+        setPageNumber((current) => current + 1)
+      }}
       initialCreateMonitorId={initialMonitorId}
       onEdit={onEdit}
       onCreate={async (input) => {
@@ -399,7 +439,7 @@ export function LiveStatusPagesPage() {
     [navigate],
   )
   if (isDemoSession()) return <StatusPagesPage onEdit={onEdit} initialCreateMonitorId={initialMonitorId} />
-  return <LiveStatusPagesContent api={api} workspaceId={workspace?.id} onEdit={onEdit} initialMonitorId={initialMonitorId} />
+  return <LiveStatusPagesContent key={workspace?.id ?? 'no-workspace'} api={api} workspaceId={workspace?.id} onEdit={onEdit} initialMonitorId={initialMonitorId} />
 }
 
 interface StatusPageEditorData {
@@ -460,6 +500,24 @@ function editorValue(
       smallCookieDialog: page.settings.small_cookie_dialog,
       shareAnalytics: page.settings.share_analytics,
     },
+  }
+}
+
+function retainedComponentMonitor(component: StatusPageComponent): MonitorViewModel {
+  return {
+    id: component.monitor_id,
+    access: 'owner',
+    name: component.name,
+    type: 'http',
+    typeLabel: 'Monitor',
+    target: '',
+    status: 'pending',
+    group: 'Status page',
+    tags: [],
+    intervalSeconds: 0,
+    timeoutSeconds: 0,
+    last24Hours: [],
+    regions: [],
   }
 }
 
@@ -540,12 +598,24 @@ function LiveStatusPageEditorContent({
     const components = [...(detail.components ?? [])].sort(
       (left, right) => left.position - right.position,
     )
+    const monitors = (monitorPage.items ?? []).map((monitor) => toMonitorViewModel(monitor))
+    const loadedMonitorIDs = new Set(monitors.map((monitor) => monitor.id))
+    // The picker is intentionally bounded, but an existing status page may
+    // reference a monitor outside its first page. Retain those components in
+    // the editor so saving appearance or SEO settings cannot silently remove
+    // them. A server-searchable picker can enrich these rows later.
+    for (const component of components) {
+      if (!loadedMonitorIDs.has(component.monitor_id)) {
+        monitors.push(retainedComponentMonitor(component))
+        loadedMonitorIDs.add(component.monitor_id)
+      }
+    }
     return {
       page: toStatusPageViewModel(detail, {
         announcementCount: announcementList.items?.length ?? 0,
         passwordProtected: statusPagePasswordProtected(detail.page),
       }),
-      monitors: (monitorPage.items ?? []).map((monitor) => toMonitorViewModel(monitor)),
+      monitors,
 		initialValue: editorValue(detail.page, components),
       announcements: (announcementList.items ?? []).map(announcementViewModel),
     }

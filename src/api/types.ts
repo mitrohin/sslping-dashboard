@@ -628,6 +628,7 @@ export interface MetricsSummary {
   from: ISODateTime
   to: ISODateTime
   items: MetricsSummaryItem[]
+  next_cursor?: string
 }
 
 export interface MonitorDashboardItem {
@@ -643,6 +644,9 @@ export interface MonitorDashboard {
   from: ISODateTime
   to: ISODateTime
   items: MonitorDashboardItem[]
+  next_cursor?: string
+  total_count?: number
+  available_tags?: string[]
   entitlements: WorkspaceEntitlements
 }
 
@@ -762,7 +766,10 @@ export interface MaintenanceWindow {
   updated_at: ISODateTime
 }
 
-export type StatusPageLanguage = 'en' | 'zh' | 'hi' | 'es' | 'fr' | 'ar' | 'bn' | 'pt' | 'ru' | 'id'
+export type StatusPageLanguage =
+  | 'en' | 'zh' | 'zh-Hant' | 'hi' | 'es' | 'fr' | 'ar' | 'bn' | 'pt' | 'ru' | 'id'
+  | 'de' | 'nl' | 'cs' | 'da' | 'fi' | 'el' | 'hr' | 'hu' | 'he' | 'it' | 'ja'
+  | 'ms' | 'no' | 'fil' | 'ur' | 'pl' | 'ro' | 'sr' | 'sv' | 'sl' | 'sk' | 'tr' | 'uk'
 export type StatusPageRobotsPolicy = 'index,follow' | 'noindex,nofollow' | 'noindex,follow'
 
 export interface StatusPageSettings {
@@ -823,6 +830,7 @@ export interface StatusPage {
   workspace_id: UUID
   name: string
   slug: string
+  country_code?: string
   homepage_url?: string
   custom_domain?: string
   custom_domain_verification_expires_at?: ISODateTime
@@ -835,6 +843,15 @@ export interface StatusPage {
   created_at: ISODateTime
   updated_at: ISODateTime
 }
+
+export interface StatusPageDashboardItem {
+  page: StatusPage
+  component_count: number
+  announcement_count: number
+  subscriber_count: number
+}
+
+export type StatusPageDashboard = Page<StatusPageDashboardItem> & { total_count?: number }
 
 export interface DNSRecord {
   type: 'TXT'
@@ -891,6 +908,7 @@ export interface Announcement {
 export interface PublicStatusPage {
   name: string
   slug: string
+  country_code?: string
   homepage_url?: string
   language: StatusPageLanguage
   robots: StatusPageRobotsPolicy
@@ -927,6 +945,7 @@ export interface ProblemReportAcceptedResponse {
 
 export interface PublicStatusAnnouncement {
   id: UUID
+  incident_id?: UUID
   title: string
   body: string
   status: IncidentStatus
@@ -1488,3 +1507,11 @@ export interface TimeRangeQuery {
 }
 
 export type HistoryQuery = ListQuery & TimeRangeQuery
+
+export type MetricsSummaryQuery = Pick<ListQuery, 'limit' | 'cursor'> & TimeRangeQuery
+
+export type MonitorDashboardQuery = HistoryQuery & {
+  status?: 'up' | 'down' | 'degraded' | 'pending' | 'paused'
+  tag?: string
+  sort?: 'status' | 'name' | 'response'
+}

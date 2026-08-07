@@ -62,6 +62,8 @@ const defaultApi = new ApiClient()
 const consentStorageKey = 'sslping.public-status.cookie-consent.v1'
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
 const PROBLEM_REPORT_METADATA_URL = (import.meta.env.VITE_PROBLEM_REPORT_METADATA_URL ?? '/problem-report-metadata').trim()
+const STATUS_PAGE_LANGUAGES: readonly StatusPageLanguage[] = ['en', 'zh', 'zh-Hant', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'id', 'de', 'nl', 'cs', 'da', 'fi', 'el', 'hr', 'hu', 'he', 'it', 'ja', 'ms', 'no', 'fil', 'ur', 'pl', 'ro', 'sr', 'sv', 'sl', 'sk', 'tr', 'uk']
+const RTL_STATUS_PAGE_LANGUAGES = new Set<StatusPageLanguage>(['ar', 'he', 'ur'])
 const PROBLEM_REPORT_RECEIPT_PREFIX = 'sslping_problem_report_v1'
 const PROBLEM_REPORT_RECEIPT_TTL_SECONDS = 24 * 60 * 60
 
@@ -145,6 +147,15 @@ function deriveOverallStatus(
   if (explicit) return explicit
   if (components.length === 0) return 'pending'
   return [...components].sort((left, right) => statusPriority[right.status] - statusPriority[left.status])[0].status
+}
+
+function regionDisplayName(locale: string, countryCode: string): string {
+  if (!countryCode) return ''
+  try {
+    return new Intl.DisplayNames([locale], { type: 'region' }).of(countryCode) ?? countryCode
+  } catch {
+    return countryCode
+  }
 }
 
 function uptimeBars(uptime: number | undefined): readonly ('up' | 'down' | 'warning' | 'empty')[] {
@@ -569,13 +580,19 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [consent, setConsent] = useState<ConsentChoice | null>(readConsent)
   const preferredColorScheme = usePreferredColorScheme()
-  const documentLanguage = document.documentElement.lang.split('-')[0] as StatusPageLanguage
-  const initialLanguage = (['en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'id'] as const).includes(documentLanguage) ? documentLanguage : 'en'
+  const documentLocale = document.documentElement.lang.toLowerCase()
+  const documentLanguageBase = documentLocale.split('-')[0]
+  const documentLanguage = (documentLocale.startsWith('zh-hant') || /^zh-(?:hk|mo|tw)(?:-|$)/.test(documentLocale)
+    ? 'zh-Hant'
+    : documentLanguageBase === 'nb' ? 'no' : documentLanguageBase) as StatusPageLanguage
+  const initialLanguage = STATUS_PAGE_LANGUAGES.includes(documentLanguage) ? documentLanguage : 'en'
   const languageRef = useRef<StatusPageLanguage>(initialLanguage)
   const passwordRef = useRef('')
   const language = (snapshot?.page.language ?? initialLanguage) as StatusPageLanguage
   const copy = publicStatusCopy(language)
-  const locale = statusPageLocale(language)
+  const countryCode = snapshot?.page.country_code ?? ''
+  const locale = statusPageLocale(language, countryCode)
+  const countryName = useMemo(() => regionDisplayName(locale, countryCode), [countryCode, locale])
 
   const load = useCallback(async (password?: string, background = false, turnstileToken?: string) => {
     if (!slug && !customDomain) {
@@ -666,8 +683,9 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       robots.name = 'robots'
       document.head.appendChild(robots)
     }
-    document.documentElement.lang = snapshot.page.language
-    document.documentElement.dir = snapshot.page.language === 'ar' ? 'rtl' : 'ltr'
+    const pageCountryCode = snapshot.page.country_code ?? ''
+    document.documentElement.lang = pageCountryCode ? statusPageLocale(snapshot.page.language, pageCountryCode) : snapshot.page.language
+    document.documentElement.dir = RTL_STATUS_PAGE_LANGUAGES.has(snapshot.page.language) ? 'rtl' : 'ltr'
     // Preserve the localized search-oriented title emitted by the server.
     // The shorter fallback is only for local Vite/demo routes whose static
     // dashboard shell has no page-specific social metadata.
@@ -694,6 +712,15 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   const settings = snapshot.page.settings
   const visibleComponents = (snapshot.components ?? []).filter((component) => !(settings.hide_paused_monitors && component.status === 'paused'))
   const announcements = snapshot.announcements ?? []
+  const activeIncidentStates = new Map<string, { unresolved: boolean; resolved: boolean }>()
+  for (const announcement of announcements) {
+    const key = announcement.incident_id || announcement.id
+    const state = activeIncidentStates.get(key) ?? { unresolved: false, resolved: false }
+    if (announcement.status === 'resolved' || announcement.resolved_at) state.resolved = true
+    else state.unresolved = true
+    activeIncidentStates.set(key, state)
+  }
+  const activeIncidentCount = [...activeIncidentStates.values()].filter((state) => state.unresolved && !state.resolved).length
   const overallStatus = deriveOverallStatus(snapshot.overall_status, visibleComponents)
   const overall = copy.overall[overallStatus]
   const uptimeValues = visibleComponents.map((component) => component.uptime_24h).filter((value): value is number => value !== undefined)
@@ -728,7 +755,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       <main className="ps-container ps-main">
         <section className={`ps-overall ps-overall--${overallStatus}`} aria-live="polite">
           <div className="ps-overall__icon">{statusIcon(overallStatus, 29)}</div>
-          <div><p>{copy.currentStatus}</p><h1>{overall.title}</h1><span>{overall.description}</span></div>
+          <div><p>{copy.currentStatus}{countryName && <span className="ps-country-name"> · {countryName}</span>}</p><h1>{overall.title}</h1><span>{overall.description}</span></div>
           <time dateTime={snapshot.generated_at}>{copy.updated} {formatRelativeTime(snapshot.generated_at, new Date(), { locale })}</time>
         </section>
 
@@ -736,7 +763,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
           <section className="ps-metrics" aria-label={copy.overallUptime}>
             <article><span>{copy.last24Hours}</span><strong>{formatUptime(overallUptime, 3, locale)}</strong><small>{copy.overallUptime}</small></article>
             <article><span>{copy.services}</span><strong>{visibleComponents.length}</strong><small>{visibleComponents.filter((component) => component.status === 'up').length} {copy.operational}</small></article>
-            <article><span>{copy.activeIncidents}</span><strong>{announcements.filter((announcement) => announcement.status !== 'resolved').length}</strong><small>{copy.publishedUpdates}</small></article>
+            <article><span>{copy.activeIncidents}</span><strong>{activeIncidentCount}</strong><small>{copy.publishedUpdates}</small></article>
           </section>
         )}
 

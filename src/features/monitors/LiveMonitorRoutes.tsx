@@ -61,29 +61,62 @@ function heartbeatCredential(
 }
 
 export function LiveMonitorsPage() {
+  const { workspace } = useAuth()
+  if (isDemoSession()) return <MonitorsPage />
+  return <LiveMonitorsContent key={workspace?.id ?? 'no-workspace'} />
+}
+
+function LiveMonitorsContent() {
   const { api, authenticated, workspace } = useAuth()
   const navigate = useNavigate()
   const demo = isDemoSession()
   const [data, setData] = useState<readonly MonitorViewModel[]>([])
   const [rawMonitors, setRawMonitors] = useState<readonly Monitor[]>([])
   const [manualTestEnabled, setManualTestEnabled] = useState(false)
+  const [monitorLimit, setMonitorLimit] = useState(100)
+  const [totalMonitors, setTotalMonitors] = useState(0)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'up' | 'down' | 'degraded' | 'pending' | 'paused'>('all')
+  const [tagFilter, setTagFilter] = useState('all')
+  const [sortMode, setSortMode] = useState<'status' | 'name' | 'response'>('status')
+  const [availableTags, setAvailableTags] = useState<readonly string[]>([])
+  const [pageNumber, setPageNumber] = useState(1)
+  const [cursor, setCursor] = useState<string | undefined>()
+  const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([])
+  const [nextCursor, setNextCursor] = useState<string | undefined>()
   const [loading, setLoading] = useState(!demo)
   const [error, setError] = useState<string | null>(null)
-  const loadedOnce = useRef(demo)
+  const requestRevision = useRef(0)
+  const searchTimer = useRef<number | undefined>(undefined)
 
   const reload = useCallback(async () => {
     if (demo || !authenticated || !workspace) return
-    if (!loadedOnce.current) setLoading(true)
+    const revision = ++requestRevision.current
+    setLoading(true)
     setError(null)
     try {
       const now = new Date()
       const from = fromForPeriod('24h', now)
       const [dashboard, subscriptionList] = await Promise.all([
-        api.getMonitorDashboard(workspace.id, { from, to: now.toISOString(), limit: 100 }),
+        api.getMonitorDashboard(workspace.id, {
+          from,
+          to: now.toISOString(),
+          limit: 50,
+          cursor,
+          search,
+          status: statusFilter === 'all' ? undefined : statusFilter,
+          tag: tagFilter === 'all' ? undefined : tagFilter,
+          sort: sortMode,
+        }),
         api.listMonitorSubscriptions(workspace.id),
       ])
-      setManualTestEnabled(dashboard.entitlements.limits.allow_manual_tests)
+      if (requestRevision.current !== revision) return
       const dashboardItems = dashboard.items ?? []
+      setManualTestEnabled(dashboard.entitlements.limits.allow_manual_tests)
+      setMonitorLimit(dashboard.entitlements.limits.max_monitors)
+      setTotalMonitors(dashboard.total_count ?? dashboardItems.length)
+      setNextCursor(dashboard.next_cursor)
+      setAvailableTags(dashboard.available_tags ?? [])
       const monitors = dashboardItems.map((item) => item.monitor)
       setRawMonitors(monitors)
       const owned = dashboardItems.map((item) =>
@@ -98,12 +131,15 @@ export function LiveMonitorsPage() {
       const followed = (subscriptionList.items ?? []).map(toSubscribedMonitorViewModel)
       setData([...owned, ...followed])
     } catch (loadError) {
+      if (requestRevision.current !== revision) return
       setError(monitorErrorMessage(loadError, 'The monitoring service did not respond.'))
     } finally {
-      loadedOnce.current = true
+      if (requestRevision.current !== revision) return
       setLoading(false)
     }
-  }, [api, authenticated, demo, workspace])
+  }, [api, authenticated, cursor, demo, search, sortMode, statusFilter, tagFilter, workspace])
+
+  useEffect(() => () => window.clearTimeout(searchTimer.current), [])
 
   useEffect(() => { void reload() }, [reload])
 
@@ -184,6 +220,37 @@ export function LiveMonitorsPage() {
     await reload()
   }
 
+  const nextPage = () => {
+    if (!nextCursor || loading) return
+    setPreviousCursors((current) => [...current, cursor])
+    setCursor(nextCursor)
+    setPageNumber((current) => current + 1)
+  }
+
+  const previousPage = () => {
+    if (pageNumber <= 1 || loading) return
+    const previous = previousCursors[previousCursors.length - 1]
+    setPreviousCursors((current) => current.slice(0, -1))
+    setCursor(previous)
+    setPageNumber((current) => Math.max(1, current - 1))
+  }
+
+  const changeSearch = (value: string) => {
+    window.clearTimeout(searchTimer.current)
+    searchTimer.current = window.setTimeout(() => {
+      setPreviousCursors([])
+      setCursor(undefined)
+      setPageNumber(1)
+      setSearch(value.trim())
+    }, 300)
+  }
+
+  const resetToFirstPage = () => {
+    setPreviousCursors([])
+    setCursor(undefined)
+    setPageNumber(1)
+  }
+
   return (
     <MonitorsPage
       data={data}
@@ -200,6 +267,19 @@ export function LiveMonitorsPage() {
       onBulkAction={bulkAction}
       onBulkTags={bulkTags}
       manualTestEnabled={manualTestEnabled}
+      monitorLimit={monitorLimit}
+      pageNumber={pageNumber}
+      hasPreviousPage={pageNumber > 1}
+      hasNextPage={Boolean(nextCursor)}
+      onPreviousPage={previousPage}
+      onNextPage={nextPage}
+      totalMonitors={totalMonitors}
+      availableTags={availableTags}
+      onSearchQueryChange={changeSearch}
+      onStatusFilterChange={(value) => { resetToFirstPage(); setStatusFilter(value) }}
+      onTagFilterChange={(value) => { resetToFirstPage(); setTagFilter(value) }}
+      onSortChange={(value) => { resetToFirstPage(); setSortMode(value) }}
+      summaryPageScoped={pageNumber > 1 || Boolean(nextCursor)}
     />
   )
 }

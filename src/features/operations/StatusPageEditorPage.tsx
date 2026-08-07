@@ -59,10 +59,18 @@ export interface StatusPageEditorPageProps {
 }
 
 const languages: ReadonlyArray<{ code: StatusPageLanguageCode; label: string }> = [
-  { code: 'en', label: 'English' }, { code: 'zh', label: '中文' }, { code: 'hi', label: 'हिन्दी' },
+  { code: 'en', label: 'English' }, { code: 'zh', label: '简体中文' }, { code: 'zh-Hant', label: '繁體中文' }, { code: 'hi', label: 'हिन्दी' },
   { code: 'es', label: 'Español' }, { code: 'fr', label: 'Français' }, { code: 'ar', label: 'العربية' },
   { code: 'bn', label: 'বাংলা' }, { code: 'pt', label: 'Português' }, { code: 'ru', label: 'Русский' },
   { code: 'id', label: 'Bahasa Indonesia' },
+  { code: 'de', label: 'Deutsch' }, { code: 'nl', label: 'Nederlands' }, { code: 'cs', label: 'Čeština' },
+  { code: 'da', label: 'Dansk' }, { code: 'fi', label: 'Suomi' }, { code: 'el', label: 'Ελληνικά' },
+  { code: 'hr', label: 'Hrvatski' }, { code: 'hu', label: 'Magyar' }, { code: 'he', label: 'עברית' },
+  { code: 'it', label: 'Italiano' }, { code: 'ja', label: '日本語' }, { code: 'ms', label: 'Bahasa Melayu' },
+  { code: 'no', label: 'Norsk' }, { code: 'fil', label: 'Filipino' }, { code: 'ur', label: 'اردو' },
+  { code: 'pl', label: 'Polski' }, { code: 'ro', label: 'Română' }, { code: 'sr', label: 'Српски' },
+  { code: 'sv', label: 'Svenska' }, { code: 'sl', label: 'Slovenščina' }, { code: 'sk', label: 'Slovenčina' },
+  { code: 'tr', label: 'Türkçe' }, { code: 'uk', label: 'Українська' },
 ]
 
 const defaultFeatures: StatusPageFeatureSettings = {

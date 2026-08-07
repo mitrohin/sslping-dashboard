@@ -46,6 +46,7 @@ const statusLabels: Readonly<Record<string, string>> = {
 const localizedStatusLabels: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   es: { pending:'Pendiente', up:'Disponible', down:'Caído', degraded:'Degradado', paused:'Pausado', investigating:'Investigando', identified:'Identificado', monitoring:'En observación', resolved:'Resuelto', maintenance:'Mantenimiento', 'no-data':'Sin datos', ok:'Operativo', failed:'Fallido', skipped:'Omitido', active:'Activo', invited:'Invitado', suspended:'Suspendido', published:'Publicado', draft:'Borrador', expired:'Vencido', revoked:'Revocado', 'never-used':'Nunca usado', expiring:'Vence pronto' },
   zh: { pending:'等待中', up:'正常', down:'故障', degraded:'性能下降', paused:'已暂停', investigating:'调查中', identified:'已定位', monitoring:'观察中', resolved:'已解决', maintenance:'维护中', 'no-data':'无数据', ok:'运行正常', failed:'失败', skipped:'已跳过', active:'活跃', invited:'已邀请', suspended:'已停用', published:'已发布', draft:'草稿', expired:'已过期', revoked:'已撤销', 'never-used':'从未使用', expiring:'即将到期' },
+  'zh-hant': { pending:'等待中', up:'正常', down:'故障', degraded:'效能下降', paused:'已暫停', investigating:'調查中', identified:'已定位', monitoring:'觀察中', resolved:'已解決', maintenance:'維護中', 'no-data':'無資料', ok:'運作正常', failed:'失敗', skipped:'已略過', active:'啟用中', invited:'已邀請', suspended:'已停用', published:'已發布', draft:'草稿', expired:'已過期', revoked:'已撤銷', 'never-used':'從未使用', expiring:'即將到期' },
   ka: { pending:'მოლოდინშია', up:'მუშაობს', down:'გათიშულია', degraded:'შეფერხებულია', paused:'შეჩერებულია', investigating:'მიმდინარეობს მოკვლევა', identified:'მიზეზი დადგენილია', monitoring:'დაკვირვება', resolved:'გადაწყვეტილია', maintenance:'ტექნიკური სამუშაოები', 'no-data':'მონაცემები არ არის', ok:'გამართულია', failed:'შეცდომა', skipped:'გამოტოვებულია', active:'აქტიურია', invited:'მოწვეულია', suspended:'შეჩერებულია', published:'გამოქვეყნებულია', draft:'მონახაზი', expired:'ვადაგასულია', revoked:'გაუქმებულია', 'never-used':'არ გამოყენებულა', expiring:'ვადა მალე იწურება' },
   tr: { pending:'Bekliyor', up:'Çalışıyor', down:'Kapalı', degraded:'Yavaşlamış', paused:'Duraklatıldı', investigating:'Araştırılıyor', identified:'Belirlendi', monitoring:'İzleniyor', resolved:'Çözüldü', maintenance:'Bakım', 'no-data':'Veri yok', ok:'Çalışıyor', failed:'Başarısız', skipped:'Atlandı', active:'Aktif', invited:'Davet edildi', suspended:'Askıya alındı', published:'Yayınlandı', draft:'Taslak', expired:'Süresi doldu', revoked:'İptal edildi', 'never-used':'Hiç kullanılmadı', expiring:'Yakında doluyor' },
   ru: { pending:'Ожидание', up:'Работает', down:'Недоступен', degraded:'Есть проблемы', paused:'На паузе', investigating:'Расследуется', identified:'Причина найдена', monitoring:'Наблюдение', resolved:'Решён', maintenance:'Обслуживание', 'no-data':'Нет данных', ok:'Работает', failed:'Ошибка', skipped:'Пропущено', active:'Активен', invited:'Приглашён', suspended:'Заблокирован', published:'Опубликован', draft:'Черновик', expired:'Истёк', revoked:'Отозван', 'never-used':'Не использовался', expiring:'Скоро истекает' },
@@ -55,6 +56,28 @@ const localizedStatusLabels: Readonly<Record<string, Readonly<Record<string, str
   hi: { pending:'लंबित', up:'संचालित', down:'अनुपलब्ध', degraded:'प्रभावित', paused:'रोका गया', investigating:'जाँच जारी', identified:'पहचान हुई', monitoring:'निगरानी', resolved:'समाधान हुआ', maintenance:'रखरखाव' },
   bn: { pending:'অপেক্ষমাণ', up:'সচল', down:'অনুপলব্ধ', degraded:'ব্যাহত', paused:'বিরত', investigating:'তদন্ত চলছে', identified:'শনাক্ত হয়েছে', monitoring:'পর্যবেক্ষণে', resolved:'সমাধান হয়েছে', maintenance:'রক্ষণাবেক্ষণ' },
   ar: { pending:'قيد الانتظار', up:'يعمل', down:'غير متاح', degraded:'أداء متراجع', paused:'متوقف مؤقتًا', investigating:'قيد التحقيق', identified:'تم التحديد', monitoring:'قيد المراقبة', resolved:'تم الحل', maintenance:'صيانة' },
+  de: { pending:'Wird geprüft', up:'Betriebsbereit', down:'Nicht erreichbar', degraded:'Beeinträchtigt', paused:'Pausiert', investigating:'Wird untersucht', identified:'Ursache ermittelt', monitoring:'Unter Beobachtung', resolved:'Behoben', maintenance:'Wartung' },
+  nl: { pending:'Wordt gecontroleerd', up:'Operationeel', down:'Niet beschikbaar', degraded:'Vertraagd', paused:'Gepauzeerd', investigating:'In onderzoek', identified:'Geïdentificeerd', monitoring:'Onder observatie', resolved:'Opgelost', maintenance:'Onderhoud' },
+  cs: { pending:'Čeká na kontrolu', up:'V provozu', down:'Nedostupné', degraded:'Omezený provoz', paused:'Pozastaveno', investigating:'Probíhá šetření', identified:'Příčina zjištěna', monitoring:'Sledování', resolved:'Vyřešeno', maintenance:'Údržba' },
+  da: { pending:'Kontrolleres', up:'I drift', down:'Nede', degraded:'Ustabil', paused:'Pauset', investigating:'Undersøges', identified:'Identificeret', monitoring:'Overvåges', resolved:'Løst', maintenance:'Vedligeholdelse' },
+  fi: { pending:'Tarkistetaan', up:'Toiminnassa', down:'Ei käytettävissä', degraded:'Heikentynyt', paused:'Keskeytetty', investigating:'Tutkitaan', identified:'Tunnistettu', monitoring:'Seurannassa', resolved:'Ratkaistu', maintenance:'Huolto' },
+  el: { pending:'Σε έλεγχο', up:'Λειτουργεί', down:'Μη διαθέσιμο', degraded:'Υποβαθμισμένο', paused:'Σε παύση', investigating:'Υπό διερεύνηση', identified:'Εντοπίστηκε', monitoring:'Παρακολούθηση', resolved:'Επιλύθηκε', maintenance:'Συντήρηση' },
+  hr: { pending:'Provjerava se', up:'Radi', down:'Nedostupno', degraded:'Otežan rad', paused:'Pauzirano', investigating:'Istražuje se', identified:'Utvrđeno', monitoring:'Nadzire se', resolved:'Riješeno', maintenance:'Održavanje' },
+  hu: { pending:'Ellenőrzés alatt', up:'Működik', down:'Nem elérhető', degraded:'Korlátozott', paused:'Szünetel', investigating:'Vizsgálat alatt', identified:'Azonosítva', monitoring:'Megfigyelés', resolved:'Megoldva', maintenance:'Karbantartás' },
+  he: { pending:'בבדיקה', up:'פעיל', down:'לא זמין', degraded:'ביצועים ירודים', paused:'מושהה', investigating:'בחקירה', identified:'זוהה', monitoring:'במעקב', resolved:'נפתר', maintenance:'תחזוקה' },
+  it: { pending:'In verifica', up:'Operativo', down:'Non disponibile', degraded:'Degradato', paused:'In pausa', investigating:'In analisi', identified:'Identificato', monitoring:'Monitoraggio', resolved:'Risolto', maintenance:'Manutenzione' },
+  ja: { pending:'確認中', up:'正常稼働', down:'障害中', degraded:'パフォーマンス低下', paused:'一時停止', investigating:'調査中', identified:'原因特定済み', monitoring:'監視中', resolved:'解決済み', maintenance:'メンテナンス' },
+  ms: { pending:'Sedang diperiksa', up:'Beroperasi', down:'Tidak tersedia', degraded:'Terjejas', paused:'Dijeda', investigating:'Sedang disiasat', identified:'Dikenal pasti', monitoring:'Dipantau', resolved:'Selesai', maintenance:'Penyelenggaraan' },
+  no: { pending:'Kontrolleres', up:'I drift', down:'Nede', degraded:'Ustabil', paused:'Pauset', investigating:'Undersøkes', identified:'Identifisert', monitoring:'Overvåkes', resolved:'Løst', maintenance:'Vedlikehold' },
+  fil: { pending:'Sinusuri', up:'Gumagana', down:'Hindi available', degraded:'May problema', paused:'Naka-pause', investigating:'Iniimbestigahan', identified:'Natukoy', monitoring:'Minomonitor', resolved:'Nalutas', maintenance:'Maintenance' },
+  ur: { pending:'جانچ جاری ہے', up:'فعال', down:'دستیاب نہیں', degraded:'متاثرہ', paused:'روکا گیا', investigating:'تحقیقات جاری ہیں', identified:'شناخت ہو گئی', monitoring:'نگرانی جاری ہے', resolved:'حل شدہ', maintenance:'دیکھ بھال' },
+  pl: { pending:'Sprawdzanie', up:'Działa', down:'Niedostępne', degraded:'Ograniczone działanie', paused:'Wstrzymano', investigating:'Badanie awarii', identified:'Zidentyfikowano', monitoring:'Obserwacja', resolved:'Rozwiązano', maintenance:'Konserwacja' },
+  ro: { pending:'Se verifică', up:'Operațional', down:'Indisponibil', degraded:'Degradat', paused:'Suspendat', investigating:'În investigare', identified:'Identificat', monitoring:'Monitorizare', resolved:'Rezolvat', maintenance:'Mentenanță' },
+  sr: { pending:'Проверава се', up:'Ради', down:'Недоступно', degraded:'Отежан рад', paused:'Паузирано', investigating:'Истражује се', identified:'Утврђено', monitoring:'Надзор', resolved:'Решено', maintenance:'Одржавање' },
+  sv: { pending:'Kontrolleras', up:'I drift', down:'Nere', degraded:'Nedsatt', paused:'Pausad', investigating:'Undersöks', identified:'Identifierad', monitoring:'Övervakas', resolved:'Löst', maintenance:'Underhåll' },
+  sl: { pending:'Preverjanje', up:'Deluje', down:'Ni na voljo', degraded:'Okrnjeno', paused:'Začasno ustavljeno', investigating:'V preiskavi', identified:'Ugotovljeno', monitoring:'Spremljanje', resolved:'Rešeno', maintenance:'Vzdrževanje' },
+  sk: { pending:'Kontroluje sa', up:'V prevádzke', down:'Nedostupné', degraded:'Obmedzená prevádzka', paused:'Pozastavené', investigating:'Prešetruje sa', identified:'Identifikované', monitoring:'Sledovanie', resolved:'Vyriešené', maintenance:'Údržba' },
+  uk: { pending:'Перевіряється', up:'Працює', down:'Недоступний', degraded:'Нестабільний', paused:'Призупинено', investigating:'Розслідується', identified:'Причину знайдено', monitoring:'Спостереження', resolved:'Вирішено', maintenance:'Обслуговування' },
 }
 
 const statusTones: Readonly<Record<string, StatusTone>> = {
@@ -193,7 +216,11 @@ export function formatStatus(
   locale = activeLocale(),
 ): string {
   if (!status) return 'Unknown'
-  const localized = localizedStatusLabels[locale.split('-')[0].toLowerCase()]
+  const normalizedLocale = locale.toLowerCase()
+  const language = normalizedLocale.startsWith('zh-hant') || /^zh-(?:hk|mo|tw)(?:-|$)/.test(normalizedLocale)
+    ? 'zh-hant'
+    : normalizedLocale.split('-')[0]
+  const localized = localizedStatusLabels[language === 'nb' ? 'no' : language]
   if (localized?.[status]) return localized[status]
   if (statusLabels[status]) return statusLabels[status]
 

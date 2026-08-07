@@ -26,6 +26,7 @@ import { LanguageSelect, useI18n } from '../app/I18nProvider'
 import { INCIDENT_ASSIGNMENT_REFRESH_EVENT } from '../features/operations/events'
 import type { BillingPlan } from '../api/types'
 import { OPEN_BILLING_EVENT } from '../features/billing/events'
+import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
 const navItems = [
   { to: '/monitors', labelKey: 'nav.monitoring', icon: CircleGauge },
@@ -71,7 +72,8 @@ export function AppShell() {
   const planLabel = currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1).replaceAll('_', ' ')
   const isSystemAdministrator = user?.system_role === 'superadmin' && !impersonation
   const isAccountant = user?.system_role === 'accountant' && !impersonation
-  const canManageBilling = authenticated && !demo && !impersonation && !isAccountant && (workspaceRole === 'owner' || workspaceRole === 'admin')
+  const isManagedCatalog = currentPlan === 'public-catalog'
+  const canManageBilling = authenticated && !demo && !impersonation && !isAccountant && !isManagedCatalog && (workspaceRole === 'owner' || workspaceRole === 'admin')
   const freePlan = activeBillingPlan ? activeBillingPlan.price_monthly_cents === 0 : currentPlan === 'free'
   const premiumPlan = activeBillingPlan?.limits.allow_manual_tests === true
   const billingButtonLabel = freePlan ? t('shell.plansBilling') : activeBillingPlan?.name || planLabel
@@ -195,6 +197,7 @@ export function AppShell() {
         </nav>
 
         <div className="sidebar__footer">
+          <WorkspaceSwitcher onSwitched={() => setMobileOpen(false)} />
           <div className="user-card">
             <div className="avatar">{initials}<span>.</span></div>
             {!collapsed && (

@@ -81,7 +81,8 @@ const monitorTypeLabels: Readonly<Record<MonitorType, string>> = {
 
 const languageLabels: Readonly<Record<string, string>> = {
   en: 'English',
-  zh: '中文',
+  zh: '简体中文',
+  'zh-Hant': '繁體中文',
   hi: 'हिन्दी',
   es: 'Español',
   fr: 'Français',
@@ -90,6 +91,10 @@ const languageLabels: Readonly<Record<string, string>> = {
   pt: 'Português',
   ru: 'Русский',
   id: 'Bahasa Indonesia',
+  de: 'Deutsch', nl: 'Nederlands', cs: 'Čeština', da: 'Dansk', fi: 'Suomi', el: 'Ελληνικά',
+  hr: 'Hrvatski', hu: 'Magyar', he: 'עברית', it: 'Italiano', ja: '日本語', ms: 'Bahasa Melayu',
+  no: 'Norsk', fil: 'Filipino', ur: 'اردو', pl: 'Polski', ro: 'Română', sr: 'Српски',
+  sv: 'Svenska', sl: 'Slovenščina', sk: 'Slovenčina', tr: 'Türkçe', uk: 'Українська',
 }
 
 function toTimestamp(value: DateInput | null | undefined): number | null {
@@ -432,7 +437,9 @@ export function toMonitorViewModel(
     target: monitorTarget(monitor, type),
     status: monitor.paused ? 'paused' : normaliseMonitorStatus(monitor.status),
     group: nonEmpty(monitor.group_name, 'Ungrouped'),
-    tags: Array.isArray(monitor.tags) ? [...monitor.tags] : [],
+    tags: Array.isArray(monitor.tags)
+      ? monitor.tags.filter((tag) => tag !== 'public-catalog' && tag !== 'downdetector' && !tag.startsWith('target:'))
+      : [],
     intervalSeconds: nonNegativeNumber(monitor.interval_seconds),
     timeoutSeconds: nonNegativeNumber(monitor.timeout_seconds),
     slowThresholdMs: optionalNonNegativeNumber(monitor.slow_threshold_ms),
@@ -718,6 +725,7 @@ export function toStatusPageViewModel(
     status: page.published ? 'published' : 'draft',
     language: languageLabels[page.language] ?? nonEmpty(page.language, 'English'),
     languageCode: page.language,
+    countryCode: page.country_code,
     customDomain,
     customDomainVerified,
     announcementCount: Math.round(nonNegativeNumber(options.announcementCount)),

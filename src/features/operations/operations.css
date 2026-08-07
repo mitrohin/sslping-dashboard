@@ -338,3 +338,10 @@ button.ops-incident-card:hover { border-color: #46536a; background: #202b3e; }
 .ops-leak-report article>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.ops-leak-report article>div:first-child{display:grid}.ops-leak-report article span{color:var(--text-secondary);font-size:.8rem}
 .ops-leak-report details{padding-top:2px}.ops-leak-report details summary{cursor:pointer;font-weight:700;color:var(--text-primary)}.ops-leak-report__records{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:10px}.ops-leak-report dl{display:grid;gap:5px;margin:0;padding:11px;background:var(--surface-deep);border-radius:10px}.ops-leak-report dl div{display:flex;justify-content:space-between;gap:12px}.ops-leak-report dt{color:var(--text-secondary)}.ops-leak-report dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 @media(max-width:720px){.ops-leak-report__summary{grid-template-columns:1fr 1fr}.ops-leak-report__summary>div:last-child{grid-column:1/-1}.ops-leak-report article{align-items:flex-start;flex-direction:column}}
+.ops-pagination { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.ops-pagination > span { min-width: 88px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+@media (max-width: 640px) {
+  .ops-pagination { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ops-pagination > span { min-width: 0; grid-column: 1 / -1; grid-row: 1; }
+  .ops-pagination .button { width: 100%; }
+}

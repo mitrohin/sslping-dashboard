@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { PublicStatusSnapshot } from '../../api'
 import { PublicStatusPage, type PublicStatusApi } from './PublicStatusPage'
+import { statusPageLocale } from './i18n'
 
 afterEach(() => {
   cleanup()
@@ -89,6 +90,38 @@ describe('PublicStatusPage', () => {
     expect(api.getPublicStatusPage).toHaveBeenCalledWith('example-cloud')
   })
 
+  it('counts multiple published updates for one incident once', async () => {
+    const incidentId = 'incident-1'
+    const api = createApi({
+      ...snapshot,
+      announcements: [
+        { id: 'manual-1', incident_id: incidentId, title: 'Investigating', body: 'First update', status: 'investigating', published_at: '2026-07-25T10:00:00.000Z' },
+        { id: 'manual-2', incident_id: incidentId, title: 'Identified', body: 'Second update', status: 'identified', published_at: '2026-07-25T10:05:00.000Z' },
+        { id: 'automatic', incident_id: incidentId, title: 'Unavailable', body: 'Automatic update', status: 'investigating', published_at: '2026-07-25T10:00:00.000Z' },
+      ],
+    })
+    renderRoute(api)
+
+    const label = await screen.findByText('Active incidents')
+    expect(within(label.closest('article') as HTMLElement).getByText('1')).toBeInTheDocument()
+  })
+
+  it('does not count historical unresolved updates after the incident recovered', async () => {
+    const incidentId = 'incident-1'
+    const api = createApi({
+      ...snapshot,
+      announcements: [
+        { id: 'manual-1', incident_id: incidentId, title: 'Investigating', body: 'First update', status: 'investigating', published_at: '2026-07-25T10:00:00.000Z' },
+        { id: 'manual-2', incident_id: incidentId, title: 'Identified', body: 'Second update', status: 'identified', published_at: '2026-07-25T10:05:00.000Z' },
+        { id: 'automatic', incident_id: incidentId, title: 'Operational again', body: 'Recovered', status: 'resolved', published_at: '2026-07-25T10:00:00.000Z', resolved_at: '2026-07-25T10:10:00.000Z' },
+      ],
+    })
+    renderRoute(api)
+
+    const label = await screen.findByText('Active incidents')
+    expect(within(label.closest('article') as HTMLElement).getByText('0')).toBeInTheDocument()
+  })
+
   it('renders public interface text and metadata in the page language', async () => {
     const api = createApi({ ...snapshot, page: { ...snapshot.page, language: 'ru' } })
     renderRoute(api)
@@ -115,6 +148,40 @@ describe('PublicStatusPage', () => {
 
     expect(screen.getByLabelText('Загрузка статус-страницы')).toBeInTheDocument()
     expect(screen.queryByLabelText('Loading status page')).not.toBeInTheDocument()
+  })
+
+  it('renders an extended country language and preserves the regional document locale', async () => {
+    const api = createApi({ ...snapshot, page: { ...snapshot.page, slug: 'example-cloud-de', country_code: 'DE', language: 'de' } })
+    renderRoute(api, '/example-cloud-de')
+
+    expect(await screen.findByRole('heading', { name: 'Alle Systeme betriebsbereit' })).toBeInTheDocument()
+    expect(screen.getByText(/Aktueller Status/)).toBeInTheDocument()
+    expect(screen.getByText(/Deutschland/)).toBeInTheDocument()
+    expect(document.documentElement.lang).toBe('de-DE')
+    expect(document.documentElement.dir).toBe('ltr')
+  })
+
+  it('uses the same Norwegian BCP-47 tag as the server-rendered SEO page', () => {
+    expect(statusPageLocale('no', 'NO')).toBe('nb-NO')
+  })
+
+  it('maps the server-rendered nb-NO tag back to Norwegian before the API responds', () => {
+    document.documentElement.lang = 'nb-NO'
+    const api = createApi()
+    api.getPublicStatusPage = vi.fn().mockImplementation(() => new Promise(() => undefined))
+    renderRoute(api)
+
+    expect(screen.getByLabelText('Laster statusside')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Loading status page')).not.toBeInTheDocument()
+  })
+
+  it('uses right-to-left layout for Hebrew and Urdu country pages', async () => {
+    const api = createApi({ ...snapshot, page: { ...snapshot.page, slug: 'example-cloud-il', country_code: 'IL', language: 'he' } })
+    renderRoute(api, '/example-cloud-il')
+
+    expect(await screen.findByRole('heading', { name: 'כל המערכות פועלות' })).toBeInTheDocument()
+    expect(document.documentElement.lang).toBe('he-IL')
+    expect(document.documentElement.dir).toBe('rtl')
   })
 
   it('combines visitor signals and response time without summary statistics', async () => {

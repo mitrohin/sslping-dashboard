@@ -374,7 +374,7 @@ export class ApiClient {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`)
   }
 
-  getMonitorDashboard(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.MonitorDashboard> {
+  getMonitorDashboard(tenantId: Api.UUID, query?: Api.MonitorDashboardQuery): Promise<Api.MonitorDashboard> {
     return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/dashboard`, query))
   }
 
@@ -467,7 +467,7 @@ export class ApiClient {
     )
   }
 
-  getMetricsSummary(tenantId: Api.UUID, query?: Api.TimeRangeQuery): Promise<Api.MetricsSummary> {
+  getMetricsSummary(tenantId: Api.UUID, query?: Api.MetricsSummaryQuery): Promise<Api.MetricsSummary> {
     return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/metrics/summary`, query))
   }
 
@@ -576,8 +576,12 @@ export class ApiClient {
     })
   }
 
-  listStatusPages(tenantId: Api.UUID): Promise<Api.ItemList<Api.StatusPage>> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages`)
+  listStatusPages(tenantId: Api.UUID, query?: Api.ListQuery): Promise<Api.Page<Api.StatusPage>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/status-pages`, query))
+  }
+
+  getStatusPageDashboard(tenantId: Api.UUID, query?: Api.ListQuery): Promise<Api.StatusPageDashboard> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/status-pages/dashboard`, query))
   }
 
   createStatusPage(tenantId: Api.UUID, input: Api.StatusPageCreateRequest): Promise<Api.StatusPage> {
