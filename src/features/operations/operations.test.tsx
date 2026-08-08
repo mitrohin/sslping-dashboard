@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { demoIncidents } from '../../data'
 import { IncidentsPage } from './IncidentsPage'
 
@@ -75,6 +75,82 @@ describe('IncidentsPage', () => {
     expect(screen.getByText('Connection failed')).toBeInTheDocument()
     expect(screen.getByText('Provider investigation started')).toBeInTheDocument()
     expect(screen.getByText('Monitor recovered')).toBeInTheDocument()
+  })
+
+  it('loads incident details on demand, caches them, and preserves incident actions', async () => {
+    const incident = demoIncidents[0]
+    let finishLoading: ((detail: {
+      comments: Array<{ id: string; author: string; message: string; createdAt: string; status: 'investigating' }>
+      reports: []
+    }) => void) | undefined
+    const onLoadIncidentDetails = vi.fn(() => new Promise<{
+      comments: Array<{ id: string; author: string; message: string; createdAt: string; status: 'investigating' }>
+      reports: []
+    }>((resolve) => {
+      finishLoading = resolve
+    }))
+    const onComment = vi.fn().mockResolvedValue(undefined)
+    const onResolve = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <IncidentsPage
+        incidents={[incident]}
+        onLoadIncidentDetails={onLoadIncidentDetails}
+        onComment={onComment}
+        onResolve={onResolve}
+      />,
+    )
+
+    expect(onLoadIncidentDetails).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: incident.monitorName }))
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    expect(onLoadIncidentDetails).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishLoading?.({
+        comments: [{
+          id: 'lazy-comment',
+          author: 'Incident opened',
+          message: 'Loaded only after selection',
+          createdAt: incident.startedAt,
+          status: 'investigating',
+        }],
+        reports: [],
+      })
+    })
+    expect(await screen.findByText('Loaded only after selection')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Share context or the next action…'), { target: { value: 'Operator update' } })
+    fireEvent.click(screen.getByRole('button', { name: /add comment/i }))
+    await waitFor(() => expect(onComment).toHaveBeenCalledWith(incident.id, 'Operator update'))
+    expect(screen.getByText('Operator update')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(incident.id))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: incident.monitorName }))
+    expect(screen.getByText('Loaded only after selection')).toBeInTheDocument()
+    expect(onLoadIncidentDetails).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a detail error and retries only the selected incident', async () => {
+    const incident = demoIncidents[0]
+    const onLoadIncidentDetails = vi.fn()
+      .mockRejectedValueOnce(new Error('Incident details are temporarily unavailable'))
+      .mockResolvedValueOnce({
+        comments: [{ id: 'recovered-comment', author: 'Incident opened', message: 'Details recovered', createdAt: incident.startedAt, status: 'investigating' }],
+        reports: [],
+      })
+
+    render(<IncidentsPage incidents={[incident]} onLoadIncidentDetails={onLoadIncidentDetails} />)
+    fireEvent.click(screen.getByRole('button', { name: incident.monitorName }))
+
+    expect(await screen.findByText('Incident details are temporarily unavailable')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByText('Details recovered')).toBeInTheDocument()
+    expect(onLoadIncidentDetails).toHaveBeenCalledTimes(2)
   })
 
   it('renders visitor reports as an interactive mountain chart with a baseline and watermark', () => {

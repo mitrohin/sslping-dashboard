@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   CheckCircle2,
   Clock3,
@@ -38,12 +38,18 @@ export interface IncidentCommentViewModel {
   status?: IncidentStatus
 }
 
+export interface IncidentDetailsViewModel {
+  comments: readonly IncidentCommentViewModel[]
+  reports: readonly UserProblemReport[]
+}
+
 export interface IncidentsPageProps {
   incidents?: readonly IncidentViewModel[]
   monitors?: readonly MonitorViewModel[]
   members?: readonly TeamMemberViewModel[]
   initialComments?: Readonly<Record<string, readonly IncidentCommentViewModel[]>>
 	initialReports?: Readonly<Record<string, readonly UserProblemReport[]>>
+  onLoadIncidentDetails?: (incidentId: string) => Promise<IncidentDetailsViewModel>
   onAssign?: (incidentId: string, memberId: string) => MaybePromise<void>
   onComment?: (incidentId: string, message: string) => MaybePromise<void>
   onResolve?: (incidentId: string) => MaybePromise<void>
@@ -52,6 +58,10 @@ export interface IncidentsPageProps {
 
 type SortOrder = 'newest' | 'oldest' | 'duration'
 type StatusFilter = 'all' | IncidentStatus | 'open'
+type IncidentDetailLoadState =
+  | { status: 'loading' }
+  | { status: 'ready' }
+  | { status: 'error'; error: string }
 
 const incidentTone = (status: IncidentStatus): 'success' | 'warning' | 'info' => {
   if (status === 'resolved') return 'success'
@@ -240,6 +250,7 @@ export function IncidentsPage({
   members = demoTeamMembers,
   initialComments = {},
 	initialReports = {},
+  onLoadIncidentDetails,
   onAssign,
   onComment,
   onResolve,
@@ -258,10 +269,24 @@ export function IncidentsPage({
   })
   const [assignments, setAssignments] = useState<Readonly<Record<string, string>>>({})
   const [comments, setComments] = useState<Readonly<Record<string, readonly IncidentCommentViewModel[]>>>(() => initialComments)
+  const [reports, setReports] = useState<Readonly<Record<string, readonly UserProblemReport[]>>>(() => initialReports)
+  const loadedDetailIds = useRef(new Set([...Object.keys(initialComments), ...Object.keys(initialReports)]))
+  const pendingDetailIds = useRef(new Set<string>())
+  const mounted = useRef(true)
+  const [detailLoads, setDetailLoads] = useState<Readonly<Record<string, IncidentDetailLoadState>>>(() =>
+    Object.fromEntries([...loadedDetailIds.current].map((incidentId) => [incidentId, { status: 'ready' as const }])),
+  )
   const [commentDraft, setCommentDraft] = useState('')
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
   const [downloadingReport, setDownloadingReport] = useState(false)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const downloadComplianceReport = async (incident: IncidentViewModel) => {
     if (!onDownloadComplianceReport) return
@@ -319,10 +344,58 @@ export function IncidentsPage({
 
   const selected = selectedId ? incidents.find((incident) => incident.id === selectedId) : undefined
   const selectedComments = selected ? comments[selected.id] ?? [] : []
-	const selectedReports = selected ? initialReports[selected.id] ?? [] : []
+	const selectedReports = selected ? reports[selected.id] ?? [] : []
   const selectedAssignment = selected
     ? assignments[selected.id] ?? members.find((member) => member.name === selected.assignedTo)?.id ?? ''
     : ''
+
+  const loadIncidentDetails = useCallback((incident: IncidentViewModel) => {
+    if (incident.access === 'subscription' || !onLoadIncidentDetails) return
+    if (loadedDetailIds.current.has(incident.id) || pendingDetailIds.current.has(incident.id)) return
+
+    pendingDetailIds.current.add(incident.id)
+    setDetailLoads((current) => ({ ...current, [incident.id]: { status: 'loading' } }))
+    void onLoadIncidentDetails(incident.id).then(
+      (detail) => {
+        pendingDetailIds.current.delete(incident.id)
+        loadedDetailIds.current.add(incident.id)
+        if (!mounted.current) return
+        setComments((current) => ({ ...current, [incident.id]: detail.comments }))
+        setReports((current) => ({ ...current, [incident.id]: detail.reports }))
+        setIncidents((current) => current.map((item) =>
+          item.id === incident.id ? { ...item, commentCount: detail.comments.length } : item,
+        ))
+        setDetailLoads((current) => ({ ...current, [incident.id]: { status: 'ready' } }))
+      },
+      (error) => {
+        pendingDetailIds.current.delete(incident.id)
+        if (!mounted.current) return
+        setDetailLoads((current) => ({
+          ...current,
+          [incident.id]: {
+            status: 'error',
+            error: error instanceof Error ? error.message : '',
+          },
+        }))
+      },
+    )
+  }, [onLoadIncidentDetails])
+
+  useEffect(() => {
+    if (selected) loadIncidentDetails(selected)
+  }, [loadIncidentDetails, selected])
+
+  const selectedDetailLoad = selected && selected.access !== 'subscription' && onLoadIncidentDetails
+    ? detailLoads[selected.id] ?? { status: 'loading' as const }
+    : { status: 'ready' as const }
+
+  const retryIncidentDetails = () => {
+    if (!selected) return
+    loadIncidentDetails(selected)
+  }
+
+  const displayedCommentCount = (incident: IncidentViewModel): number | string =>
+    !onLoadIncidentDetails || detailLoads[incident.id]?.status === 'ready' ? incident.commentCount : '—'
 
   const execute = async (key: string, action: () => MaybePromise<void>, optimistic: () => void) => {
     setBusyAction(key)
@@ -467,7 +540,7 @@ export function IncidentsPage({
                   <td><Badge tone={incidentTone(incident.status)}>{formatStatus(incident.status)}</Badge></td>
                   <td><button className="ops-link-button" type="button" onClick={() => setSelectedId(incident.id)}>{incident.monitorName}</button></td>
                   <td><span className="ops-root-cause"><Badge tone="danger">{incident.rootCauseCode}</Badge>{incident.rootCause}</span></td>
-                  {showPrivateColumns && <td>{incident.access === 'subscription' ? '—' : <span className="ops-inline-meta"><MessageSquareText size={15} />{incident.commentCount}</span>}</td>}
+                  {showPrivateColumns && <td>{incident.access === 'subscription' ? '—' : <span className="ops-inline-meta"><MessageSquareText size={15} />{displayedCommentCount(incident)}</span>}</td>}
                   <td>{formatDate(incident.startedAt, { includeSeconds: true })}</td>
                   <td>{incident.resolvedAt ? formatDate(incident.resolvedAt, { includeSeconds: true }) : '—'}</td>
                   <td>{formatDuration(incident.durationSeconds)}</td>
@@ -489,7 +562,7 @@ export function IncidentsPage({
               {incident.access !== 'subscription' && incident.status !== 'resolved' && (assignments[incident.id] || incident.assignedTo) && (
                 <span className="ops-card-assignee"><UserRoundCheck size={15} />{memberById.get(assignments[incident.id])?.name ?? incident.assignedTo}</span>
               )}
-              <span className="ops-card-row ops-card-row--muted"><span>{formatDate(incident.startedAt)}</span>{incident.access !== 'subscription' && <span>{t('incidents.commentCount', { count: incident.commentCount })}</span>}</span>
+              <span className="ops-card-row ops-card-row--muted"><span>{formatDate(incident.startedAt)}</span>{incident.access !== 'subscription' && <span>{detailLoads[incident.id]?.status === 'ready' || !onLoadIncidentDetails ? t('incidents.commentCount', { count: incident.commentCount }) : '—'}</span>}</span>
             </button>
           ))}
         </div>
@@ -559,7 +632,18 @@ export function IncidentsPage({
             )}
             {actionError && <FeedbackBanner tone="error">{actionError}</FeedbackBanner>}
 
-			{selected.source === 'user_report'
+            {selectedDetailLoad.status === 'loading' ? (
+              <FeedbackBanner tone="info">{t('common.loading')}</FeedbackBanner>
+            ) : selectedDetailLoad.status === 'error' ? (
+              <FeedbackBanner
+                tone="error"
+                action={<Button size="sm" variant="secondary" type="button" onClick={retryIncidentDetails}>{t('common.tryAgain')}</Button>}
+              >
+                {selectedDetailLoad.error || t('incidents.actionFailed')}
+              </FeedbackBanner>
+            ) : <>
+
+				{selected.source === 'user_report'
 				? <VisitorReportActivityChart incident={selected} reports={selectedReports} translate={t} locale={locale} />
 				: <IncidentActivityChart incident={selected} comments={selectedComments} translate={t} />}
 
@@ -653,6 +737,7 @@ export function IncidentsPage({
                 <MessageSquareText size={17} /> {t('incidents.addComment')}
               </Button>
             </form>
+            </>}
             </>}
           </div>
         )}

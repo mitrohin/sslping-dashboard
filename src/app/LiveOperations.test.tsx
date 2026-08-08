@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
   const api = {
     listMonitors: vi.fn(),
     listIncidents: vi.fn(),
+    getIncident: vi.fn(),
     listMembers: vi.fn(),
     listIncidentComments: vi.fn(),
     listMonitorSubscriptionIncidents: vi.fn(),
@@ -364,16 +365,18 @@ describe('LiveIncidentsPage', () => {
       }),
     ])
     expect(mocks.api.listIncidentComments).not.toHaveBeenCalled()
-    expect(props.initialComments).toEqual({})
-    expect(props.initialReports).toEqual({})
+    expect(props.initialComments).toBeUndefined()
+    expect(props.initialReports).toBeUndefined()
   })
 
   it('loads adapted data and wires every incident mutation', async () => {
     mocks.api.listMonitors.mockResolvedValue({ items: [monitor] })
     mocks.api.listIncidents.mockResolvedValue({ items: [incident] })
     mocks.api.listMembers.mockResolvedValue({ items: [membership] })
-    mocks.api.listIncidentComments.mockResolvedValue({
-      items: [
+    mocks.api.getIncident.mockResolvedValue({
+      incident,
+      reports: [],
+      timeline: [
         {
           id: 'comment-1',
           incident_id: incident.id,
@@ -403,10 +406,15 @@ describe('LiveIncidentsPage', () => {
       id: incident.id,
       monitorName: monitor.name,
       assignedTo: user.name,
-      commentCount: 2,
+      commentCount: 0,
       rootCauseCode: 'T/O',
     })
-    expect(props.initialComments?.[incident.id]).toEqual([
+    expect(mocks.api.getIncident).not.toHaveBeenCalled()
+    expect(mocks.api.listIncidentComments).not.toHaveBeenCalled()
+
+    const details = await props.onLoadIncidentDetails?.(incident.id)
+    expect(mocks.api.getIncident).toHaveBeenCalledWith('workspace-1', incident.id)
+    expect(details?.comments).toEqual([
       expect.objectContaining({
         author: 'Incident opened',
         message: 'Connection timeout confirmed',
@@ -416,6 +424,7 @@ describe('LiveIncidentsPage', () => {
         message: 'Checking the upstream provider',
       }),
     ])
+    expect(details?.reports).toEqual([])
     expect(props.monitors?.[0].target).toBe('https://api.example.com/health')
     expect(props.members?.[0]).toMatchObject({ id: user.id, role: 'admin' })
 

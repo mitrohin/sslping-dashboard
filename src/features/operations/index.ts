@@ -1,5 +1,5 @@
 export { IncidentsPage } from './IncidentsPage'
-export type { IncidentCommentViewModel, IncidentsPageProps } from './IncidentsPage'
+export type { IncidentCommentViewModel, IncidentDetailsViewModel, IncidentsPageProps } from './IncidentsPage'
 
 export { StatusPagesPage } from './StatusPagesPage'
 export type { StatusPagesPageProps } from './StatusPagesPage'

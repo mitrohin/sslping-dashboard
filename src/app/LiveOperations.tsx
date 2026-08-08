@@ -11,7 +11,6 @@ import type {
   StatusPage,
   StatusPageCreateRequest,
   StatusPageUpdateRequest,
-	UserProblemReport,
 } from '../api/types'
 import { Button, FeedbackBanner, PageLoadingSkeleton, Panel } from '../components/ui'
 import { formatStatus } from '../lib/format'
@@ -28,8 +27,8 @@ import {
   MaintenancePage,
   StatusPageEditorPage,
   StatusPagesPage,
+  type IncidentDetailsViewModel,
   type MaintenanceWindowInput,
-  type IncidentCommentViewModel,
   type StatusPageAnnouncementInput,
   type StatusPageAnnouncementViewModel,
   type StatusPageCreateInput,
@@ -117,8 +116,6 @@ interface IncidentData {
   incidents: readonly IncidentViewModel[]
   monitors: readonly MonitorViewModel[]
   members: readonly TeamMemberViewModel[]
-  comments: Readonly<Record<string, readonly IncidentCommentViewModel[]>>
-	reports: Readonly<Record<string, readonly UserProblemReport[]>>
 }
 
 function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceId?: string }) {
@@ -133,46 +130,15 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
     const memberships = memberList.items ?? []
     const monitorById = new Map(rawMonitors.map((monitor) => [monitor.id, monitor]))
     const memberById = new Map(memberships.map((membership) => [membership.user_id, membership]))
-    const commentsByIncident = new Map<string, readonly IncidentCommentViewModel[]>()
-		const reportsByIncident = new Map<string, readonly UserProblemReport[]>()
-
-    await Promise.all(
-      (incidentPage.items ?? []).map(async (incident) => {
-        try {
-					const response = typeof api.getIncident === 'function' ? await api.getIncident(activeWorkspaceId, incident.id) : undefined
-					const hasTimeline = Array.isArray(response?.timeline)
-					const fallback = hasTimeline ? undefined : await api.listIncidentComments(activeWorkspaceId, incident.id)
-					const updates = hasTimeline ? response.timeline : fallback?.items ?? []
-					reportsByIncident.set(incident.id, response?.reports ?? [])
-          commentsByIncident.set(incident.id, updates.map((update, index) => {
-            const author = update.created_by ? memberById.get(update.created_by)?.user?.name : undefined
-            const isOpeningUpdate = index === 0 && !update.created_by
-            return {
-              id: update.id,
-              author: author ?? (update.status === 'resolved' ? 'Incident resolved' : isOpeningUpdate ? 'Incident opened' : formatStatus(update.status)),
-              message: update.message,
-              createdAt: update.created_at,
-              status: update.status,
-            }
-          }))
-        } catch {
-          commentsByIncident.set(incident.id, [])
-				reportsByIncident.set(incident.id, [])
-        }
-      }),
-    )
 
     return {
       monitors: rawMonitors.map((monitor) => toMonitorViewModel(monitor)),
       members: memberships.map((membership) => toTeamMemberViewModel(membership)),
-      comments: Object.fromEntries(commentsByIncident),
-		reports: Object.fromEntries(reportsByIncident),
       incidents: [...(incidentPage.items ?? []).map((incident) => {
         const membership = incident.assigned_to ? memberById.get(incident.assigned_to) : undefined
         return toIncidentViewModel(incident, {
           monitor: monitorById.get(incident.monitor_id),
           assignee: membership?.user,
-          commentCount: commentsByIncident.get(incident.id)?.length,
         })
       }), ...(subscriptionIncidentList.items ?? []).map((incident) => toSubscribedIncidentViewModel(incident))],
     }
@@ -187,13 +153,37 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
     return workspaceId
   }
 
+  const loadIncidentDetails = async (incidentId: string): Promise<IncidentDetailsViewModel> => {
+    const activeWorkspaceId = requireWorkspace()
+    const response = typeof api.getIncident === 'function'
+      ? await api.getIncident(activeWorkspaceId, incidentId)
+      : undefined
+    const hasTimeline = Array.isArray(response?.timeline)
+    const fallback = hasTimeline ? undefined : await api.listIncidentComments(activeWorkspaceId, incidentId)
+    const updates = hasTimeline ? response.timeline : fallback?.items ?? []
+    const memberById = new Map(state.data.members.map((member) => [member.id, member]))
+    return {
+      reports: response?.reports ?? [],
+      comments: updates.map((update, index) => {
+        const author = update.created_by ? memberById.get(update.created_by)?.name : undefined
+        const isOpeningUpdate = index === 0 && !update.created_by
+        return {
+          id: update.id,
+          author: author ?? (update.status === 'resolved' ? 'Incident resolved' : isOpeningUpdate ? 'Incident opened' : formatStatus(update.status)),
+          message: update.message,
+          createdAt: update.created_at,
+          status: update.status,
+        }
+      }),
+    }
+  }
+
   return (
     <IncidentsPage
       incidents={state.data.incidents}
       monitors={state.data.monitors}
       members={state.data.members}
-      initialComments={state.data.comments}
-		initialReports={state.data.reports}
+      onLoadIncidentDetails={loadIncidentDetails}
       onAssign={(incidentId, memberId) => api.assignIncident(requireWorkspace(), incidentId, memberId).then(() => undefined)}
       onComment={(incidentId, message) => api.addIncidentComment(requireWorkspace(), incidentId, message).then(() => undefined)}
       onResolve={(incidentId) => api.resolveIncident(requireWorkspace(), incidentId).then(() => undefined)}
