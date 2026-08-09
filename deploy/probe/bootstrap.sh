@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 export LC_ALL=C
 
-PROBE_VERSION="1.0.1"
+PROBE_VERSION="1.0.2"
 CONTROL_URL="https://units.sslping.io"
 PROBE_PORT="${SSLPING_PROBE_PORT:-}"
 PROBE_CONCURRENCY="${SSLPING_PROBE_CONCURRENCY:-}"
@@ -741,7 +741,11 @@ echo "  Suggested code : ${CODE_SUGGESTION}"
 echo "  Name           : $(hostname -f 2>/dev/null || hostname)"
 echo "  IP address     : ${PUBLIC_IP:-unknown}"
 echo "  Health port    : ${PROBE_PORT} (${HEALTH_ACCESS})"
-echo "  Probe key      : ${PROBE_KEY} (${KEY_ACTION})"
+if [[ "${KEY_ACTION}" == "preserved" ]]; then
+  echo "  Probe key      : preserved (not printed again)"
+else
+  echo "  Probe key      : ${PROBE_KEY} (${KEY_ACTION})"
+fi
 echo "  Concurrency    : ${PROBE_CONCURRENCY}"
 echo "  Probe version  : ${PROBE_VERSION}"
 echo "  Control network: ${CONTROL_NETWORK}"

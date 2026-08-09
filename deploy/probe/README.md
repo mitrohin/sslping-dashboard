@@ -27,12 +27,12 @@ second key-based login has been tested after installation.
 
 ## Install
 
-Release `1.0.1` is the bootstrap's pinned default. The pinned one-command
+Release `1.0.2` is the bootstrap's pinned default. The pinned one-command
 installation for a new VPS is:
 
 ```bash
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.1/deploy/probe/bootstrap.sh \
+  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.2/deploy/probe/bootstrap.sh \
   | sudo bash
 ```
 
@@ -47,7 +47,7 @@ network failures clearer and avoids executing a partial pipeline:
 
 ```bash
 curl --fail --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.1/deploy/probe/bootstrap.sh \
+  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.2/deploy/probe/bootstrap.sh \
   --output /tmp/sslping-probe-bootstrap.sh
 sudo bash /tmp/sslping-probe-bootstrap.sh
 ```
@@ -115,9 +115,11 @@ sudo bash /tmp/sslping-probe-bootstrap.sh \
 
 ## Safe reruns and key rotation
 
-A normal rerun preserves the port,
-concurrency, health CIDR and probe key when they are not supplied again. It
-redetects the public address/control family, replaces the binary and service
+A normal rerun preserves the port, concurrency, health CIDR and probe key when
+they are not supplied again. A preserved key is deliberately not printed
+again; read the root-only environment file only during an attended credential
+recovery. The installer redetects the public address/control family, replaces
+the binary and service
 definition atomically where possible, restarts the service, and requires both
 `systemctl is-active` and local `/health/live` to succeed before printing
 credentials.
