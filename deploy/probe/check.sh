@@ -14,7 +14,7 @@ fi
 
 grep -Fq 'CONTROL_URL="https://units.sslping.io"' "${BOOTSTRAP}"
 grep -Fq 'REPOSITORY="mitrohin/sslping-dashboard"' "${BOOTSTRAP}"
-grep -Fq 'PROBE_VERSION="1.0.2"' "${BOOTSTRAP}"
+grep -Fq 'PROBE_VERSION="1.0.3"' "${BOOTSTRAP}"
 grep -Fq 'Probe key      : preserved (not printed again)' "${BOOTSTRAP}"
 grep -Fq 'HEALTH_ALLOW="${HEALTH_ALLOW:-local}"' "${BOOTSTRAP}"
 grep -Fq 'SSLPING_PROBE_HEALTH_ADDR=127.0.0.1:' "${BOOTSTRAP}"
