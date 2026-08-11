@@ -9,6 +9,7 @@ import type {
   MaintenanceWindow,
   Membership,
   Monitor,
+  MonitorLatestSummary,
   StatusPage,
   StatusPageDetail,
   User,
@@ -248,6 +249,12 @@ describe('toMonitorViewModel', () => {
         certificate_issuer: 'Compact CA',
         domain_expires_at: '2027-07-25T12:00:00.000Z',
         domain_registrar: 'Compact Registrar',
+        domain_evidence: {
+          attempted: true,
+          checked_at: '2026-07-25T11:58:00.000Z',
+          status: 'down',
+          root_cause: 'rdap_error',
+        },
       },
       now,
     })
@@ -257,7 +264,46 @@ describe('toMonitorViewModel', () => {
       incidentId: 'incident-compact',
       sslCertificate: { issuer: 'Compact CA', state: 'warning' },
       domainRegistration: { issuer: 'Compact Registrar', state: 'ok' },
+      domainRegistrationEvidence: {
+        state: 'lookup-failed',
+        attempted: true,
+        checkedAt: '2026-07-25T11:58:00.000Z',
+        rootCause: 'rdap_error',
+      },
     })
+  })
+
+  it('distinguishes unpublished, transiently failed, and unattempted domain lookups', () => {
+    const latest = (domain_evidence?: MonitorLatestSummary['domain_evidence']) => toMonitorViewModel(monitor, {
+      latest: {
+        monitor_id: monitor.id,
+        checked_at: '2026-07-25T11:59:50.000Z',
+        latency_ms: 321,
+        domain_evidence,
+      },
+      now,
+    }).domainRegistrationEvidence
+
+    expect(latest({
+      attempted: true,
+      checked_at: '2026-07-25T11:58:00.000Z',
+      status: 'unknown',
+      root_cause: 'domain_expiry_unknown',
+      source: 'whois',
+      registry_server: 'whois.example',
+    })).toEqual({
+      state: 'unpublished',
+      attempted: true,
+      checkedAt: '2026-07-25T11:58:00.000Z',
+      status: 'unknown',
+      rootCause: 'domain_expiry_unknown',
+      source: 'whois',
+      registryServer: 'whois.example',
+    })
+    expect(latest({ attempted: true, status: 'down', root_cause: 'timeout' })).toMatchObject({
+      state: 'lookup-failed', attempted: true, rootCause: 'timeout',
+    })
+    expect(latest()).toEqual({ state: 'not-checked', attempted: false })
   })
 
   it('adds the current-hour bar only after a check is recorded', () => {
@@ -363,6 +409,7 @@ describe('toMonitorViewModel', () => {
     expect(toMonitorViewModel(disabled, { checks, now })).toMatchObject({
       sslCertificate: undefined,
       domainRegistration: undefined,
+      domainRegistrationEvidence: { state: 'not-checked', attempted: false },
     })
   })
 })

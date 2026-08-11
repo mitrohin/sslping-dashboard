@@ -14,7 +14,7 @@ vi.mock('./AuthProvider', () => ({
 
 function TranslationProbe() {
   const { t } = useI18n()
-  return <strong>{t('billing.title')}</strong>
+  return <><strong>{t('billing.title')}</strong><span>{t('monitorDetail.domainUnpublished')}</span></>
 }
 
 afterEach(() => {
@@ -33,6 +33,7 @@ describe('dashboard localization', () => {
     fireEvent.change(language, { target: { value: 'ru' } })
 
     expect(await screen.findByText('Тарифы и оплата')).toBeInTheDocument()
+    expect(screen.getByText('Реестр не публикует дату')).toBeInTheDocument()
     await waitFor(() => expect(updateLocale).toHaveBeenCalledWith('ru'))
     expect(localStorage.getItem('sslping.locale')).toBe('ru')
     expect(document.documentElement.lang).toBe('ru')

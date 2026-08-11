@@ -600,6 +600,15 @@ export interface CheckResultHour {
   samples: number
 }
 
+export interface MonitorDomainEvidenceSummary {
+  attempted: boolean
+  checked_at?: ISODateTime
+  status?: string
+  root_cause?: string
+  source?: string
+  registry_server?: string
+}
+
 export interface MonitorLatestSummary {
   monitor_id: UUID
   checked_at: ISODateTime
@@ -609,6 +618,7 @@ export interface MonitorLatestSummary {
   certificate_issuer?: string
   domain_expires_at?: ISODateTime
   domain_registrar?: string
+  domain_evidence?: MonitorDomainEvidenceSummary
   leak_found?: number
   compliance_score?: number
   compliance_failed?: number

@@ -111,6 +111,44 @@ describe('MonitorDetailPage heartbeat token rotation', () => {
 })
 
 describe('MonitorDetailPage live controls', () => {
+  it('renders known, unpublished, failed, and not-yet-checked domain evidence honestly', () => {
+    const base = { ...demoMonitors[0], domainRegistration: undefined }
+    const { rerender } = render(
+      <MemoryRouter><MonitorDetailPage monitor={{
+        ...base,
+        domainRegistration: { expiresAt: '2028-06-02T00:00:00Z', daysRemaining: 676, state: 'ok', issuer: 'Example Registrar' },
+        domainRegistrationEvidence: { state: 'known', attempted: true, checkedAt: '2026-08-10T12:00:00Z', source: 'rdap', registryServer: 'rdap.example' },
+      }} responseTime={[]} uptimePeriods={[]} incidents={[]} /></MemoryRouter>,
+    )
+    expect(screen.getByText('Domain valid until')).toBeInTheDocument()
+    expect(screen.getByText('Example Registrar')).toBeInTheDocument()
+    expect(screen.getByText('Source: RDAP · rdap.example')).toBeInTheDocument()
+    expect(screen.getByText(/Last lookup:/)).toBeInTheDocument()
+
+    rerender(<MemoryRouter><MonitorDetailPage monitor={{
+      ...base,
+      domainRegistrationEvidence: { state: 'unpublished', attempted: true, checkedAt: '2026-08-10T12:00:00Z', rootCause: 'domain_expiry_unknown', source: 'whois', registryServer: 'whois.example' },
+    }} responseTime={[]} uptimePeriods={[]} incidents={[]} /></MemoryRouter>)
+    expect(screen.getByText('Not published by registry')).toBeInTheDocument()
+    expect(screen.getByText('This registry does not provide a domain expiration date.')).toBeInTheDocument()
+    expect(screen.getByText('Source: WHOIS · whois.example')).toBeInTheDocument()
+
+    rerender(<MemoryRouter><MonitorDetailPage monitor={{
+      ...base,
+      domainRegistration: { expiresAt: '2028-06-02T00:00:00Z', daysRemaining: 676, state: 'ok', issuer: 'Example Registrar' },
+      domainRegistrationEvidence: { state: 'lookup-failed', attempted: true, checkedAt: '2026-08-10T12:00:00Z', rootCause: 'timeout' },
+    }} responseTime={[]} uptimePeriods={[]} incidents={[]} /></MemoryRouter>)
+    expect(screen.getByText('Last known domain expiration')).toBeInTheDocument()
+    expect(screen.getByText('Lookup temporarily unavailable')).toBeInTheDocument()
+    expect(screen.getByText('SSLPing will retry the registration lookup automatically.')).toBeInTheDocument()
+
+    rerender(<MemoryRouter><MonitorDetailPage monitor={{
+      ...base,
+      domainRegistrationEvidence: { state: 'not-checked', attempted: false },
+    }} responseTime={[]} uptimePeriods={[]} incidents={[]} /></MemoryRouter>)
+    expect(screen.getByText('Domain registration has not been checked yet.')).toBeInTheDocument()
+  })
+
   it('shows assigned location names instead of infrastructure codes', () => {
     const monitor = { ...demoMonitors[0], regions: ['local', 'blr-1'] }
     render(

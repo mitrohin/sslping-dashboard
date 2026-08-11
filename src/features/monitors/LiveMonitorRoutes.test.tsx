@@ -405,6 +405,38 @@ describe('LiveMonitorsPage controls', () => {
 })
 
 describe('LiveMonitorDetailPage refresh', () => {
+  it('carries compact domain evidence reasons from the overview into the detail card', async () => {
+    const api = fakeApi()
+    const monitor = { ...baseMonitor(), last_check_at: now }
+    const overview = overviewFor(monitor)
+    overview.latest = {
+      monitor_id: monitor.id,
+      checked_at: now,
+      latency_ms: 120,
+      domain_evidence: {
+        attempted: true,
+        checked_at: '2026-07-26T07:55:00.000Z',
+        status: 'unknown',
+        root_cause: 'domain_expiry_unknown',
+        source: 'whois',
+        registry_server: 'whois.example',
+      },
+    }
+    Object.assign(api, { getMonitorOverview: vi.fn().mockResolvedValue(overview) })
+    mockAuth(api)
+
+    render(
+      <MemoryRouter initialEntries={['/monitors/monitor-1']}>
+        <Routes><Route path="/monitors/:monitorId" element={<LiveMonitorDetailPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Not published by registry')).toBeInTheDocument()
+    expect(screen.getByText('Source: WHOIS · whois.example')).toBeInTheDocument()
+    expect(screen.getByText(/Last lookup:/)).toBeInTheDocument()
+    expect(api.listMonitorChecks).not.toHaveBeenCalled()
+  })
+
   it('loads a bounded aggregate overview without requesting raw check pages', async () => {
     const api = fakeApi()
     const monitor = {

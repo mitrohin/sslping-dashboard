@@ -481,15 +481,16 @@ export function toLiveMonitorDetail(options: {
   const certificate = options.certificateEvidence?.length
     ? toMonitorViewModel(options.monitor, { checks: options.certificateEvidence }).sslCertificate
     : undefined
-  const domain = options.domainEvidence?.length
-    ? toMonitorViewModel(options.monitor, { checks: options.domainEvidence }).domainRegistration
+  const domainView = options.domainEvidence?.length
+    ? toMonitorViewModel(options.monitor, { checks: options.domainEvidence })
     : undefined
 
   return {
     monitor: {
       ...base,
       sslCertificate: certificate ?? base.sslCertificate,
-      domainRegistration: domain ?? base.domainRegistration,
+      domainRegistration: domainView?.domainRegistration ?? base.domainRegistration,
+      domainRegistrationEvidence: domainView?.domainRegistrationEvidence ?? base.domainRegistrationEvidence,
     },
     responseTime: options.responseHistory
       ? toResponseTimeSeriesFromHistory(options.responseHistory, options.locations)

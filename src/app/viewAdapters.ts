@@ -10,6 +10,7 @@ import type {
   MaintenanceWindow,
   Membership,
   Monitor,
+  MonitorDomainEvidenceSummary,
   MonitorLatestSummary,
   StatusPage,
   StatusPageDetail,
@@ -19,6 +20,7 @@ import type {
 import type {
   ApiKeyScope,
   ApiKeyViewModel,
+  DomainRegistrationEvidence,
   ExpirySnapshot,
   IncidentViewModel,
   IncidentLocationQuorum,
@@ -395,6 +397,60 @@ function latestExpirySnapshot(expiresAt: string | undefined, issuer: string | un
   }
 }
 
+function compactEvidenceString(value: string | undefined, maximum: number): string | undefined {
+  const compact = value?.trim()
+  if (!compact) return undefined
+  return compact.slice(0, maximum)
+}
+
+function domainEvidenceFromCheck(check: CheckResult | undefined): MonitorDomainEvidenceSummary | undefined {
+  const envelope = childRecord(check?.details, 'domain_registration')
+  if (!envelope) return undefined
+  const details = childRecord(envelope, 'details')
+  return {
+    attempted: true,
+    checked_at: compactEvidenceString(recordString(envelope, 'finished_at') ?? check?.finished_at ?? check?.started_at, 64),
+    status: compactEvidenceString(recordString(envelope, 'status'), 32),
+    root_cause: compactEvidenceString(recordString(envelope, 'root_cause'), 64),
+    source: compactEvidenceString(recordString(details, 'source') ?? recordString(envelope, 'source'), 32),
+    registry_server: compactEvidenceString(recordString(details, 'registry_server') ?? recordString(envelope, 'registry_server'), 255),
+  }
+}
+
+function domainRegistrationEvidence(
+  evidence: MonitorDomainEvidenceSummary | undefined,
+  registration: ExpirySnapshot | undefined,
+): DomainRegistrationEvidence {
+  const attempted = evidence?.attempted === true
+  const rootCause = compactEvidenceString(evidence?.root_cause, 64)
+  const status = compactEvidenceString(evidence?.status, 32)
+  const knownDateCause = rootCause === undefined || rootCause === 'none'
+    || rootCause === 'domain_expiring' || rootCause === 'domain_expired'
+  const refreshFailed = attempted && (
+    !knownDateCause
+    || status === 'unknown'
+    || (status === 'down' && rootCause !== 'domain_expired')
+  )
+  const state = rootCause === 'domain_expiry_unknown'
+    ? 'unpublished'
+    : refreshFailed
+      ? 'lookup-failed'
+      : registration
+        ? 'known'
+        : !attempted
+          ? 'not-checked'
+          : 'lookup-failed'
+  return {
+    state,
+    attempted,
+    checkedAt: compactEvidenceString(evidence?.checked_at, 64),
+    status,
+    rootCause,
+    source: compactEvidenceString(evidence?.source, 32),
+    registryServer: compactEvidenceString(evidence?.registry_server, 255),
+  }
+}
+
 export interface MonitorAdapterOptions {
   checks?: readonly CheckResult[]
   history?: readonly CheckResultHour[]
@@ -428,6 +484,13 @@ export function toMonitorViewModel(
   const complianceReportValue = leakEnvelope?.compliance_report
   const complianceReport = isRecord(complianceReportValue) ? complianceReportValue as unknown as import('../api/types').ComplianceReport : undefined
   const evidenceOnly = type === 'leakcheck' || type === 'compliance'
+  const domainRegistration = tracksDomainExpiry
+    ? latestExpirySnapshot(latest?.domain_expires_at, latest?.domain_registrar, referenceTime)
+      ?? expirySnapshot(lastCheck, 'domain', referenceTime)
+    : undefined
+  const domainEvidence = tracksDomainExpiry
+    ? domainRegistrationEvidence(latest?.domain_evidence ?? domainEvidenceFromCheck(lastCheck), domainRegistration)
+    : undefined
 
   return {
     id: nonEmpty(monitor.id, 'unknown-monitor'),
@@ -459,11 +522,8 @@ export function toMonitorViewModel(
       ? latestExpirySnapshot(latest?.certificate_expires_at, latest?.certificate_issuer, referenceTime)
         ?? expirySnapshot(lastCheck, 'certificate', referenceTime)
       : undefined,
-    domainRegistration:
-      tracksDomainExpiry
-        ? latestExpirySnapshot(latest?.domain_expires_at, latest?.domain_registrar, referenceTime)
-          ?? expirySnapshot(lastCheck, 'domain', referenceTime)
-        : undefined,
+    domainRegistration,
+    domainRegistrationEvidence: domainEvidence,
     leakReport,
     leakFound: latest?.leak_found ?? leakReport?.found,
     leakReportCached: leakEnvelope?.cached === true,

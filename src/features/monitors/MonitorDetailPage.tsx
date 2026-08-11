@@ -302,6 +302,11 @@ export function MonitorDetailPage({
     label: locationNames[region] ?? (region === 'local' ? 'Frankfurt' : region),
     color: responseTime.find((series) => series.regionId === region)?.color,
   }))
+  const domainEvidence = monitor.domainRegistrationEvidence
+  const domainEvidenceState = domainEvidence?.state ?? (monitor.domainRegistration ? 'known' : 'not-checked')
+  const domainSource = [domainEvidence?.source?.toUpperCase(), domainEvidence?.registryServer]
+    .filter((value): value is string => Boolean(value))
+    .join(' · ')
 
   const runAction = async (action: () => Promise<void>) => {
     setActionBusy(true)
@@ -465,7 +470,30 @@ export function MonitorDetailPage({
         </div>
 
         <aside className="monitor-detail-side">
-          {!evidenceOnly && <Panel className="side-card domain-card"><h2>{t('monitorDetail.domainSsl')}<span className="title-dot">.</span></h2>{monitor.domainRegistration ? <div><span>{t('monitorDetail.domainValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.domainRegistration.expiresAt, { includeYear: true })}</strong></div> : <p className="muted">{t('monitorDetail.noDomainEvidence')}</p>}{monitor.sslCertificate ? <div><span>{t('monitorDetail.sslValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.sslCertificate.expiresAt, { includeYear: true })}</strong><small>{monitor.sslCertificate.issuer}</small></div> : null}</Panel>}
+          {!evidenceOnly && <Panel className="side-card domain-card">
+            <h2>{t('monitorDetail.domainSsl')}<span className="title-dot">.</span></h2>
+            {monitor.domainRegistration ? <div>
+              <span>{domainEvidenceState === 'known' ? t('monitorDetail.domainValidUntil') : t('monitorDetail.domainLastKnown')}</span>
+              <strong><ShieldCheck size={19} /> {formatDate(monitor.domainRegistration.expiresAt, { includeYear: true })}</strong>
+              {monitor.domainRegistration.issuer ? <small>{monitor.domainRegistration.issuer}</small> : null}
+              {domainEvidenceState === 'known' && domainSource ? <small>{t('monitorDetail.domainSource', { source: domainSource })}</small> : null}
+              {domainEvidenceState === 'known' && domainEvidence?.checkedAt ? <small>{t('monitorDetail.domainLastAttempt', { date: formatDate(domainEvidence.checkedAt, { includeYear: true }) })}</small> : null}
+            </div> : null}
+            {domainEvidenceState === 'unpublished' ? <div>
+              <span>{t('monitorDetail.domainExpiry')}</span>
+              <strong className="warning-text"><ShieldAlert size={19} /> {t('monitorDetail.domainUnpublished')}</strong>
+              <small>{t('monitorDetail.domainUnpublishedHint')}</small>
+              {domainSource ? <small>{t('monitorDetail.domainSource', { source: domainSource })}</small> : null}
+              {domainEvidence?.checkedAt ? <small>{t('monitorDetail.domainLastAttempt', { date: formatDate(domainEvidence.checkedAt, { includeYear: true }) })}</small> : null}
+            </div> : domainEvidenceState === 'lookup-failed' ? <div>
+              <span>{t('monitorDetail.domainExpiry')}</span>
+              <strong className="warning-text"><ShieldAlert size={19} /> {t('monitorDetail.domainLookupFailed')}</strong>
+              <small>{t('monitorDetail.domainLookupFailedHint')}</small>
+              {domainSource ? <small>{t('monitorDetail.domainSource', { source: domainSource })}</small> : null}
+              {domainEvidence?.checkedAt ? <small>{t('monitorDetail.domainLastAttempt', { date: formatDate(domainEvidence.checkedAt, { includeYear: true }) })}</small> : null}
+            </div> : !monitor.domainRegistration ? <p className="muted">{t('monitorDetail.domainNotChecked')}</p> : null}
+            {monitor.sslCertificate ? <div><span>{t('monitorDetail.sslValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.sslCertificate.expiresAt, { includeYear: true })}</strong><small>{monitor.sslCertificate.issuer}</small></div> : null}
+          </Panel>}
           <Panel className="side-card"><h2>{t('monitorDetail.nextMaintenance')}<span className="title-dot">.</span></h2><CalendarDays size={26} className="side-card__feature-icon" />{nextMaintenance ? <div className="side-card__resource"><strong>{nextMaintenance.name}</strong><span>{formatDate(nextMaintenance.startsAt)}</span><small>{formatDuration(nextMaintenance.durationMinutes * 60)} · {nextMaintenance.timezone}</small></div> : <p>{suppliedMonitor ? t('monitorDetail.noMaintenance') : demoMaintenanceWindows[1]?.name ?? t('monitorDetail.noMaintenance')}</p>}<Button variant="secondary" size="sm" onClick={() => navigate(`/maintenance?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.setupMaintenance')}</Button></Panel>
           <Panel className="side-card region-card"><h2>{t('monitorDetail.regions')}<span className="title-dot">.</span></h2><RegionMap regions={mappedRegions} label={t('monitorDetail.monitoringRegions')} /></Panel>
           <Panel className="side-card"><h2>{t('monitorDetail.toBeNotified')}<span className="title-dot">.</span></h2>{notifications.length ? <div className="side-card__resource-list">{notifications.slice(0, 3).map((integration) => <div key={integration.id}><BellRing size={16} /><span><strong>{integration.name}</strong><small>{integration.destinationLabel}</small></span></div>)}</div> : <div className="notification-logos"><span>—</span></div>}<Button variant="secondary" size="sm" onClick={() => navigate(`/integrations?monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.manageNotifications')}</Button></Panel>

@@ -212,4 +212,28 @@ Object.assign(ru, {
   'authFlow.retryInvitation': 'Повторить принятие',
 })
 
+Object.assign(en, {
+  'monitorDetail.domainExpiry': 'Domain expiration',
+  'monitorDetail.domainLastKnown': 'Last known domain expiration',
+  'monitorDetail.domainUnpublished': 'Not published by registry',
+  'monitorDetail.domainUnpublishedHint': 'This registry does not provide a domain expiration date.',
+  'monitorDetail.domainLookupFailed': 'Lookup temporarily unavailable',
+  'monitorDetail.domainLookupFailedHint': 'SSLPing will retry the registration lookup automatically.',
+  'monitorDetail.domainNotChecked': 'Domain registration has not been checked yet.',
+  'monitorDetail.domainSource': 'Source: {source}',
+  'monitorDetail.domainLastAttempt': 'Last lookup: {date}',
+})
+
+Object.assign(ru, {
+  'monitorDetail.domainExpiry': 'Срок регистрации домена',
+  'monitorDetail.domainLastKnown': 'Последняя известная дата окончания',
+  'monitorDetail.domainUnpublished': 'Реестр не публикует дату',
+  'monitorDetail.domainUnpublishedHint': 'Этот реестр не предоставляет дату окончания регистрации.',
+  'monitorDetail.domainLookupFailed': 'Сервис реестра временно недоступен',
+  'monitorDetail.domainLookupFailedHint': 'SSLPing автоматически повторит проверку регистрации.',
+  'monitorDetail.domainNotChecked': 'Регистрация домена ещё не проверялась.',
+  'monitorDetail.domainSource': 'Источник: {source}',
+  'monitorDetail.domainLastAttempt': 'Последняя проверка: {date}',
+})
+
 export const secondaryTranslations: Record<Locale, Messages> = { en, es, zh, ka, tr, ru }

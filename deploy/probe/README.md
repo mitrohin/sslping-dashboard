@@ -27,12 +27,12 @@ second key-based login has been tested after installation.
 
 ## Install
 
-Release `1.0.4` is the bootstrap's pinned default. The pinned one-command
+Release `1.0.5` is the bootstrap's pinned default. The pinned one-command
 installation for a new VPS is:
 
 ```bash
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.4/deploy/probe/bootstrap.sh \
+  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.5/deploy/probe/bootstrap.sh \
   | sudo bash
 ```
 
@@ -47,7 +47,7 @@ network failures clearer and avoids executing a partial pipeline:
 
 ```bash
 curl --fail --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.4/deploy/probe/bootstrap.sh \
+  https://raw.githubusercontent.com/mitrohin/sslping-dashboard/probe-v1.0.5/deploy/probe/bootstrap.sh \
   --output /tmp/sslping-probe-bootstrap.sh
 sudo bash /tmp/sslping-probe-bootstrap.sh
 ```

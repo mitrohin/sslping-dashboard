@@ -31,6 +31,16 @@ export interface ExpirySnapshot {
   issuer?: string
 }
 
+export interface DomainRegistrationEvidence {
+  state: 'known' | 'unpublished' | 'lookup-failed' | 'not-checked'
+  attempted: boolean
+  checkedAt?: string
+  status?: string
+  rootCause?: string
+  source?: string
+  registryServer?: string
+}
+
 export interface MonitorViewModel {
   id: string
   /** Owned monitors are editable; subscribed monitors are shared read-only views. */
@@ -61,6 +71,7 @@ export interface MonitorViewModel {
   hasOpenIncident?: boolean
   sslCertificate?: ExpirySnapshot
   domainRegistration?: ExpirySnapshot
+  domainRegistrationEvidence?: DomainRegistrationEvidence
   leakReport?: import('../api/types').LeakCheckReport
   leakFound?: number
   leakReportCached?: boolean
