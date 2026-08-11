@@ -405,6 +405,35 @@ describe('LiveMonitorsPage controls', () => {
 })
 
 describe('LiveMonitorDetailPage refresh', () => {
+  it('shows an E.ON-shaped failed RDAP attempt without an expiry as temporarily unavailable', async () => {
+    const api = fakeApi()
+    const monitor = { ...baseMonitor(), last_check_at: now }
+    const overview = overviewFor(monitor)
+    overview.latest = {
+      monitor_id: monitor.id,
+      checked_at: now,
+      latency_ms: 120,
+      domain_evidence: {
+        attempted: true,
+        checked_at: '2026-08-11T12:15:00.000Z',
+        status: 'down',
+        root_cause: 'rdap_error',
+      },
+    }
+    Object.assign(api, { getMonitorOverview: vi.fn().mockResolvedValue(overview) })
+    mockAuth(api)
+
+    render(
+      <MemoryRouter initialEntries={['/monitors/monitor-1']}>
+        <Routes><Route path="/monitors/:monitorId" element={<LiveMonitorDetailPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Lookup temporarily unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('Domain registration has not been checked yet.')).not.toBeInTheDocument()
+    expect(api.listMonitorChecks).not.toHaveBeenCalled()
+  })
+
   it('carries compact domain evidence reasons from the overview into the detail card', async () => {
     const api = fakeApi()
     const monitor = { ...baseMonitor(), last_check_at: now }

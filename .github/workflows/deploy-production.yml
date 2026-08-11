@@ -105,6 +105,54 @@ jobs:
           kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
           kubectl -n sslping get pods,services,gateways,httproutes
 
+      - name: Audit public dashboard cache headers
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          inspect_cache_header() {
+            local url="$1"
+            local expected="$2"
+            local headers
+            local cache_control
+            headers="$(mktemp)"
+
+            if ! curl --fail --silent --show-error --location --head \
+              --connect-timeout 5 --max-time 15 \
+              --dump-header "${headers}" --output /dev/null "${url}"; then
+              rm -f "${headers}"
+              echo "::warning title=Dashboard cache audit::Could not inspect ${url}"
+              return 1
+            fi
+
+            cache_control="$(awk '
+              tolower($1) == "cache-control:" {
+                $1 = ""
+                sub(/^ /, "")
+                value = $0
+              }
+              END { print value }
+            ' "${headers}" | tr -d '\r')"
+            rm -f "${headers}"
+
+            if [ "${cache_control}" != "${expected}" ]; then
+              echo "::warning title=Dashboard cache audit::${url} returned Cache-Control: ${cache_control:-missing}; expected ${expected}"
+              return 1
+            fi
+          }
+
+          failures=0
+          inspect_cache_header \
+            https://dashboard.sslping.io/ \
+            "no-store" || failures=1
+          inspect_cache_header \
+            https://dashboard.sslping.io/assets/app.js \
+            "public, max-age=0, must-revalidate" || failures=1
+          inspect_cache_header \
+            https://dashboard.sslping.io/assets/app.css \
+            "public, max-age=0, must-revalidate" || failures=1
+          exit "${failures}"
+
       - name: Verify public status end to end
         id: public_status_smoke
         continue-on-error: true
