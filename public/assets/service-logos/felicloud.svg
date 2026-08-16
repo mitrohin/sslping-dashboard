@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="cloudGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+
+  <path d="M 25,45
+           C 25,35 32,28 40,28
+           C 42,20 50,15 58,15
+           C 68,15 75,22 75,32
+           C 82,32 88,38 88,46
+           C 88,54 82,60 75,60
+           L 30,60
+           C 22,60 16,54 16,46
+           C 16,40 20,35 25,40
+           Z"
+        fill="url(#cloudGradient)"
+        stroke="none"/>
+</svg>

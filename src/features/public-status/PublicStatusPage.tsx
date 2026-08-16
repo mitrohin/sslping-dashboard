@@ -173,13 +173,28 @@ function publicBranding(value: unknown): PublicBranding {
   const source = typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
   const scheme = source.color_scheme
   return {
-    logoUrl: typeof source.logo_url === 'string' ? source.logo_url : '',
+    logoUrl: typeof source.logo_url === 'string' ? source.logo_url.trim() : '',
     accentColor: typeof source.accent_color === 'string' ? source.accent_color : '#1eb873',
     backgroundColor: typeof source.background_color === 'string' ? source.background_color : '',
     colorScheme: scheme === 'dark' || scheme === 'light' ? scheme : 'system',
     removeProductLogo: source.remove_product_logo === true,
     removeCookieConsent: source.remove_cookie_consent === true,
   }
+}
+
+function StatusPageLogo({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false)
+
+  if (!src || failed) return <Activity size={20} />
+
+  return (
+    <img
+      src={src}
+      alt=""
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 function usePreferredColorScheme(): 'light' | 'dark' {
@@ -744,9 +759,9 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       <header className="ps-header">
         <div className="ps-container ps-header__inner">
           {snapshot.page.homepage_url ? (
-            <a className="ps-brand" href={snapshot.page.homepage_url} target="_blank" rel="noreferrer"><span className="ps-brand__mark">{branding.logoUrl ? <img src={branding.logoUrl} alt="" /> : <Activity size={20} />}</span><span>{snapshot.page.name}</span><ExternalLink size={14} /></a>
+            <a className="ps-brand" href={snapshot.page.homepage_url} target="_blank" rel="noreferrer"><span className="ps-brand__mark" aria-hidden="true"><StatusPageLogo key={branding.logoUrl || 'fallback'} src={branding.logoUrl} /></span><span>{snapshot.page.name}</span><ExternalLink size={14} /></a>
           ) : (
-            <div className="ps-brand"><span className="ps-brand__mark">{branding.logoUrl ? <img src={branding.logoUrl} alt="" /> : <Activity size={20} />}</span><span>{snapshot.page.name}</span></div>
+            <div className="ps-brand"><span className="ps-brand__mark" aria-hidden="true"><StatusPageLogo key={branding.logoUrl || 'fallback'} src={branding.logoUrl} /></span><span>{snapshot.page.name}</span></div>
           )}
           {settings.enable_subscribe && <button type="button" className="ps-button ps-button--outline" onClick={() => setSubscriptionOpen(true)}><Bell size={16} /> {copy.subscribeToUpdates}</button>}
         </div>

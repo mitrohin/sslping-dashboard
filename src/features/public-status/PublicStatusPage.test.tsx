@@ -90,6 +90,31 @@ describe('PublicStatusPage', () => {
     expect(api.getPublicStatusPage).toHaveBeenCalledWith('example-cloud')
   })
 
+  it('renders the configured service logo and falls back when the asset fails', async () => {
+    const api = createApi({
+      ...snapshot,
+      page: {
+        ...snapshot.page,
+        branding: { logo_url: '  https://status.sslping.io/assets/service-logos/example-cloud.svg  ' },
+      },
+    })
+    renderRoute(api)
+
+    const pageName = await screen.findByText('Example Cloud status')
+    const brand = pageName.closest('.ps-brand')
+    const mark = brand?.querySelector('.ps-brand__mark')
+    const logo = mark?.querySelector('img')
+
+    expect(mark).toHaveAttribute('aria-hidden', 'true')
+    expect(logo).toHaveAttribute('src', 'https://status.sslping.io/assets/service-logos/example-cloud.svg')
+    expect(logo).toHaveAttribute('alt', '')
+
+    fireEvent.error(logo as HTMLImageElement)
+
+    await waitFor(() => expect(mark?.querySelector('img')).not.toBeInTheDocument())
+    expect(mark?.querySelector('svg')).toBeInTheDocument()
+  })
+
   it('counts multiple published updates for one incident once', async () => {
     const incidentId = 'incident-1'
     const api = createApi({

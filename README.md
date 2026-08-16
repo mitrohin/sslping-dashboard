@@ -67,6 +67,12 @@ npm run build
 npm run preview
 ```
 
+Public managed status pages load their service marks from the vendored
+`public/assets/service-logos/` pack. Its source-of-truth manifest is mirrored
+in `data/service-logos.json`; tests require exact 776-file SHA-256 coverage and
+inert SVG content. Publish this dashboard/status asset pack before a backend
+catalog release that starts referencing new logo paths.
+
 The test suite covers API/session behavior, auth flows, monitor mappings, live dashboard adapters, operations, team/integrations and public status pages. The detailed screen-to-API contract is documented in [`docs/dashboard-functional-map.md`](docs/dashboard-functional-map.md).
 
 ## Routes
