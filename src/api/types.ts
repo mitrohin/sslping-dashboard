@@ -1525,3 +1525,33 @@ export type MonitorDashboardQuery = HistoryQuery & {
   tag?: string
   sort?: 'status' | 'name' | 'response'
 }
+
+export interface OAuthAuthorizationRequest {
+  response_type: string
+  client_id: string
+  redirect_uri: string
+  scope: string
+  state: string
+  code_challenge: string
+  code_challenge_method: string
+  resource: string
+}
+
+export interface OAuthAuthorizationPreview {
+  client_id: string
+  client_name: string
+  redirect_uri: string
+  workspace: Workspace
+  role: Role
+  requested_scopes: string[]
+  granted_scopes: string[]
+  excluded_scopes: string[]
+}
+
+export interface OAuthAuthorizationDecision extends OAuthAuthorizationRequest {
+  approved: boolean
+}
+
+export interface OAuthAuthorizationDecisionResponse {
+  redirect_to: string
+}

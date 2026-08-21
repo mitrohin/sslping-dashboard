@@ -286,6 +286,14 @@ export class ApiClient {
     return this.#request('/v1/me', { method: 'PATCH', body: input })
   }
 
+  previewOAuthAuthorization(input: Api.OAuthAuthorizationRequest): Promise<Api.OAuthAuthorizationPreview> {
+    return this.#request('/v1/oauth/authorize/preview', { method: 'POST', body: input })
+  }
+
+  decideOAuthAuthorization(input: Api.OAuthAuthorizationDecision): Promise<Api.OAuthAuthorizationDecisionResponse> {
+    return this.#request('/v1/oauth/authorize', { method: 'POST', body: input })
+  }
+
   async changePassword(input: Api.PasswordChangeRequest): Promise<void> {
     await this.#request<void>('/v1/auth/password/change', { method: 'POST', body: input })
     this.session.clear()

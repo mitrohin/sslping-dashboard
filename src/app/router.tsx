@@ -12,7 +12,7 @@ import {
   TwoFactorController,
 } from '../features/auth/AuthFlows'
 import { DashboardGate, DemoEntry } from './DashboardGate'
-import { GuestOnly, RequireSystemAdmin, RequireWorkspaceAccess } from './AuthProvider'
+import { GuestOnly, RequireAuth, RequireSystemAdmin, RequireWorkspaceAccess } from './AuthProvider'
 import { demoPublicStatusApi } from './demoPublicStatus'
 import { useI18n } from './I18nProvider'
 
@@ -30,6 +30,7 @@ const LiveIntegrationsPage = lazy(() => import('./LiveAccount').then((module) =>
 const LiveTeamPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveTeamPage })))
 const SupportPage = lazy(() => import('../features/support/SupportPage').then((module) => ({ default: module.SupportPage })))
 const AdminConsolePage = lazy(() => import('../features/admin/AdminConsolePage').then((module) => ({ default: module.AdminConsolePage })))
+const OAuthAuthorizePage = lazy(() => import('../features/auth/OAuthAuthorizePage'))
 
 function RouteSuspense({ children }: { children: ReactNode }) {
   const { t } = useI18n()
@@ -107,7 +108,10 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <RootRoute />,
-    children: [{ element: <AppShell />, children: dashboardChildren }],
+    children: [
+      { element: <RequireAuth />, children: [{ path: 'oauth/authorize', element: <RouteSuspense><OAuthAuthorizePage /></RouteSuspense> }] },
+      { element: <AppShell />, children: dashboardChildren },
+    ],
   },
   { path: '*', element: <NotFoundPage /> },
 ])
