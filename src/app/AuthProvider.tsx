@@ -118,6 +118,12 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
     return identity
   }, [api])
 
+  useEffect(() => api.onAuthenticationRequired(() => {
+    clearIdentity()
+    setPendingVerificationEmail(null)
+    setRestorationError(null)
+  }), [api, clearIdentity])
+
   useEffect(() => {
     let cancelled = false
 

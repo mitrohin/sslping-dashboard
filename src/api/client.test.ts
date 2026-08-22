@@ -143,9 +143,12 @@ describe('ApiClient', () => {
       return jsonResponse({}, 401)
     })
     const client = new ApiClient({ sessionStore: store, fetch: fetchMock })
+    const authenticationRequired = vi.fn()
+    client.onAuthenticationRequired(authenticationRequired)
 
     await expect(client.me()).rejects.toMatchObject({ status: 401 })
     expect(store.getTokens()).toBeNull()
+    expect(authenticationRequired).toHaveBeenCalledOnce()
   })
 
   it('uses the dedicated support and system-administration endpoints', async () => {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiClient } from '../api/client'
@@ -76,6 +76,15 @@ function CaptureAuth() {
     <output data-testid="auth-state">
       {currentAuth.loading ? 'loading' : currentAuth.authenticated ? currentAuth.workspace?.id : 'guest'}
     </output>
+  )
+}
+
+function ExpireSessionButton() {
+  const { api } = useAuth()
+  return (
+    <button type="button" onClick={() => void api.listMonitors(firstWorkspace.id).catch(() => undefined)}>
+      Load protected data
+    </button>
   )
 }
 
@@ -271,6 +280,47 @@ describe('AuthProvider', () => {
 })
 
 describe('auth route guards', () => {
+  it('redirects an active session to login when token refresh is rejected', async () => {
+    const store = new SessionStore(localStorage, 'expired-session')
+    store.setTokens(oldTokens)
+    const unauthorized: Problem = {
+      type: 'about:blank',
+      title: 'Authentication required',
+      status: 401,
+      detail: 'authentication required',
+      instance: '',
+      code: 'unauthorized',
+    }
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input) === '/v1/me') return response(identity())
+      return response(unauthorized, 401)
+    })
+    const api = new ApiClient({ sessionStore: store, fetch: fetchMock })
+
+    render(
+      <AuthProvider api={api}>
+        <MemoryRouter initialEntries={['/private']}>
+          <Routes>
+            <Route element={<RequireAuth />}>
+              <Route path="/private" element={<ExpireSessionButton />} />
+            </Route>
+            <Route path="/login" element={<div>Login form</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Load protected data' }))
+
+    expect(await screen.findByText('Login form')).toBeInTheDocument()
+    expect(store.getTokens()).toBeNull()
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      '/v1/me',
+      '/v1/tenants/tenant-1/monitors',
+      '/v1/auth/refresh',
+    ])
+  })
+
   it('RequireAuth redirects guests and GuestOnly redirects authenticated users', async () => {
     const guestApi = new ApiClient({
       sessionStore: new SessionStore(localStorage, 'guest-session'),

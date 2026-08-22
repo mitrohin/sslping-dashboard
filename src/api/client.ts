@@ -122,6 +122,7 @@ export class ApiClient {
   readonly session: SessionStore
   readonly #fetch: typeof fetch
   #refreshInFlight: Promise<Api.Tokens> | null = null
+  readonly #authenticationRequiredListeners = new Set<() => void>()
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl)
@@ -139,6 +140,16 @@ export class ApiClient {
 
   clearSession(): void {
     this.session.clear()
+  }
+
+  onAuthenticationRequired(listener: () => void): () => void {
+    this.#authenticationRequiredListeners.add(listener)
+    return () => this.#authenticationRequiredListeners.delete(listener)
+  }
+
+  #requireAuthentication(): void {
+    this.session.clear()
+    for (const listener of this.#authenticationRequiredListeners) listener()
   }
 
   async #request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -173,13 +184,14 @@ export class ApiClient {
       try {
         await this.#refreshSession(currentTokens?.refresh_token ?? requestTokens.refresh_token)
       } catch (error) {
-        this.session.clear()
+        this.#requireAuthentication()
         throw error
       }
 
       return this.#request<T>(path, { ...options, retryUnauthorized: false })
     }
 
+    if (response.status === 401 && auth) this.#requireAuthentication()
     if (!response.ok) throw await responseToError(response)
     if (response.status === 204) return undefined as T
     if (options.responseType === 'blob') return await response.blob() as T
