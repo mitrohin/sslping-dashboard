@@ -29,6 +29,7 @@ const LiveStatusPageEditorPage = lazy(() => import('./LiveOperations').then((mod
 const LiveIntegrationsPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveIntegrationsPage })))
 const LiveTeamPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveTeamPage })))
 const SupportPage = lazy(() => import('../features/support/SupportPage').then((module) => ({ default: module.SupportPage })))
+const CheckerIPsPage = lazy(() => import('../features/network/CheckerIPsPage'))
 const AdminConsolePage = lazy(() => import('../features/admin/AdminConsolePage').then((module) => ({ default: module.AdminConsolePage })))
 const OAuthAuthorizePage = lazy(() => import('../features/auth/OAuthAuthorizePage'))
 
@@ -74,6 +75,7 @@ const workspaceChildren = [
   { path: 'monitors/:monitorId', element: <RouteSuspense><LiveMonitorDetailPage /></RouteSuspense> },
   { path: 'monitors/:monitorId/edit', element: <RouteSuspense><LiveMonitorEditPage /></RouteSuspense> },
   { path: 'incidents', element: <RouteSuspense><LiveIncidentsPage /></RouteSuspense> },
+  { path: 'checker-ips', element: <RouteSuspense><CheckerIPsPage /></RouteSuspense> },
   { path: 'status-pages', element: <RouteSuspense><LiveStatusPagesPage /></RouteSuspense> },
   { path: 'status-pages/:statusPageId/edit', element: <RouteSuspense><LiveStatusPageEditorPage /></RouteSuspense> },
   { path: 'maintenance', element: <RouteSuspense><LiveMaintenancePage /></RouteSuspense> },

@@ -1,11 +1,21 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { act, cleanup, fireEvent, render as renderView, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
 import { demoIncidents } from '../../data'
 import { IncidentsPage } from './IncidentsPage'
 
 afterEach(cleanup)
 
+const render = (view: ReactElement) => renderView(view, { wrapper: MemoryRouter })
+
 describe('IncidentsPage', () => {
+  it('links the checker-network notice to the current IP allowlist', () => {
+    render(<IncidentsPage />)
+
+    expect(screen.getByRole('link', { name: /view ip addresses/i })).toHaveAttribute('href', '/checker-ips')
+  })
+
   it('shows only the safe public summary for a followed-monitor incident', () => {
     const incident = {
       ...demoIncidents[0],

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Link } from 'react-router'
 import {
+  ArrowRight,
   CheckCircle2,
   Clock3,
   Download,
@@ -483,10 +485,13 @@ export function IncidentsPage({
 
       <div className="ops-notice" role="note">
         <ShieldCheck size={21} aria-hidden="true" />
-        <div>
+        <div className="ops-notice__copy">
           <strong>{t('incidents.networkProtected')}</strong>
           <span>{t('incidents.networkProtectedHint')}</span>
         </div>
+        <Link className="ops-notice__action" to="/checker-ips">
+          {t('incidents.networkAllowlistAction')} <ArrowRight size={16} aria-hidden="true" />
+        </Link>
       </div>
 
       <div className="ops-toolbar" aria-label={t('incidents.filters')}>

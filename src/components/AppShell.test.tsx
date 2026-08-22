@@ -70,6 +70,7 @@ function renderShell() {
         <Route element={<AppShell />}>
           <Route path="/monitors" element={<div>Monitor destination</div>} />
           <Route path="/incidents" element={<div>Incident destination</div>} />
+          <Route path="/checker-ips" element={<div>Checker IP destination</div>} />
           <Route path="/maintenance" element={<div>Maintenance destination</div>} />
           <Route path="/integrations" element={<div>Integration destination</div>} />
         </Route>
@@ -80,6 +81,14 @@ function renderShell() {
 }
 
 describe('AppShell actions', () => {
+  it('opens the checker IP allowlist from primary navigation', () => {
+    renderShell()
+
+    fireEvent.click(screen.getByRole('link', { name: 'Checker IPs' }))
+
+    expect(screen.getByText('Checker IP destination')).toBeInTheDocument()
+  })
+
   it('offers a password-confirmed workspace switch when the account has multiple workspaces', async () => {
     mocks.auth.tenants = [
       mocks.auth.workspace,

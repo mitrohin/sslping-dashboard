@@ -12,6 +12,7 @@ import {
   RadioTower,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   Users,
   Wrench,
   X,
@@ -31,6 +32,7 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 const navItems = [
   { to: '/monitors', labelKey: 'nav.monitoring', icon: CircleGauge },
   { to: '/incidents', labelKey: 'nav.incidents', icon: ShieldAlert },
+  { to: '/checker-ips', labelKey: 'nav.checkerIPs', icon: ShieldCheck },
   { to: '/status-pages', labelKey: 'nav.statusPages', icon: RadioTower },
   { to: '/maintenance', labelKey: 'nav.maintenance', icon: Wrench },
   { to: '/team', labelKey: 'nav.team', icon: Users },

@@ -233,6 +233,7 @@ export interface Region {
   display_code?: string
   name: string
   color?: string
+  ip_address?: string
   capabilities: Array<'http' | 'keyword' | 'tcp' | 'udp' | 'tls' | 'dns' | 'domain' | 'reachability' | 'compliance'>
   status: 'available' | 'connecting'
   system?: boolean
