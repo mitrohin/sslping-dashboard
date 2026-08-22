@@ -114,11 +114,18 @@ describe('SubscribedMonitorDetailPage', () => {
 
   it('renders only safe monitor data and saves subscriber-owned notification settings', async () => {
     const client = api()
-    renderPage(client)
+    const { container } = renderPage(client)
 
     expect(await screen.findByRole('heading', { name: /vendor api/i })).toBeInTheDocument()
     expect(screen.getByText('Following · read only')).toBeInTheDocument()
     expect(screen.getByText('Public upstream outage')).toBeInTheDocument()
+    expect(container.querySelector('.monitor-detail-header')).toBeInTheDocument()
+    expect(container.querySelector('.monitor-detail-grid')).toBeInTheDocument()
+    expect(container.querySelector('.monitor-kpis')).toBeInTheDocument()
+    expect(container.querySelector('.uptime-periods')).toBeInTheDocument()
+    expect(container.querySelector('.response-chart-panel')).toBeInTheDocument()
+    expect(container.querySelector('.latest-incidents')).toBeInTheDocument()
+    expect(container.querySelector('.monitor-detail-side')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /edit|pause|test monitor/i })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('switch', { name: 'Email notifications' }))
