@@ -290,21 +290,21 @@ export function SubscribedMonitorDetailPage({ api: apiOverride }: { api?: Subscr
             {incidents.length ? incidents.map((incident) => <div className="latest-incidents__row" key={incident.id}><span><StatusDot status={incident.status} /><strong className={incident.status === 'resolved' ? 'success-text' : 'warning-text'}>{formatStatus(incident.status)}</strong></span><span>{incident.rootCause}</span><span>{formatDate(incident.startedAt)}</span><span>{formatDuration(incident.durationSeconds)}</span></div>) : <div className="latest-incidents__empty"><ShieldCheck size={27} /><span>{t('subscriptions.noIncidents')}</span></div>}
           </Panel>
 
-          <section id="notifications" className="subscription-detail__notifications-anchor">
-            <Panel className="subscription-detail__notifications">
-              <div className="subscription-detail__section-title"><div><h2><BellRing size={20} /> {t('subscriptions.notifications')}</h2><p>{t('subscriptions.notificationsHint')}</p></div></div>
+          <section id="notifications" className="monitor-notifications">
+            <Panel className="monitor-notifications__panel">
+              <div className="monitor-notifications__heading"><div><h2><BellRing size={20} /> {t('subscriptions.notifications')}</h2><p>{t('subscriptions.notificationsHint')}</p></div></div>
               <form onSubmit={saveNotifications}>
-                <label className="subscription-detail__toggle"><span><strong>{t('subscriptions.emailNotifications')}</strong><small>{t('subscriptions.emailNotificationsHint')}</small></span><Toggle checked={emailEnabled} onChange={setEmailEnabled} label={t('subscriptions.emailNotifications')} /></label>
+                <label className="monitor-notifications__toggle"><span><strong>{t('subscriptions.emailNotifications')}</strong><small>{t('subscriptions.emailNotificationsHint')}</small></span><Toggle checked={emailEnabled} onChange={setEmailEnabled} label={t('subscriptions.emailNotifications')} /></label>
 
                 <fieldset>
                   <legend>{t('subscriptions.events')}</legend>
-                  <div className="subscription-detail__choices">{notificationEvents.map((notificationEvent) => <label key={notificationEvent}><input type="checkbox" checked={events.has(notificationEvent)} onChange={() => toggleEvent(notificationEvent)} /><span>{t(`subscriptions.event.${notificationEvent}`)}</span></label>)}</div>
+                  <div className="monitor-notifications__choices">{notificationEvents.map((notificationEvent) => <label key={notificationEvent}><input type="checkbox" checked={events.has(notificationEvent)} onChange={() => toggleEvent(notificationEvent)} /><span>{t(`subscriptions.event.${notificationEvent}`)}</span></label>)}</div>
                 </fieldset>
 
                 <fieldset>
                   <legend>{t('subscriptions.integrations')}</legend>
-                  {!canManageIntegrations && <p className="subscription-detail__permission-note">{t('subscriptions.integrationsEditorOnly')}</p>}
-                  {state.integrations.length ? <div className="subscription-detail__choices">{state.integrations.map((integration) => <label key={integration.id} className={!integration.active || !canManageIntegrations ? 'is-disabled' : ''}><input type="checkbox" checked={integrationIds.has(integration.id)} disabled={!integration.active || !canManageIntegrations} onChange={() => toggleIntegration(integration.id)} /><span>{integration.name}<small>{integration.type}</small></span></label>)}</div> : <p className="subscription-detail__empty">{t('subscriptions.noIntegrations')} {canManageIntegrations && <Link to="/integrations">{t('subscriptions.addIntegration')} <ExternalLink size={13} /></Link>}</p>}
+                  {!canManageIntegrations && <p className="monitor-notifications__permission-note">{t('subscriptions.integrationsEditorOnly')}</p>}
+                  {state.integrations.length ? <div className="monitor-notifications__choices">{state.integrations.map((integration) => <label key={integration.id} className={!integration.active || !canManageIntegrations ? 'is-disabled' : ''}><input type="checkbox" checked={integrationIds.has(integration.id)} disabled={!integration.active || !canManageIntegrations} onChange={() => toggleIntegration(integration.id)} /><span>{integration.name}<small>{integration.type}</small></span></label>)}</div> : <p className="monitor-notifications__empty">{t('subscriptions.noIntegrations')} {canManageIntegrations && <Link to="/integrations">{t('subscriptions.addIntegration')} <ExternalLink size={13} /></Link>}</p>}
                 </fieldset>
 
                 <Button type="submit" disabled={busy}>{busy ? t('common.saving') : t('common.save')}</Button>

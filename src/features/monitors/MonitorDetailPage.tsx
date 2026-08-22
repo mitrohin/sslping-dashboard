@@ -28,6 +28,7 @@ import {
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import {
   demoIncidents,
+  demoIntegrations,
   demoMaintenanceWindows,
   demoMonitors,
   demoResponseTimeSeries,
@@ -192,7 +193,7 @@ export function MonitorDetailPage({
   uptimePeriods: suppliedUptimePeriods,
   incidents: suppliedIncidents,
   nextMaintenance,
-  notifications = [],
+  notifications: suppliedNotifications,
   statusPages = [],
   mtbfSeconds,
   loading = false,
@@ -216,6 +217,7 @@ export function MonitorDetailPage({
   const responseTime = suppliedResponseTime ?? demoResponseTimeSeries
   const uptimePeriods = suppliedUptimePeriods ?? demoUptimePeriods
   const incidents = suppliedIncidents ?? demoIncidents.filter((incident) => incident.monitorId === monitor.id)
+  const notifications = suppliedNotifications ?? demoIntegrations.filter((integration) => integration.monitorIds.length === 0 || integration.monitorIds.includes(monitor.id))
   const [pausedOverride, setPausedOverride] = useState<boolean | null>(null)
   const [notificationSent, setNotificationSent] = useState(false)
   const [range, setRange] = useState('1h')
@@ -250,6 +252,11 @@ export function MonitorDetailPage({
     const timer = window.setInterval(() => setClock(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+  useEffect(() => {
+    if (loading || window.location.hash !== '#notifications') return
+    const frame = window.requestAnimationFrame(() => document.getElementById('notifications')?.scrollIntoView({ block: 'start' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [loading, monitor.id])
   useEffect(() => {
     setSelectedRegions((current) => {
       const available = responseTime.map((series) => series.regionId)
@@ -467,6 +474,18 @@ export function MonitorDetailPage({
             <header className="panel__header"><h2>{t('monitorDetail.latestIncidents')}<span className="title-dot">.</span></h2>{onExportLogs ? <Button variant="secondary" size="sm" onClick={onExportLogs}><Download size={15} /> {t('monitorDetail.exportLogs')}</Button> : <a ref={exportLinkRef} className="button button--secondary button--sm" href={exportHref} download={exportFileName}><Download size={15} /> {t('monitorDetail.exportLogs')}</a>}</header>
             {incidents.length ? incidents.map((incident) => <div className="latest-incidents__row" key={incident.id}><span><StatusDot status={incident.status} /><strong className={incident.status === 'resolved' ? 'success-text' : 'warning-text'}>{formatStatus(incident.status)}</strong></span><span>{incident.rootCause}</span><span>{formatDate(incident.startedAt)}</span><span>{formatDuration(incident.durationSeconds)}</span></div>) : <div className="latest-incidents__empty"><ShieldCheck size={27} /><span>{t('monitorDetail.noIncidents')}</span></div>}
           </Panel>
+
+          <section id="notifications" className="monitor-notifications">
+            <Panel className="monitor-notifications__panel">
+              <div className="monitor-notifications__heading"><div><h2><BellRing size={20} /> {t('subscriptions.notifications')}</h2><p>{t('subscriptions.ownedNotificationsHint')}</p></div></div>
+              <div className="monitor-notifications__group">
+                <h3>{t('subscriptions.integrations')}</h3>
+                {notifications.length ? <div className="monitor-notifications__channels">{notifications.map((integration) => <article key={integration.id} className={`monitor-notifications__channel ${integration.active ? 'is-active' : ''}`}><BellRing size={17} /><span><strong>{integration.name}</strong><small>{integration.destinationLabel}</small><small>{t('subscriptions.eventsSelected', { count: integration.events.length })}</small></span><Badge tone={integration.active ? 'success' : 'neutral'}>{integration.active ? t('common.active') : t('common.paused')}</Badge></article>)}</div> : <p className="monitor-notifications__empty">{t('subscriptions.noMonitorIntegrations')} <Link to={`/integrations?monitor=${encodeURIComponent(monitor.id)}`}>{t('subscriptions.addIntegration')} <ExternalLink size={13} /></Link></p>}
+              </div>
+              {notifications.length > 0 && <p className="monitor-notifications__routing-hint">{t('subscriptions.ownedEventsHint', { count: new Set(notifications.flatMap((integration) => integration.events)).size })}</p>}
+              <Link className="button button--secondary button--md" to={`/integrations?monitor=${encodeURIComponent(monitor.id)}`}><BellRing size={17} /> {t('monitorDetail.manageNotifications')}</Link>
+            </Panel>
+          </section>
         </div>
 
         <aside className="monitor-detail-side">
@@ -496,7 +515,7 @@ export function MonitorDetailPage({
           </Panel>}
           <Panel className="side-card"><h2>{t('monitorDetail.nextMaintenance')}<span className="title-dot">.</span></h2><CalendarDays size={26} className="side-card__feature-icon" />{nextMaintenance ? <div className="side-card__resource"><strong>{nextMaintenance.name}</strong><span>{formatDate(nextMaintenance.startsAt)}</span><small>{formatDuration(nextMaintenance.durationMinutes * 60)} · {nextMaintenance.timezone}</small></div> : <p>{suppliedMonitor ? t('monitorDetail.noMaintenance') : demoMaintenanceWindows[1]?.name ?? t('monitorDetail.noMaintenance')}</p>}<Button variant="secondary" size="sm" onClick={() => navigate(`/maintenance?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.setupMaintenance')}</Button></Panel>
           <Panel className="side-card region-card"><h2>{t('monitorDetail.regions')}<span className="title-dot">.</span></h2><RegionMap regions={mappedRegions} label={t('monitorDetail.monitoringRegions')} /></Panel>
-          <Panel className="side-card"><h2>{t('monitorDetail.toBeNotified')}<span className="title-dot">.</span></h2>{notifications.length ? <div className="side-card__resource-list">{notifications.slice(0, 3).map((integration) => <div key={integration.id}><BellRing size={16} /><span><strong>{integration.name}</strong><small>{integration.destinationLabel}</small></span></div>)}</div> : <div className="notification-logos"><span>—</span></div>}<Button variant="secondary" size="sm" onClick={() => navigate(`/integrations?monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.manageNotifications')}</Button></Panel>
+          <Panel className="side-card"><h2>{t('monitorDetail.toBeNotified')}<span className="title-dot">.</span></h2>{notifications.length ? <div className="side-card__resource-list">{notifications.slice(0, 3).map((integration) => <div key={integration.id}><BellRing size={16} /><span><strong>{integration.name}</strong><small>{integration.destinationLabel}</small></span></div>)}</div> : <div className="notification-logos"><span>—</span></div>}<a className="button button--secondary button--sm" href="#notifications">{t('monitorDetail.manageNotifications')}</a></Panel>
 		  {!evidenceOnly && <Panel className="side-card"><h2>{t('monitorDetail.appearsOn')}<span className="title-dot">.</span></h2>{statusPages.length ? <div className="side-card__resource-list">{statusPages.slice(0, 3).map((page) => <div key={page.id}><RadioTower size={16} /><span><strong>{page.name}</strong><small>{formatStatus(page.status)}</small></span></div>)}</div> : <><RadioTower size={25} className="side-card__feature-icon" /><p>{suppliedMonitor ? t('monitorDetail.notOnStatusPage') : t('monitorDetail.systemStatus')}</p></>}<Button variant="secondary" size="sm" onClick={() => navigate(`/status-pages?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.manageStatusPages')}</Button></Panel>}
         </aside>
       </div>

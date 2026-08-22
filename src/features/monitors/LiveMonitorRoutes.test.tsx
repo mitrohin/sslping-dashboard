@@ -296,7 +296,10 @@ describe('LiveMonitorsPage controls', () => {
     expect(await screen.findByText('Checkout API')).toBeInTheDocument()
     expect(api.listMonitorChecks).not.toHaveBeenCalled()
 
-    fireEvent.click(within(openMenu()).getByRole('menuitem', { name: /pause/i }))
+    const menu = openMenu()
+    expect(within(menu).getByRole('menuitem', { name: 'Notification settings' }))
+      .toHaveAttribute('href', '/monitors/monitor-1#notifications')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /pause/i }))
     await waitFor(() => expect(api.pauseMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
     await screen.findByText('paused')
     fireEvent.click(within(openMenu()).getByRole('menuitem', { name: /resume/i }))

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { demoMonitors } from '../../data'
+import { demoIntegrations, demoMonitors } from '../../data'
 import {
   MonitorDetailPage,
   buildResponseTimeChartData,
@@ -263,6 +263,46 @@ describe('MonitorDetailPage live controls', () => {
 
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Delete monitor' }))
     expect(confirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves owned-monitor notification routes into the same standalone settings panel', () => {
+    render(
+      <MemoryRouter>
+        <MonitorDetailPage
+          monitor={demoMonitors[0]}
+          responseTime={[]}
+          uptimePeriods={[]}
+          incidents={[]}
+          notifications={[demoIntegrations[0], demoIntegrations[2]]}
+        />
+      </MemoryRouter>,
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Notification settings' })
+    const section = document.getElementById('notifications')
+    expect(section).toHaveAttribute('id', 'notifications')
+    expect(section).toHaveClass('monitor-notifications')
+    expect(section).toContainElement(heading)
+    expect(within(section!).getByText('Production alerts')).toBeInTheDocument()
+    expect(within(section!).getByText('#production-alerts')).toBeInTheDocument()
+    expect(within(section!).getByText('5 events selected')).toBeInTheDocument()
+    expect(within(section!).getByText('Internal event receiver')).toBeInTheDocument()
+    expect(within(section!).getByText('Paused')).toBeInTheDocument()
+    expect(within(section!).getByRole('link', { name: /manage notifications/i }))
+      .toHaveAttribute('href', `/integrations?monitor=${demoMonitors[0].id}`)
+    const summary = screen.getByRole('heading', { name: /To be notified/ }).closest<HTMLElement>('.panel')
+    expect(summary).toBeInTheDocument()
+    expect(within(summary!).getByRole('link', { name: /manage notifications/i })).toHaveAttribute('href', '#notifications')
+  })
+
+  it('shows an integration action inside the owned-monitor notification empty state', () => {
+    render(<MemoryRouter><MonitorDetailPage monitor={demoMonitors[0]} responseTime={[]} uptimePeriods={[]} incidents={[]} notifications={[]} /></MemoryRouter>)
+
+    const section = document.getElementById('notifications')
+    expect(section).toContainElement(screen.getByRole('heading', { name: 'Notification settings' }))
+    expect(within(section!).getByText('No channels are currently assigned to this monitor.')).toBeInTheDocument()
+    expect(within(section!).getByRole('link', { name: /add an integration/i }))
+      .toHaveAttribute('href', `/integrations?monitor=${demoMonitors[0].id}`)
   })
 
   it('removes every manual-test control when the plan does not include it', () => {

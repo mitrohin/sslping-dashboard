@@ -472,6 +472,7 @@ export function MonitorsPage({
             </> : <>
               <Link role="menuitem" to={detailPath} onClick={() => { setOpenActionId(null); onView?.(monitor) }}><Eye size={16} /> {t('common.view')}</Link>
               <Link role="menuitem" to={`/monitors/${monitor.id}/edit`} onClick={() => { setOpenActionId(null); onEdit?.(monitor) }}><Pencil size={16} /> {t('common.edit')}</Link>
+              <Link role="menuitem" to={`${detailPath}#notifications`} onClick={() => setOpenActionId(null)}><Bell size={16} /> {t('subscriptions.notifications')}</Link>
               <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, monitor.status === 'paused' ? 'resume' : 'pause')}>
                 {monitor.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
                 {monitor.status === 'paused' ? t('monitors.action.resume') : t('monitors.action.pause')}
