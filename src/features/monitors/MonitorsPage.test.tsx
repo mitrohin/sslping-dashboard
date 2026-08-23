@@ -253,7 +253,7 @@ describe('MonitorsPage row actions', () => {
 
     expect(screen.queryByRole('checkbox', { name: 'Select Shared checkout' })).not.toBeInTheDocument()
     expect(screen.getByText('Following · read only')).toBeInTheDocument()
-    expect(screen.getByText('Acme status')).toBeInTheDocument()
+    expect(screen.queryByText('Acme status')).not.toBeInTheDocument()
     const menu = actionsFor(followed.name)
     expect(within(menu).getByRole('menuitem', { name: 'View' })).toHaveAttribute('href', '/monitors/followed/subscription-1')
     expect(within(menu).getByRole('menuitem', { name: 'Notification settings' })).toHaveAttribute('href', '/monitors/followed/subscription-1#notifications')

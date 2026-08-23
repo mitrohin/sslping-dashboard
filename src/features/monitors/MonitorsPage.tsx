@@ -426,7 +426,6 @@ export function MonitorsPage({
         <div><Badge>{monitor.typeLabel}</Badge>{subscribed && <Badge tone="info">{t('subscriptions.readOnly')}</Badge>}<span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : locale === 'en' ? monitor.status : t(`status.${monitor.status}`)}</span></div>
       </div>
       <div className="monitor-row__meta">
-        {subscribed && monitor.subscriptionPageName && <Badge>{monitor.subscriptionPageName}</Badge>}
         {monitor.tags.slice(0, 2).map((tag) => <Badge key={tag}>{tag}</Badge>)}
         {monitor.sslCertificate?.state === 'warning' && <Badge tone="warning">{t('monitors.sslExpires', { days: monitor.sslCertificate.daysRemaining ?? 0 })}</Badge>}
         {monitor.domainRegistration?.state === 'warning' && <Badge tone="warning">{t('monitors.domainExpires')}</Badge>}
