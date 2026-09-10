@@ -105,7 +105,8 @@ jobs:
           kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
           kubectl -n sslping get pods,services,gateways,httproutes
 
-      - name: Audit public dashboard and status cache headers
+      - name: Verify public dashboard and status cache headers
+        id: public_cache_smoke
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -145,12 +146,18 @@ jobs:
           inspect_cache_header \
             https://dashboard.sslping.io/ \
             "no-store" || failures=1
-          inspect_cache_header \
-            https://dashboard.sslping.io/assets/app.js \
-            "no-cache" || failures=1
-          inspect_cache_header \
-            https://dashboard.sslping.io/assets/app.css \
-            "no-cache" || failures=1
+          # Validate what dashboard HTML actually loads. Stable aliases remain
+          # compatibility URLs for API-rendered status pages, not dashboard.
+          entry_page="$(curl --fail --silent --show-error \
+            --connect-timeout 5 --max-time 15 https://dashboard.sslping.io/)"
+          script_path="$(printf '%s\n' "${entry_page}" | sed -nE 's|.*src="(/assets/app-[A-Za-z0-9_-]+\.js)".*|\1|p')"
+          style_path="$(printf '%s\n' "${entry_page}" | sed -nE 's|.*href="(/assets/app-[A-Za-z0-9_-]+\.css)".*|\1|p')"
+          test -n "${script_path}"
+          test -n "${style_path}"
+          inspect_cache_header "https://dashboard.sslping.io${script_path}" \
+            "public, max-age=31536000, immutable" || failures=1
+          inspect_cache_header "https://dashboard.sslping.io${style_path}" \
+            "public, max-age=31536000, immutable" || failures=1
           inspect_cache_header \
             https://status.sslping.io/assets/app.js \
             "no-cache" || failures=1
@@ -201,14 +208,14 @@ jobs:
           test "${image_type}" = "image/png"
 
       - name: Roll back an unhealthy dashboard release
-        if: steps.public_status_smoke.outcome == 'failure'
+        if: steps.public_status_smoke.outcome == 'failure' || steps.public_cache_smoke.outcome == 'failure'
         run: |
           set -euo pipefail
           kubectl -n sslping rollout undo deployment/sslping-dashboard
           kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
 
       - name: Fail an unhealthy dashboard release
-        if: steps.public_status_smoke.outcome == 'failure'
+        if: steps.public_status_smoke.outcome == 'failure' || steps.public_cache_smoke.outcome == 'failure'
         run: |
-          echo "The public status end-to-end smoke test failed; dashboard was rolled back." >&2
+          echo "Public status or asset cache verification failed; dashboard was rolled back." >&2
           exit 1

@@ -35,12 +35,13 @@ try {
   }
   assert.ok(ready, 'Nginx must become ready')
 
-  const assets = docker('exec', container, 'ls', '/usr/share/nginx/html/assets').split('\n')
+  const html = docker('exec', container, 'cat', '/usr/share/nginx/html/index.html')
   const hashed = ['js', 'css'].map(extension => {
-    const filename = assets.find(name => new RegExp(`-[A-Za-z0-9_-]{8,}\\.${extension}$`).test(name))
-    assert.ok(filename, `Production build must contain hashed ${extension} assets`)
+    const filename = html.match(new RegExp(`/assets/(app-[A-Za-z0-9_-]+\\.${extension})"`))?.[1]
+    assert.ok(filename, `Dashboard HTML must reference hashed main ${extension}`)
     return filename
   })
+  assert.doesNotMatch(html, /(?:src|href)="\/assets\/app\.(?:js|css)"/)
 
   for (const host of ['dashboard.sslping.io', 'status.sslping.io', 'unknown.example']) {
     for (const asset of ['app.js', 'app.css', ...hashed]) {
