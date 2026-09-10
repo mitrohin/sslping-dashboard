@@ -161,8 +161,10 @@ describe('PublicStatusPage', () => {
     const chart = within(componentRow as HTMLElement).getByRole('img', { name: 'Сигналы пользователей и время ответа' })
     fireEvent.focus(chart)
     expect(within(componentRow as HTMLElement).getByText('710 мс')).toBeInTheDocument()
-    expect(document.documentElement.lang).toBe('ru')
-    expect(document.title).toContain('Текущий статус')
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe('ru')
+      expect(document.title).toContain('Текущий статус')
+    })
   })
 
   it('uses the server-selected language before the status API responds', () => {
@@ -182,8 +184,10 @@ describe('PublicStatusPage', () => {
     expect(await screen.findByRole('heading', { name: 'Alle Systeme betriebsbereit' })).toBeInTheDocument()
     expect(screen.getByText(/Aktueller Status/)).toBeInTheDocument()
     expect(screen.getByText(/Deutschland/)).toBeInTheDocument()
-    expect(document.documentElement.lang).toBe('de-DE')
-    expect(document.documentElement.dir).toBe('ltr')
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe('de-DE')
+      expect(document.documentElement.dir).toBe('ltr')
+    })
   })
 
   it('uses the same Norwegian BCP-47 tag as the server-rendered SEO page', () => {
@@ -200,13 +204,21 @@ describe('PublicStatusPage', () => {
     expect(screen.queryByLabelText('Loading status page')).not.toBeInTheDocument()
   })
 
-  it('uses right-to-left layout for Hebrew and Urdu country pages', async () => {
-    const api = createApi({ ...snapshot, page: { ...snapshot.page, slug: 'example-cloud-il', country_code: 'IL', language: 'he' } })
-    renderRoute(api, '/example-cloud-il')
+  it.each([
+    { language: 'he', country: 'IL', locale: 'he-IL', heading: 'כל המערכות פועלות' },
+    { language: 'ur', country: 'PK', locale: 'ur-PK', heading: 'تمام نظام فعال ہیں' },
+  ] as const)('uses right-to-left layout for the $locale country page', async ({ language, country, locale, heading }) => {
+    const slug = `example-cloud-${country.toLowerCase()}`
+    const api = createApi({ ...snapshot, page: { ...snapshot.page, slug, country_code: country, language } })
+    renderRoute(api, `/${slug}`)
 
-    expect(await screen.findByRole('heading', { name: 'כל המערכות פועלות' })).toBeInTheDocument()
-    expect(document.documentElement.lang).toBe('he-IL')
-    expect(document.documentElement.dir).toBe('rtl')
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
+    // The heading is committed before the passive metadata effect runs;
+    // observe the document attributes themselves instead of that earlier DOM.
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe(locale)
+      expect(document.documentElement.dir).toBe('rtl')
+    })
   })
 
   it('combines visitor signals and response time without summary statistics', async () => {
