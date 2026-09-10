@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 export LC_ALL=C
 
-PROBE_VERSION="1.0.6"
+PROBE_VERSION="1.0.7"
 CONTROL_URL="https://units.sslping.io"
 PROBE_PORT="${SSLPING_PROBE_PORT:-}"
 PROBE_CONCURRENCY="${SSLPING_PROBE_CONCURRENCY:-}"

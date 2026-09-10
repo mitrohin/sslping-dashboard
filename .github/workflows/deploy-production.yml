@@ -105,7 +105,7 @@ jobs:
           kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
           kubectl -n sslping get pods,services,gateways,httproutes
 
-      - name: Audit public dashboard cache headers
+      - name: Audit public dashboard and status cache headers
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -117,7 +117,7 @@ jobs:
             local cache_control
             headers="$(mktemp)"
 
-            if ! curl --fail --silent --show-error --location --head \
+            if ! curl --fail --silent --show-error --location \
               --connect-timeout 5 --max-time 15 \
               --dump-header "${headers}" --output /dev/null "${url}"; then
               rm -f "${headers}"
@@ -147,10 +147,16 @@ jobs:
             "no-store" || failures=1
           inspect_cache_header \
             https://dashboard.sslping.io/assets/app.js \
-            "public, max-age=0, must-revalidate" || failures=1
+            "no-cache" || failures=1
           inspect_cache_header \
             https://dashboard.sslping.io/assets/app.css \
-            "public, max-age=0, must-revalidate" || failures=1
+            "no-cache" || failures=1
+          inspect_cache_header \
+            https://status.sslping.io/assets/app.js \
+            "no-cache" || failures=1
+          inspect_cache_header \
+            https://status.sslping.io/assets/app.css \
+            "no-cache" || failures=1
           exit "${failures}"
 
       - name: Verify public status end to end

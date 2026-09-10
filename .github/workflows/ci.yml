@@ -41,3 +41,6 @@ jobs:
             --build-arg VITE_DEMO_MODE=false \
             --build-arg VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA \
             --tag sslping-dashboard:ci .
+
+      - name: Verify nginx asset cache policy
+        run: node deploy/test-nginx-cache.mjs sslping-dashboard:ci
