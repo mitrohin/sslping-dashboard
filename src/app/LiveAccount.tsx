@@ -1,3 +1,6 @@
+import { workspaceCapabilities } from '../lib/capabilities'
+import { useCursorHistory, type HistoryRange } from '../lib/useCursorHistory'
+import { collectCursorPages } from '../lib/pagination'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   APIKey,
@@ -346,7 +349,7 @@ function RouteState({ label, error, onRetry }: RouteStateProps) {
 }
 
 export function LiveTeamPage() {
-  const { api, logout, user, workspace } = useAuth()
+  const { api, logout, user, workspace, workspaceRole } = useAuth()
   const demo = isDemoSession()
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<LoadState<TeamRouteData>>({ status: 'loading' })
@@ -359,7 +362,7 @@ export function LiveTeamPage() {
     void Promise.all([
       api.getTenant(workspace.id),
       api.listMembers(workspace.id),
-      api.listInvitations(workspace.id),
+      workspaceCapabilities(workspaceRole).administer ? api.listInvitations(workspace.id) : Promise.resolve({ items: [] }),
       api.getBillingSubscription(),
     ])
       .then(([freshWorkspace, response, invitationResponse, subscription]) => {
@@ -392,7 +395,7 @@ export function LiveTeamPage() {
     return () => {
       cancelled = true
     }
-  }, [api, attempt, demo, user, workspace])
+  }, [api, attempt, demo, user, workspace, workspaceRole])
 
   const invite = useCallback(async (input: InviteMemberInput) => {
     if (!workspace) throw new Error('No active workspace is available.')
@@ -455,6 +458,7 @@ export function LiveTeamPage() {
   return (
     <TeamPage
       key={state.data.workspace.id}
+      canManage={workspaceCapabilities(workspaceRole).administer}
       initialMembers={state.data.members}
       initialSummary={state.data.summary}
       initialDetails={teamDetails(state.data.workspace, user?.email ?? '')}
@@ -471,7 +475,7 @@ export function LiveTeamPage() {
 }
 
 export function LiveIntegrationsPage() {
-  const { api, user, workspace } = useAuth()
+  const { api, user, workspace, workspaceRole } = useAuth()
   const focusMonitorId = new URLSearchParams(window.location.search).get('monitor') ?? undefined
   const demo = isDemoSession()
   const [attempt, setAttempt] = useState(0)
@@ -487,20 +491,15 @@ export function LiveIntegrationsPage() {
 
     void Promise.all([
       api.listIntegrations(workspace.id),
-      api.listApiKeys(workspace.id),
-      api.listAuditLogs(workspace.id, { limit: 100 }),
-      api.listMonitors(workspace.id, { limit: 100 }),
+      workspaceCapabilities(workspaceRole).administer ? api.listApiKeys(workspace.id) : Promise.resolve({ items: [] }),
+      collectCursorPages((cursor) => api.listMonitors(workspace.id, { limit: 100, cursor })),
     ])
-      .then(([integrationResponse, keyResponse, auditResponse, monitorResponse]) => {
+      .then(([integrationResponse, keyResponse, monitorResponse]) => {
         if (cancelled) return
         const monitors = (monitorResponse.items ?? []).map((monitor) => toMonitorViewModel(monitor))
         const integrations = (integrationResponse.items ?? []).map(toIntegrationViewModel)
         const apiKeys = (keyResponse.items ?? []).map((key) => keyViewModel(key, monitors))
-        const auditEntries = (auditResponse.items ?? []).map((entry) =>
-          toAuditLogViewModel(entry, {
-            ...(user ? { actor: { id: user.id, name: user.name, email: user.email } } : {}),
-          }),
-        )
+        const auditEntries: AuditEntry[] = []
 
         monitorsRef.current = monitors
         integrationsRef.current = new Map(integrations.map((integration) => [integration.id, integration]))
@@ -516,7 +515,13 @@ export function LiveIntegrationsPage() {
     return () => {
       cancelled = true
     }
-  }, [api, attempt, demo, user, workspace])
+  }, [api, attempt, demo, user, workspace, workspaceRole])
+
+  const loadAudit = useCallback((cursor?: string, search?: string, range?: HistoryRange, signal?: AbortSignal) => api.listAuditLogs(workspace!.id, { limit: 100, cursor, search, ...range }, { signal }), [api, workspace])
+  const auditHistory = useCursorHistory(!demo && workspace && workspaceCapabilities(workspaceRole).administer ? loadAudit : undefined)
+  const auditEntries = useMemo(() => auditHistory.items.map((entry) => toAuditLogViewModel(entry, {
+    ...(user ? { actor: { id: user.id, name: user.name, email: user.email } } : {}),
+  })), [auditHistory.items, user])
 
   const saveIntegration = useCallback(async (input: IntegrationInput, existingId?: string) => {
     if (!workspace) throw new Error('No active workspace is available.')
@@ -600,12 +605,16 @@ export function LiveIntegrationsPage() {
   return (
     <IntegrationsPage
       key={workspace.id}
+      canEdit={workspaceCapabilities(workspaceRole).edit}
+      canAdminister={workspaceCapabilities(workspaceRole).administer}
       initialIntegrations={state.data.integrations}
       catalog={catalog}
       monitors={state.data.monitors}
       focusMonitorId={focusMonitorId}
       initialApiKeys={state.data.apiKeys}
-      auditEntries={state.data.auditEntries}
+      auditEntries={auditEntries}
+      auditHistoryProgress={{ hasMore: auditHistory.hasMore, loading: auditHistory.loading, error: auditHistory.error, onLoadMore: auditHistory.loadMore, onRetry: auditHistory.retry, onRangeChange: auditHistory.setRange }}
+      onAuditSearchQueryChange={auditHistory.setSearch}
       onSaveIntegration={saveIntegration}
       onToggleIntegration={toggleIntegration}
       onDeleteIntegration={deleteIntegration}

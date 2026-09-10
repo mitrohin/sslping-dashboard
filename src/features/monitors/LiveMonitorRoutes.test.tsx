@@ -185,6 +185,7 @@ function mockAuth(api: ReturnType<typeof fakeApi>) {
     api: api as unknown as ApiClient,
     user,
     workspace,
+    workspaceRole: 'owner',
     tenant: workspace,
     tenants: [workspace],
     authenticated: true,
@@ -301,11 +302,11 @@ describe('LiveMonitorsPage controls', () => {
       .toHaveAttribute('href', '/monitors/monitor-1#notifications')
     fireEvent.click(within(menu).getByRole('menuitem', { name: /pause/i }))
     await waitFor(() => expect(api.pauseMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
-    await screen.findByText('paused')
+    await waitFor(() => expect(within(screen.getByRole('link', { name: 'Open Checkout API' }).closest('article')!).getByText('Paused')).toBeInTheDocument())
     fireEvent.click(within(openMenu()).getByRole('menuitem', { name: /resume/i }))
     await waitFor(() => expect(api.resumeMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
 
-    await screen.findByText('pending')
+    await screen.findByText('Pending')
     fireEvent.click(within(openMenu()).getByRole('menuitem', { name: /test now/i }))
     await waitFor(() => expect(api.testMonitor).toHaveBeenCalledWith(workspace.id, 'monitor-1'))
 

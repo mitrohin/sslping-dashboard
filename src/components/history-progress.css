@@ -1,0 +1,4 @@
+.history-progress { padding: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.history-progress > p { color: var(--text-muted); margin: 0; }
+.history-range { display: flex; flex-wrap: wrap; gap: 12px; width: 100%; }
+.history-range label { display: grid; gap: 4px; font-size: 12px; }

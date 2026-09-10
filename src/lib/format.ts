@@ -1,3 +1,4 @@
+import { presentationNow } from './clock'
 import type {
   IncidentStatus,
   MonitorStatus,
@@ -119,11 +120,12 @@ function activeLocale(): string {
   return 'en-US'
 }
 
-export function formatDuration(totalSeconds: number, maxParts = 3): string {
+export function formatDuration(totalSeconds: number, maxParts = 3, locale = activeLocale()): string {
   if (!Number.isFinite(totalSeconds)) return '—'
 
   let seconds = Math.max(0, Math.round(totalSeconds))
-  if (seconds === 0) return '0s'
+  const ru = locale.startsWith('ru')
+  if (seconds === 0) return ru ? '0 с' : '0s'
 
   const units = [
     ['d', 86_400],
@@ -137,11 +139,19 @@ export function formatDuration(totalSeconds: number, maxParts = 3): string {
     if (seconds < size && parts.length === 0) continue
     const value = Math.floor(seconds / size)
     seconds %= size
-    if (value > 0) parts.push(`${value}${label}`)
+    if (value > 0) parts.push(ru ? `${value} ${{ d: 'дн', h: 'ч', m: 'мин', s: 'с' }[label]}` : `${value}${label}`)
     if (parts.length >= Math.max(1, maxParts)) break
   }
 
   return parts.join(' ') || '0s'
+}
+
+export function formatUptimePeriod(period: string, locale = activeLocale()): string {
+  const match = /^(\d+)([hd])$/.exec(period)
+  if (!match) return period
+  return new Intl.NumberFormat(locale, {
+    style: 'unit', unit: match[2] === 'h' ? 'hour' : 'day', unitDisplay: 'long',
+  }).format(Number(match[1]))
 }
 
 export function formatDate(
@@ -173,7 +183,7 @@ export const formatDateTime = formatDate
 
 export function formatRelativeTime(
   value: string | number | Date,
-  now: string | number | Date = new Date(),
+  now: string | number | Date = presentationNow(),
   options: RelativeTimeOptions = {},
 ): string {
   const date = toDate(value)

@@ -1,3 +1,5 @@
+import { ApplicationErrorPanel } from '../components/AppErrorBoundary'
+import { recoverableImport } from '../lib/recoverableImport'
 import { lazy, Suspense, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
@@ -15,23 +17,24 @@ import { DashboardGate, DemoEntry } from './DashboardGate'
 import { GuestOnly, RequireAuth, RequireSystemAdmin, RequireWorkspaceAccess } from './AuthProvider'
 import { demoPublicStatusApi } from './demoPublicStatus'
 import { useI18n } from './I18nProvider'
+import { AdminMessages } from './AdminMessages'
 
-const LiveMonitorsPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorsPage })))
-const LiveMonitorDetailPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorDetailPage })))
-const LiveMonitorEditPage = lazy(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorEditPage })))
-const SubscribedMonitorDetailPage = lazy(() => import('../features/subscriptions/SubscribedMonitorDetailPage'))
-const PublicStatusPageRoute = lazy(() => import('../features/public-status/PublicStatusPage').then((module) => ({ default: module.PublicStatusPageRoute })))
-const FollowMonitorPage = lazy(() => import('../features/subscriptions/FollowMonitorPage'))
-const LiveIncidentsPage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveIncidentsPage })))
-const LiveMaintenancePage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveMaintenancePage })))
-const LiveStatusPagesPage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveStatusPagesPage })))
-const LiveStatusPageEditorPage = lazy(() => import('./LiveOperations').then((module) => ({ default: module.LiveStatusPageEditorPage })))
-const LiveIntegrationsPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveIntegrationsPage })))
-const LiveTeamPage = lazy(() => import('./LiveAccount').then((module) => ({ default: module.LiveTeamPage })))
-const SupportPage = lazy(() => import('../features/support/SupportPage').then((module) => ({ default: module.SupportPage })))
-const CheckerIPsPage = lazy(() => import('../features/network/CheckerIPsPage'))
-const AdminConsolePage = lazy(() => import('../features/admin/AdminConsolePage').then((module) => ({ default: module.AdminConsolePage })))
-const OAuthAuthorizePage = lazy(() => import('../features/auth/OAuthAuthorizePage'))
+const LiveMonitorsPage = lazy(() => recoverableImport(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorsPage }))))
+const LiveMonitorDetailPage = lazy(() => recoverableImport(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorDetailPage }))))
+const LiveMonitorEditPage = lazy(() => recoverableImport(() => import('../features/monitors/LiveMonitorRoutes').then((module) => ({ default: module.LiveMonitorEditPage }))))
+const SubscribedMonitorDetailPage = lazy(() => recoverableImport(() => import('../features/subscriptions/SubscribedMonitorDetailPage')))
+const PublicStatusPageRoute = lazy(() => recoverableImport(() => import('../features/public-status/PublicStatusPage').then((module) => ({ default: module.PublicStatusPageRoute }))))
+const FollowMonitorPage = lazy(() => recoverableImport(() => import('../features/subscriptions/FollowMonitorPage')))
+const LiveIncidentsPage = lazy(() => recoverableImport(() => import('./LiveOperations').then((module) => ({ default: module.LiveIncidentsPage }))))
+const LiveMaintenancePage = lazy(() => recoverableImport(() => import('./LiveOperations').then((module) => ({ default: module.LiveMaintenancePage }))))
+const LiveStatusPagesPage = lazy(() => recoverableImport(() => import('./LiveOperations').then((module) => ({ default: module.LiveStatusPagesPage }))))
+const LiveStatusPageEditorPage = lazy(() => recoverableImport(() => import('./LiveOperations').then((module) => ({ default: module.LiveStatusPageEditorPage }))))
+const LiveIntegrationsPage = lazy(() => recoverableImport(() => import('./LiveAccount').then((module) => ({ default: module.LiveIntegrationsPage }))))
+const LiveTeamPage = lazy(() => recoverableImport(() => import('./LiveAccount').then((module) => ({ default: module.LiveTeamPage }))))
+const SupportPage = lazy(() => recoverableImport(() => import('../features/support/SupportPage').then((module) => ({ default: module.SupportPage }))))
+const CheckerIPsPage = lazy(() => recoverableImport(() => import('../features/network/CheckerIPsPage')))
+const AdminConsolePage = lazy(() => recoverableImport(() => import('../features/admin/AdminConsolePage').then((module) => ({ default: module.AdminConsolePage }))))
+const OAuthAuthorizePage = lazy(() => recoverableImport(() => import('../features/auth/OAuthAuthorizePage')))
 
 function RouteSuspense({ children }: { children: ReactNode }) {
   const { t } = useI18n()
@@ -87,10 +90,10 @@ const workspaceChildren = [
 const dashboardChildren = [
   { index: true, element: <Navigate to="/monitors" replace /> },
   { element: <RequireWorkspaceAccess />, children: workspaceChildren },
-  { element: <RequireSystemAdmin />, children: [{ path: 'admin', element: <RouteSuspense><AdminConsolePage /></RouteSuspense> }] },
+  { element: <RequireSystemAdmin />, children: [{ path: 'admin', element: <AdminMessages><RouteSuspense><AdminConsolePage /></RouteSuspense></AdminMessages> }] },
 ]
 
-export const router = createBrowserRouter([
+const routes = [
   { path: '/demo', element: <DemoEntry /> },
   {
     element: <GuestOnly />,
@@ -116,4 +119,6 @@ export const router = createBrowserRouter([
     ],
   },
   { path: '*', element: <NotFoundPage /> },
-])
+]
+
+export const router = createBrowserRouter(routes.map((route) => ({ ...route, errorElement: <ApplicationErrorPanel /> })))

@@ -1,5 +1,8 @@
+import { collectCursorPages } from '../../lib/pagination'
+import { runBulk } from '../../lib/bulk'
+import { workspaceCapabilities } from '../../lib/capabilities'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Navigate, useNavigate, useParams } from 'react-router'
 import type { Monitor } from '../../api/types'
 import { useAuth } from '../../app/AuthProvider'
 import { isDemoSession } from '../../app/DashboardGate'
@@ -67,7 +70,7 @@ export function LiveMonitorsPage() {
 }
 
 function LiveMonitorsContent() {
-  const { api, authenticated, workspace } = useAuth()
+  const { api, authenticated, workspace, workspaceRole } = useAuth()
   const navigate = useNavigate()
   const demo = isDemoSession()
   const [data, setData] = useState<readonly MonitorViewModel[]>([])
@@ -192,7 +195,7 @@ function LiveMonitorsContent() {
 
   const bulkAction = async (monitors: readonly MonitorViewModel[], action: 'pause' | 'resume' | 'test' | 'delete') => {
     if (!workspace) throw new Error('No active workspace is selected.')
-    await Promise.all(monitors.map((monitor) => action === 'pause'
+    const outcomes = await runBulk(monitors, (monitor) => action === 'pause'
       ? api.pauseMonitor(workspace.id, monitor.id)
       : action === 'resume'
         ? api.resumeMonitor(workspace.id, monitor.id)
@@ -200,15 +203,16 @@ function LiveMonitorsContent() {
           ? monitor.type === 'leakcheck'
             ? api.scanLeakCheckMonitor(workspace.id, monitor.id)
             : api.testMonitor(workspace.id, monitor.id)
-          : api.deleteMonitor(workspace.id, monitor.id)))
+          : api.deleteMonitor(workspace.id, monitor.id))
     await reload()
+    return outcomes
   }
 
   const bulkTags = async (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => {
     if (!workspace) throw new Error('No active workspace is selected.')
     const rawById = new Map(rawMonitors.map((monitor) => [monitor.id, monitor]))
     const changes = new Set(tags.map((tag) => tag.toLocaleLowerCase()))
-    await Promise.all(monitors.map(async (monitor) => {
+    const outcomes = await runBulk(monitors, async (monitor) => {
       const raw = rawById.get(monitor.id)
       if (!raw) throw new Error(`Configuration for ${monitor.name} is unavailable.`)
       const draft = monitorToDraft(raw)
@@ -216,8 +220,9 @@ function LiveMonitorsContent() {
         ? [...draft.tags, ...tags.filter((tag) => !draft.tags.some((current) => current.toLocaleLowerCase() === tag.toLocaleLowerCase()))]
         : draft.tags.filter((tag) => !changes.has(tag.toLocaleLowerCase()))
       await api.updateMonitor(workspace.id, monitor.id, monitorDraftToUpdateRequest(draft))
-    }))
+    })
     await reload()
+    return outcomes
   }
 
   const nextPage = () => {
@@ -253,6 +258,7 @@ function LiveMonitorsContent() {
 
   return (
     <MonitorsPage
+      canEdit={workspaceCapabilities(workspaceRole).edit}
       data={data}
       loading={loading}
       error={error}
@@ -285,7 +291,7 @@ function LiveMonitorsContent() {
 }
 
 export function LiveMonitorDetailPage() {
-  const { api, authenticated, workspace } = useAuth()
+  const { api, authenticated, workspace, workspaceRole } = useAuth()
   const { monitorId } = useParams()
   const navigate = useNavigate()
   const demo = isDemoSession()
@@ -411,6 +417,7 @@ export function LiveMonitorDetailPage() {
 
   return (
     <MonitorDetailPage
+      canEdit={workspaceCapabilities(workspaceRole).edit}
       monitor={data?.monitor}
       responseTime={data?.responseTime}
       locationNames={data?.locationNames}
@@ -442,7 +449,7 @@ interface LiveEditState {
 }
 
 export function LiveMonitorEditPage() {
-  const { api, authenticated, workspace } = useAuth()
+  const { api, authenticated, workspace, workspaceRole } = useAuth()
   const { monitorId } = useParams()
   const demo = isDemoSession()
   const [state, setState] = useState<LiveEditState | null>(null)
@@ -456,7 +463,7 @@ export function LiveMonitorEditPage() {
     try {
       const [monitor, page] = await Promise.all([
         api.getMonitor(workspace.id, monitorId),
-        api.listMonitors(workspace.id, { limit: 250 }),
+        collectCursorPages((cursor) => api.listMonitors(workspace.id, { limit: 100, cursor })),
       ])
       const availableTags = [...new Set((page.items ?? []).flatMap((item) => item.tags))].sort()
       setState({
@@ -474,6 +481,7 @@ export function LiveMonitorEditPage() {
   useEffect(() => { void reload() }, [reload])
 
   if (demo) return <MonitorEditPage />
+  if (!workspaceCapabilities(workspaceRole).edit) return <Navigate to={`/monitors/${monitorId ?? ''}`} replace />
 
   const update = async (draft: MonitorDraft) => {
     if (!workspace || !monitorId) throw new Error('Monitor context is unavailable.')

@@ -26,7 +26,8 @@ import type {
   UptimePeriodSummary,
 } from './models'
 
-export const DEMO_NOW = '2026-07-25T13:00:00.000Z'
+import { DEMO_NOW } from '../lib/clock'
+export { DEMO_NOW } from '../lib/clock'
 
 const DEMO_NOW_MS = Date.parse(DEMO_NOW)
 
@@ -106,7 +107,7 @@ export const demoMonitors: readonly MonitorViewModel[] = [
     lastCheckedAt: isoBefore(41),
     statusChangedAt: isoBefore(1_537_200),
     responseTimeMs: 312,
-    uptime24h: 99.972,
+    uptime24h: 100 * (1 - 222 / 86_400),
     last24Hours: buildUptimeBars('api', { 8: 'degraded' }),
     regions: ['North America', 'Europe'],
     sslCertificate: {
@@ -130,7 +131,7 @@ export const demoMonitors: readonly MonitorViewModel[] = [
     lastCheckedAt: isoBefore(17),
     statusChangedAt: isoBefore(312),
     responseTimeMs: 10_000,
-    uptime24h: 97.128,
+    uptime24h: 100 * (1 - 312 / 86_400),
     last24Hours: buildUptimeBars('checkout', {
       22: 'degraded',
       23: 'down',
@@ -164,7 +165,7 @@ export const demoMonitors: readonly MonitorViewModel[] = [
     lastCheckedAt: isoBefore(96),
     statusChangedAt: isoBefore(1_140),
     responseTimeMs: 873,
-    uptime24h: 99.621,
+    uptime24h: 100 * (1 - 1_140 / 86_400),
     last24Hours: buildUptimeBars('dns', { 20: 'degraded', 21: 'degraded', 22: 'degraded' }),
     regions: ['Europe', 'Asia Pacific'],
   },
@@ -294,7 +295,7 @@ function summarizeMonitors(monitors: readonly MonitorViewModel[]): MonitorSummar
         ? uptimeValues.reduce((total, value) => total + value, 0) / uptimeValues.length
         : undefined,
     incidentCount24h: 3,
-    downtimeSeconds24h: 2_724,
+    downtimeSeconds24h: 1_674,
     mtbfSeconds: 1_908_000,
   }
 }
@@ -462,12 +463,27 @@ export const demoResponseTimeSeries: readonly ResponseTimeSeries[] = [
   makeResponseSeries('ap-southeast', 'Asia Pacific', '#f5a742', 8, 286),
 ]
 
-export const demoUptimePeriods: readonly UptimePeriodSummary[] = [
-  { period: '24h', uptime: 100, incidentCount: 0, downtimeSeconds: 0 },
-  { period: '7d', uptime: 100, incidentCount: 0, downtimeSeconds: 0 },
-  { period: '30d', uptime: 99.991, incidentCount: 1, downtimeSeconds: 222 },
-  { period: '365d', uptime: 99.975, incidentCount: 7, downtimeSeconds: 7_830 },
-]
+// Demo windows use the same included incident timeline as the visible history.
+// This is fixture generation only; live availability is supplied by the API.
+const demoPeriodSeconds = { '24h': 86_400, '7d': 604_800, '30d': 2_592_000, '365d': 31_536_000 } as const
+export const demoUptimePeriodsByMonitor: Readonly<Record<string, readonly UptimePeriodSummary[]>> = Object.fromEntries(
+  demoMonitors.map((monitor) => [monitor.id, Object.entries(demoPeriodSeconds).map(([period, seconds]) => {
+    const windowStart = DEMO_NOW_MS - seconds * 1_000
+    const overlapping = demoIncidents.filter((incident) => incident.monitorId === monitor.id && incident.visibility === 'included')
+      .map((incident) => Math.max(0, (Math.min(DEMO_NOW_MS, incident.resolvedAt ? Date.parse(incident.resolvedAt) : DEMO_NOW_MS)
+        - Math.max(windowStart, Date.parse(incident.startedAt))) / 1_000))
+      .filter((overlap) => overlap > 0)
+    const downtimeSeconds = overlapping.reduce((sum, overlap) => sum + overlap, 0)
+    return {
+      period: period as UptimePeriodSummary['period'],
+      uptime: monitor.uptime24h === undefined ? undefined : 100 * (1 - downtimeSeconds / seconds),
+      incidentCount: overlapping.length,
+      downtimeSeconds,
+    }
+  })]),
+)
+
+export const demoUptimePeriods = demoUptimePeriodsByMonitor[monitorIds.website]
 
 export const demoStatusPages: readonly StatusPageViewModel[] = [
   {

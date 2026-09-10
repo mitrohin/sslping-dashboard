@@ -5,6 +5,7 @@ import {
   formatRelativeTime,
   formatStatus,
   formatUptime,
+  formatUptimePeriod,
   statusTone,
 } from './format'
 
@@ -54,6 +55,17 @@ describe('formatUptime', () => {
     expect(formatUptime(123)).toBe('100%')
     expect(formatUptime(-1)).toBe('0%')
     expect(formatUptime(undefined)).toBe('—')
+  })
+})
+
+describe('formatUptimePeriod', () => {
+  it('expands API window identifiers into readable localized units', () => {
+    expect(formatUptimePeriod('7d', 'ru')).toBe('7 дней')
+    expect(formatUptimePeriod('30d', 'ru')).toBe('30 дней')
+    expect(formatUptimePeriod('365d', 'ru')).toBe('365 дней')
+    expect(formatUptimePeriod('24h', 'ru')).toBe('24 часа')
+    expect(formatUptimePeriod('7d', 'en')).toBe('7 days')
+    expect(formatUptimePeriod('30d', 'es')).toBe('30 días')
   })
 })
 

@@ -450,7 +450,14 @@ export function toUptimePeriod(
 ): UptimePeriodSummary {
   return {
     period,
-    uptime: stats.availability,
+    uptime: stats.availability_known === false ? undefined : stats.availability,
+    known: stats.availability_known,
+    complete: stats.sample_coverage_complete,
+    sampleFrom: stats.sample_from ?? undefined,
+    sampleTo: stats.sample_to ?? undefined,
+    unknownSeconds: stats.unknown_seconds,
+    resolutionSeconds: stats.coverage_resolution_seconds,
+    method: stats.availability_method,
     incidentCount: stats.incidents,
     downtimeSeconds: stats.downtime_seconds,
   }

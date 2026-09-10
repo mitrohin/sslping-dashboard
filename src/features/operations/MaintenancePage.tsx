@@ -36,6 +36,7 @@ export interface MaintenanceWindowInput {
 }
 
 export interface MaintenancePageProps {
+  canEdit?: boolean
   windows?: readonly MaintenanceWindowViewModel[]
   monitors?: readonly MonitorViewModel[]
   initialCreateMonitorId?: string
@@ -82,6 +83,7 @@ const makeId = (): string =>
     : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 export function MaintenancePage({
+  canEdit = true,
   windows: initialWindows = demoMaintenanceWindows,
   monitors = demoMonitors,
   initialCreateMonitorId,
@@ -109,7 +111,7 @@ export function MaintenancePage({
   }, [query, windows])
 
   useEffect(() => {
-    if (!initialCreateMonitorId || !monitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
+    if (!canEdit || !initialCreateMonitorId || !monitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
     const monitor = monitors.find((item) => item.id === initialCreateMonitorId)
     setError('')
     setDraft({
@@ -117,7 +119,7 @@ export function MaintenancePage({
       name: monitor ? t('maintenance.onMonitor', { name: monitor.name }) : '',
       monitorIds: [initialCreateMonitorId],
     })
-  }, [defaultTimezone, initialCreateMonitorId, monitors])
+  }, [canEdit, defaultTimezone, initialCreateMonitorId, monitors])
 
   const openCreate = () => {
     setError('')
@@ -217,7 +219,7 @@ export function MaintenancePage({
       <PageHeader
         title={t('maintenance.title')}
         description={t('maintenance.description')}
-        actions={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('maintenance.create')}</Button>}
+        actions={canEdit ? <Button type="button" onClick={openCreate}><Plus size={18} /> {t('maintenance.create')}</Button> : undefined}
       />
 
       {windows.length === 0 ? (
@@ -226,7 +228,7 @@ export function MaintenancePage({
             icon={<Wrench size={38} />}
             title={t('maintenance.first')}
             description={t('maintenance.firstHint')}
-            action={<Button type="button" onClick={openCreate}><CalendarClock size={18} /> {t('maintenance.createWindow')}</Button>}
+            action={canEdit ? <Button type="button" onClick={openCreate}><CalendarClock size={18} /> {t('maintenance.createWindow')}</Button> : undefined}
           />
         </Panel>
       ) : (
@@ -249,7 +251,7 @@ export function MaintenancePage({
                       <td>{formatDuration(window.durationMinutes * 60)}</td>
                       <td><span className="ops-inline-meta"><Repeat2 size={15} />{recurrenceLabel(window.recurrence)}</span></td>
                       <td><Badge tone={window.state === 'upcoming' || window.state === 'active' ? 'success' : 'neutral'}>{formatStatus(window.state)}</Badge></td>
-                      <td><div className="ops-row-actions"><IconButton label={t('maintenance.editNamed', { name: window.name })} onClick={() => openEdit(window)}><Edit3 size={17} /></IconButton><IconButton label={t('maintenance.deleteNamed', { name: window.name })} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div></td>
+                      <td>{canEdit && <div className="ops-row-actions"><IconButton label={t('maintenance.editNamed', { name: window.name })} onClick={() => openEdit(window)}><Edit3 size={17} /></IconButton><IconButton label={t('maintenance.deleteNamed', { name: window.name })} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,7 +264,7 @@ export function MaintenancePage({
                   <h2>{window.name}</h2>
                   <p>{window.monitorNames.join(', ')}</p>
                   <dl><div><dt>{t('maintenance.starts')}</dt><dd>{formatDate(window.startsAt)}</dd></div><div><dt>{t('incidents.duration')}</dt><dd>{formatDuration(window.durationMinutes * 60)}</dd></div><div><dt>{t('maintenance.repeat')}</dt><dd>{recurrenceLabel(window.recurrence)}</dd></div></dl>
-                  <div className="ops-card-actions"><Button size="sm" variant="secondary" type="button" onClick={() => openEdit(window)}><Edit3 size={16} /> {t('common.edit')}</Button><IconButton label={t('maintenance.deleteNamed', { name: window.name })} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div>
+                  {canEdit && <div className="ops-card-actions"><Button size="sm" variant="secondary" type="button" onClick={() => openEdit(window)}><Edit3 size={16} /> {t('common.edit')}</Button><IconButton label={t('maintenance.deleteNamed', { name: window.name })} onClick={() => void remove(window)}><Trash2 size={17} /></IconButton></div>}
                 </article>
               ))}
             </div>

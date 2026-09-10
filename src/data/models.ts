@@ -25,6 +25,9 @@ export interface UptimeBar {
 }
 
 export interface ExpirySnapshot {
+  checkedAt?: string
+  refreshAfter?: string
+  stale?: boolean
   expiresAt: string
   daysRemaining: number
   state: 'ok' | 'warning' | 'expired' | 'unknown'
@@ -59,6 +62,9 @@ export interface MonitorViewModel {
   slowThresholdMs?: number
   lastCheckedAt?: string
   statusChangedAt?: string
+  statusReason?: string
+  observationStale?: boolean
+  availabilityCoverage?: AvailabilityCoverage
   responseTimeMs?: number
   uptime24h?: number
   incidentCount24h?: number
@@ -115,9 +121,19 @@ export interface ResponseTimeSeries {
   maximumMs: number
 }
 
-export interface UptimePeriodSummary {
+export interface AvailabilityCoverage {
+  known?: boolean
+  complete?: boolean
+  sampleFrom?: string
+  sampleTo?: string
+  unknownSeconds?: number
+  resolutionSeconds?: number
+  method?: string
+}
+
+export interface UptimePeriodSummary extends AvailabilityCoverage {
   period: '24h' | '7d' | '30d' | '365d'
-  uptime: number
+  uptime?: number
   incidentCount: number
   downtimeSeconds: number
 }

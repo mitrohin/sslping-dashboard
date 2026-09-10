@@ -578,6 +578,16 @@ export interface CheckResult {
 }
 
 export interface UptimeStats {
+  /** Optional during rolling upgrades; omitted fields mean coverage is unknown. */
+  availability_known?: boolean
+  availability_method?: string
+  sample_from?: ISODateTime | null
+  sample_to?: ISODateTime | null
+  sample_coverage_complete?: boolean
+  observation_stale?: boolean
+  observed_seconds?: number
+  unknown_seconds?: number
+  coverage_resolution_seconds?: number
   from: ISODateTime
   to: ISODateTime
   availability: number
@@ -601,7 +611,14 @@ export interface CheckResultHour {
   samples: number
 }
 
-export interface MonitorDomainEvidenceSummary {
+export interface SupplementalEvidenceFreshness {
+  checked_at?: ISODateTime
+  last_known_checked_at?: ISODateTime
+  refresh_after?: ISODateTime
+  stale?: boolean
+}
+
+export interface MonitorDomainEvidenceSummary extends SupplementalEvidenceFreshness {
   attempted: boolean
   checked_at?: ISODateTime
   status?: string
@@ -613,10 +630,12 @@ export interface MonitorDomainEvidenceSummary {
 export interface MonitorLatestSummary {
   monitor_id: UUID
   checked_at: ISODateTime
+  root_cause?: string
   latency_ms: number
   incident_id?: UUID
   certificate_expires_at?: ISODateTime
   certificate_issuer?: string
+  certificate_evidence?: SupplementalEvidenceFreshness
   domain_expires_at?: ISODateTime
   domain_registrar?: string
   domain_evidence?: MonitorDomainEvidenceSummary
@@ -917,6 +936,7 @@ export interface Announcement {
 }
 
 export interface PublicStatusPage {
+  monitoring_source?: 'public_catalog' | 'workspace'
   name: string
   slug: string
   country_code?: string
@@ -929,6 +949,8 @@ export interface PublicStatusPage {
 }
 
 export interface PublicStatusComponent {
+  check_regions?: string[]
+  observation_stale?: boolean
 	 id?: UUID
   name: string
   target?: string

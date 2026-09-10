@@ -1,3 +1,5 @@
+import { AvailabilityNote, EvidenceFreshness } from '../../components/EvidenceNotes'
+import { observationIsStale, statusReason } from '../../lib/monitorStatus'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
@@ -27,12 +29,13 @@ import {
 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import {
+  DEMO_NOW,
   demoIncidents,
   demoIntegrations,
   demoMaintenanceWindows,
   demoMonitors,
   demoResponseTimeSeries,
-  demoUptimePeriods,
+  demoUptimePeriodsByMonitor,
   type IncidentViewModel,
   type IntegrationViewModel,
   type MaintenanceWindowViewModel,
@@ -41,7 +44,7 @@ import {
   type StatusPageViewModel,
   type UptimePeriodSummary,
 } from '../../data'
-import { formatDate, formatDuration, formatRelativeTime, formatStatus, formatUptime } from '../../lib/format'
+import { formatDate, formatDuration, formatStatus, formatUptime, formatUptimePeriod } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
 import { Badge, Button, EmptyState, Field, IconButton, Modal, PageLoadingSkeleton, Panel, Select, StatusDot, Toggle } from '../../components/ui'
 import { HeartbeatCredentialModal, type HeartbeatCredential } from './HeartbeatCredentialModal'
@@ -50,6 +53,7 @@ import { useI18n } from '../../app/I18nProvider'
 import { RegionMap } from './RegionMap'
 
 export interface MonitorDetailPageProps {
+  canEdit?: boolean
   monitor?: MonitorViewModel
   responseTime?: readonly ResponseTimeSeries[]
   locationNames?: Readonly<Record<string, string>>
@@ -73,11 +77,11 @@ export interface MonitorDetailPageProps {
   manualTestEnabled?: boolean
 }
 
-function formatCheckAgeSeconds(value: string | undefined, now: number): string {
+function formatCheckAgeSeconds(value: string | undefined, now: number, locale: string): string {
   if (!value) return '—'
   const checkedAt = Date.parse(value)
   if (!Number.isFinite(checkedAt)) return '—'
-  return `${Math.max(0, Math.floor((now - checkedAt) / 1000))}s`
+  return formatDuration(Math.max(0, Math.floor((now - checkedAt) / 1000)), 2, locale)
 }
 
 const quoteCsv = (value: string | number): string => `"${String(value).replaceAll('"', '""')}"`
@@ -187,6 +191,7 @@ function formatResponseTimeTooltipLabel(timestamp: number, range: string, locale
 }
 
 export function MonitorDetailPage({
+  canEdit = true,
   monitor: suppliedMonitor,
   responseTime: suppliedResponseTime,
   locationNames = {},
@@ -215,13 +220,13 @@ export function MonitorDetailPage({
   const fallbackMonitor = demoMonitors.find((item) => item.id === monitorId) ?? demoMonitors[0]
   const monitor = suppliedMonitor ?? fallbackMonitor
   const responseTime = suppliedResponseTime ?? demoResponseTimeSeries
-  const uptimePeriods = suppliedUptimePeriods ?? demoUptimePeriods
+  const uptimePeriods = suppliedUptimePeriods ?? demoUptimePeriodsByMonitor[monitor.id] ?? []
   const incidents = suppliedIncidents ?? demoIncidents.filter((incident) => incident.monitorId === monitor.id)
   const notifications = suppliedNotifications ?? demoIntegrations.filter((integration) => integration.monitorIds.length === 0 || integration.monitorIds.includes(monitor.id))
   const [pausedOverride, setPausedOverride] = useState<boolean | null>(null)
   const [notificationSent, setNotificationSent] = useState(false)
   const [range, setRange] = useState('1h')
-  const [clock, setClock] = useState(() => Date.now())
+  const [clock, setClock] = useState(() => suppliedMonitor ? Date.now() : Date.parse(DEMO_NOW))
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [heartbeatCredential, setHeartbeatCredential] = useState<HeartbeatCredential | null>(null)
@@ -238,6 +243,8 @@ export function MonitorDetailPage({
       ?? incidents.find((incident) => incident.complianceReport)
       ?? incidents[0]
     : undefined
+  const staleObservation = observationIsStale(monitor, clock)
+  const currentReason = statusReason(monitor.statusReason, locale)
   const evidenceOnly = monitor.type === 'leakcheck' || monitor.type === 'compliance'
   const compliancePending = monitor.type === 'compliance' && !monitor.complianceReport && !monitor.lastCheckedAt
   const [responseAlertOpen, setResponseAlertOpen] = useState(false)
@@ -249,9 +256,11 @@ export function MonitorDetailPage({
 
   useEffect(() => setPausedOverride(null), [monitor.id, monitor.status])
   useEffect(() => {
+    if (!suppliedMonitor) { setClock(Date.parse(DEMO_NOW)); return }
+    setClock(Date.now())
     const timer = window.setInterval(() => setClock(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [suppliedMonitor])
   useEffect(() => {
     if (loading || window.location.hash !== '#notifications') return
     const frame = window.requestAnimationFrame(() => document.getElementById('notifications')?.scrollIntoView({ block: 'start' }))
@@ -404,19 +413,19 @@ export function MonitorDetailPage({
           {actionError && <small className="danger-text" role="alert">{actionError}</small>}
         </div>
         <div className="monitor-detail-header__actions">
-          {monitor.type === 'heartbeat' && onRotateHeartbeat && <Button variant="secondary" disabled={actionBusy} onClick={rotateHeartbeat}><KeyRound size={17} /> {t('monitorDetail.rotateUrl')}</Button>}
-          {(manualTestEnabled || monitor.type === 'leakcheck') && <Button variant="secondary" disabled={actionBusy} onClick={testNotification}>{monitor.type === 'leakcheck' ? <ShieldAlert size={17} /> : monitor.type === 'compliance' ? <Scale size={17} /> : <BellRing size={17} />} {notificationSent ? t('monitorDetail.testComplete') : monitor.type === 'leakcheck' ? t('monitorDetail.scanLeaks') : monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitorDetail.test')}</Button>}
-          <Button variant="secondary" disabled={actionBusy} onClick={togglePause}>{paused ? <PlayCircle size={17} /> : <PauseCircle size={17} />}{paused ? t('common.resume') : t('common.pause')}</Button>
-          <Link className="button button--secondary button--md" to={`/monitors/${monitor.id}/edit`}><Pencil size={17} /> {t('common.edit')}</Link>
+          {canEdit && monitor.type === 'heartbeat' && onRotateHeartbeat && <Button variant="secondary" disabled={actionBusy} onClick={rotateHeartbeat}><KeyRound size={17} /> {t('monitorDetail.rotateUrl')}</Button>}
+          {canEdit && (manualTestEnabled || monitor.type === 'leakcheck') && <Button variant="secondary" disabled={actionBusy} onClick={testNotification}>{monitor.type === 'leakcheck' ? <ShieldAlert size={17} /> : monitor.type === 'compliance' ? <Scale size={17} /> : <BellRing size={17} />} {notificationSent ? t('monitorDetail.testComplete') : monitor.type === 'leakcheck' ? t('monitorDetail.scanLeaks') : monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitorDetail.test')}</Button>}
+          {canEdit && <Button variant="secondary" disabled={actionBusy} onClick={togglePause}>{paused ? <PlayCircle size={17} /> : <PauseCircle size={17} />}{paused ? t('common.resume') : t('common.pause')}</Button>}
+          {canEdit && <Link className="button button--secondary button--md" to={`/monitors/${monitor.id}/edit`}><Pencil size={17} /> {t('common.edit')}</Link>}
           <div className="monitor-detail-actions-menu" ref={actionMenuRef}>
             <IconButton label={t('monitorDetail.moreActions', { name: monitor.name })} aria-expanded={actionsOpen} onClick={() => setActionsOpen((open) => !open)}><MoreVertical size={19} /></IconButton>
             {actionsOpen && <div className="monitor-action-menu" role="menu">
-              <Link to={`/monitors/${monitor.id}/edit`} role="menuitem"><Pencil size={15} /> {t('monitorDetail.editMonitor')}</Link>
-              {manualTestEnabled && <button type="button" role="menuitem" onClick={testNotification}>{monitor.type === 'compliance' ? <Scale size={15} /> : <BellRing size={15} />} {monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitorDetail.runTest')}</button>}
-              <button type="button" role="menuitem" onClick={togglePause}>{paused ? <PlayCircle size={15} /> : <PauseCircle size={15} />}{paused ? t('monitorDetail.resumeMonitor') : t('monitorDetail.pauseMonitor')}</button>
+              {canEdit && <Link to={`/monitors/${monitor.id}/edit`} role="menuitem"><Pencil size={15} /> {t('monitorDetail.editMonitor')}</Link>}
+              {canEdit && manualTestEnabled && <button type="button" role="menuitem" onClick={testNotification}>{monitor.type === 'compliance' ? <Scale size={15} /> : <BellRing size={15} />} {monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitorDetail.runTest')}</button>}
+              {canEdit && <button type="button" role="menuitem" onClick={togglePause}>{paused ? <PlayCircle size={15} /> : <PauseCircle size={15} />}{paused ? t('monitorDetail.resumeMonitor') : t('monitorDetail.pauseMonitor')}</button>}
               <button type="button" role="menuitem" onClick={() => void copyTarget()}><Copy size={15} /> {t('monitorDetail.copyTarget')}</button>
               <button type="button" role="menuitem" onClick={exportLogs}><Download size={15} /> {t('monitorDetail.exportIncidentLog')}</button>
-              <button type="button" role="menuitem" className="monitor-action-menu__danger" onClick={deleteMonitor}><Trash2 size={15} /> {t('monitorDetail.deleteMonitor')}</button>
+              {canEdit && <button type="button" role="menuitem" className="monitor-action-menu__danger" onClick={deleteMonitor}><Trash2 size={15} /> {t('monitorDetail.deleteMonitor')}</button>}
             </div>}
           </div>
         </div>
@@ -425,20 +434,20 @@ export function MonitorDetailPage({
       <div className="monitor-detail-grid">
         <div className="monitor-detail-main">
           <div className="monitor-kpis">
-            <Panel className={compliancePending ? 'monitor-kpis__pending' : undefined}><span>{t('monitorDetail.currentStatus')}</span><strong className={compliancePending ? 'checking-text' : paused ? 'muted' : monitor.status === 'up' ? 'success-text' : 'danger-text'}>{compliancePending ? <><LoaderCircle size={22} />{t('monitorDetail.scanInProgress')}</> : paused ? formatStatus('paused') : monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : formatStatus(monitor.status)) : monitor.type === 'compliance' ? (monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : formatStatus(monitor.status)}</strong><small>{compliancePending ? t('monitorDetail.firstScanRunning') : monitor.statusChangedAt ? t('monitorDetail.since', { time: formatRelativeTime(monitor.statusChangedAt, clock) }) : t('monitorDetail.awaitingFirst')}</small></Panel>
-            <Panel className="monitor-kpis__last-check"><span>{monitor.type === 'leakcheck' ? t('monitorDetail.lastScan') : monitor.type === 'compliance' ? t('monitorDetail.lastReview') : t('monitorDetail.lastCheck')}</span><strong>{compliancePending ? <LoaderCircle className="compliance-scan-spinner" size={25} /> : formatCheckAgeSeconds(monitor.lastCheckedAt, clock)}</strong>{compliancePending ? <small>{t('monitorDetail.scanStageCrawl')}</small> : refreshing ? <small>{t('monitorDetail.refreshing')}</small> : monitor.type !== 'leakcheck' ? <small>{t('monitorDetail.checkedEvery', { interval: formatDuration(monitor.intervalSeconds) })}</small> : null}</Panel>
-            {monitor.type === 'leakcheck' ? <Panel className="monitor-kpis__uptime monitor-kpis__leak-summary"><div><span>{t('monitorDetail.exposureStatus')}</span><strong className={monitor.leakReport?.found ? 'danger-text' : 'success-text'}>{monitor.leakReport?.found ?? '—'}</strong></div><small>{monitor.leakReport ? t('monitorDetail.sourcesCount', { count: monitor.leakReport.sources.length }) : t('monitorDetail.awaitingFirst')}</small>{leakIncident && <Link className="leakcheck-incident-link" to={`/incidents?incident=${encodeURIComponent(leakIncident.id)}`}><ShieldAlert size={16} /> {t('monitorDetail.openLeakIncident')}</Link>}</Panel> : monitor.type === 'compliance' ? <Panel className="monitor-kpis__uptime monitor-kpis__compliance-summary"><div><span>{t('monitorDetail.legalReviewResult')}</span><strong className={monitor.complianceReport?.summary.failed ? 'danger-text' : 'success-text'}>{monitor.complianceReport ? (monitor.complianceReport.summary.failed || t('monitorDetail.noViolations')) : compliancePending ? t('monitorDetail.pendingResult') : '—'}</strong></div><small>{monitor.complianceReport ? t('monitorDetail.manualReviewCount', { count: monitor.complianceReport.summary.manual }) : compliancePending ? t('monitorDetail.resultAfterScan') : t('monitorDetail.noComplianceReport')}</small>{complianceIncident && <Link className="compliance-incident-link" to={`/incidents?incident=${encodeURIComponent(complianceIncident.id)}`}><Scale size={16} /> {t('monitorDetail.openComplianceIncident')}</Link>}</Panel> : <Panel className="monitor-kpis__uptime"><div><span>{t('monitorDetail.last24h')}</span><strong>{formatUptime(monitor.uptime24h)}</strong></div><UptimeBars values={uptimeValues} /><small>{t('monitorDetail.incidentsPeriod', { count: incidents.length })}</small></Panel>}
+            <Panel className={compliancePending ? 'monitor-kpis__pending' : undefined}><span>{t('monitorDetail.currentStatus')}</span><strong className={compliancePending ? 'checking-text' : paused ? 'muted' : monitor.status === 'up' ? 'success-text' : 'danger-text'}>{compliancePending ? <><LoaderCircle size={22} />{t('monitorDetail.scanInProgress')}</> : paused ? formatStatus('paused', locale) : monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : formatStatus(monitor.status, locale)) : monitor.type === 'compliance' ? (monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : formatStatus(monitor.status, locale)}</strong><small>{compliancePending ? t('monitorDetail.firstScanRunning') : monitor.statusChangedAt ? t('monitorDetail.since', { time: formatDate(monitor.statusChangedAt, { locale }) }) : t('monitorDetail.awaitingFirst')}</small>{currentReason && <small className="monitor-status-reason">{currentReason}</small>}{staleObservation && <small className="warning-text" role="status">{locale === 'ru' ? 'Нет свежих проверок. Показан последний известный статус.' : 'No fresh checks. Showing the last known status.'}</small>}</Panel>
+            <Panel className="monitor-kpis__last-check"><span>{monitor.type === 'leakcheck' ? t('monitorDetail.lastScan') : monitor.type === 'compliance' ? t('monitorDetail.lastReview') : t('monitorDetail.lastCheck')}</span><strong>{compliancePending ? <LoaderCircle className="compliance-scan-spinner" size={25} /> : formatCheckAgeSeconds(monitor.lastCheckedAt, clock, locale)}</strong>{compliancePending ? <small>{t('monitorDetail.scanStageCrawl')}</small> : refreshing ? <small>{t('monitorDetail.refreshing')}</small> : monitor.type !== 'leakcheck' ? <small>{t('monitorDetail.checkedEvery', { interval: formatDuration(monitor.intervalSeconds, 3, locale) })}</small> : null}</Panel>
+            {monitor.type === 'leakcheck' ? <Panel className="monitor-kpis__uptime monitor-kpis__leak-summary"><div><span>{t('monitorDetail.exposureStatus')}</span><strong className={monitor.leakReport?.found ? 'danger-text' : 'success-text'}>{monitor.leakReport?.found ?? '—'}</strong></div><small>{monitor.leakReport ? t('monitorDetail.sourcesCount', { count: monitor.leakReport.sources.length }) : t('monitorDetail.awaitingFirst')}</small>{leakIncident && <Link className="leakcheck-incident-link" to={`/incidents?incident=${encodeURIComponent(leakIncident.id)}`}><ShieldAlert size={16} /> {t('monitorDetail.openLeakIncident')}</Link>}</Panel> : monitor.type === 'compliance' ? <Panel className="monitor-kpis__uptime monitor-kpis__compliance-summary"><div><span>{t('monitorDetail.legalReviewResult')}</span><strong className={monitor.complianceReport?.summary.failed ? 'danger-text' : 'success-text'}>{monitor.complianceReport ? (monitor.complianceReport.summary.failed || t('monitorDetail.noViolations')) : compliancePending ? t('monitorDetail.pendingResult') : '—'}</strong></div><small>{monitor.complianceReport ? t('monitorDetail.manualReviewCount', { count: monitor.complianceReport.summary.manual }) : compliancePending ? t('monitorDetail.resultAfterScan') : t('monitorDetail.noComplianceReport')}</small>{complianceIncident && <Link className="compliance-incident-link" to={`/incidents?incident=${encodeURIComponent(complianceIncident.id)}`}><Scale size={16} /> {t('monitorDetail.openComplianceIncident')}</Link>}</Panel> : <Panel className="monitor-kpis__uptime"><div><span>{t('monitorDetail.last24h')}</span><strong>{monitor.uptime24h === undefined ? t('status.noData') : formatUptime(monitor.uptime24h, 3, locale)}</strong></div><UptimeBars values={uptimeValues} /><small>{t('monitorDetail.incidentsPeriod', { count: monitor.incidentCount24h ?? incidents.filter((incident) => Date.parse(incident.startedAt) >= clock - 86_400_000).length })}</small><AvailabilityNote coverage={monitor.availabilityCoverage} /></Panel>}
           </div>
 
           {compliancePending && <Panel className="compliance-scan-progress"><div className="compliance-scan-progress__heading" role="status" aria-live="polite"><span className="compliance-scan-progress__icon"><LoaderCircle size={22} /></span><div><strong>{t('monitorDetail.scanStageCrawl')}</strong><small>{t('monitorDetail.scanStageHint')}</small></div></div><div className="compliance-scan-progress__track"><span /></div><div className="compliance-scan-progress__steps"><span className="is-active">1 · {t('monitorDetail.scanStageConnect')}</span><span className="is-active">2 · {t('monitorDetail.scanStagePages')}</span><span>3 · {t('monitorDetail.scanStageAnalyze')}</span><span>4 · {t('monitorDetail.scanStageReport')}</span></div></Panel>}
 
           {!evidenceOnly && <Panel className="uptime-periods">
-            {uptimePeriods.map((period) => <div key={period.period}><span>{t('monitorDetail.lastPeriod', { period: period.period })}</span><strong className={period.uptime >= 99.9 ? 'success-text' : 'warning-text'}>{formatUptime(period.uptime)}</strong><small>{t('monitorDetail.periodIncidentSummary', { count: period.incidentCount, downtime: formatDuration(period.downtimeSeconds) })}</small></div>)}
-            <div><span>MTBF</span><strong className="success-text">{mtbfSeconds === undefined ? '—' : formatDuration(mtbfSeconds)}</strong><small>{t('monitorDetail.mtbfHint')}</small></div>
+            {uptimePeriods.filter((period) => period.period !== '24h').map((period) => <div key={period.period}><span>{t('monitorDetail.lastPeriod', { period: formatUptimePeriod(period.period, locale) })}</span><strong className={period.uptime !== undefined && period.uptime >= 99.9 ? 'success-text' : 'warning-text'}>{period.uptime === undefined ? t('status.noData') : formatUptime(period.uptime, 3, locale)}</strong><small>{t('monitorDetail.periodIncidentSummary', { count: period.incidentCount, downtime: formatDuration(period.downtimeSeconds, 3, locale) })}</small><AvailabilityNote coverage={period} /></div>)}
+            <div><span>MTBF</span><strong className="success-text">{mtbfSeconds === undefined ? '—' : formatDuration(mtbfSeconds, 3, locale)}</strong><small>{t('monitorDetail.mtbfHint')}</small></div>
           </Panel>}
 
           {!evidenceOnly && <Panel className="response-chart-panel">
-            <header className="panel__header"><h2>{t('monitorDetail.responseTimeFor')} <span className="region-picker" ref={regionMenuRef}><button type="button" className="region-picker__trigger" aria-haspopup="menu" aria-expanded={regionsOpen} onClick={() => setRegionsOpen((open) => !open)}>{regionLabel}<ChevronDown className="dropdown-chevron" size={16} aria-hidden="true" /></button>{regionsOpen && <span className="region-picker__menu" role="menu">{responseTime.map((series) => <button type="button" role="menuitemcheckbox" aria-checked={selectedRegions.includes(series.regionId)} key={series.regionId} onClick={() => toggleRegion(series.regionId)}><span className="region-picker__swatch" style={{ background: series.color }} /><span>{series.regionLabel}</span>{selectedRegions.includes(series.regionId) && <Check size={15} />}</button>)}</span>}</span></h2><div><Button size="sm" variant="secondary" onClick={() => setResponseAlertOpen(true)}><Gauge size={15} />{monitor.slowThresholdMs ? t('monitorDetail.alertAt', { threshold: monitor.slowThresholdMs }) : t('monitorDetail.setResponseAlert')}</Button><Select value={range} onChange={(event) => { setRange(event.target.value); onRangeChange?.(event.target.value) }}><option value="1h">{t('monitorDetail.lastHour')}</option><option value="24h">{t('monitorDetail.last24h')}</option><option value="7d">{t('monitorDetail.last7d')}</option></Select></div></header>
+            <header className="panel__header"><h2>{t('monitorDetail.responseTimeFor')} <span className="region-picker" ref={regionMenuRef}><button type="button" className="region-picker__trigger" aria-haspopup="menu" aria-expanded={regionsOpen} onClick={() => setRegionsOpen((open) => !open)}>{regionLabel}<ChevronDown className="dropdown-chevron" size={16} aria-hidden="true" /></button>{regionsOpen && <span className="region-picker__menu" role="menu">{responseTime.map((series) => <button type="button" role="menuitemcheckbox" aria-checked={selectedRegions.includes(series.regionId)} key={series.regionId} onClick={() => toggleRegion(series.regionId)}><span className="region-picker__swatch" style={{ background: series.color }} /><span>{series.regionLabel}</span>{selectedRegions.includes(series.regionId) && <Check size={15} />}</button>)}</span>}</span></h2><div><Button size="sm" variant="secondary" disabled={!canEdit} onClick={() => setResponseAlertOpen(true)}><Gauge size={15} />{monitor.slowThresholdMs ? t('monitorDetail.alertAt', { threshold: monitor.slowThresholdMs }) : t('monitorDetail.setResponseAlert')}</Button><Select value={range} onChange={(event) => { setRange(event.target.value); onRangeChange?.(event.target.value) }}><option value="1h">{t('monitorDetail.lastHour')}</option><option value="24h">{t('monitorDetail.last24h')}</option><option value="7d">{t('monitorDetail.last7d')}</option></Select></div></header>
             <div className="response-chart">
               {chartData.length ? <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 15, right: 18, left: 0, bottom: 5 }}>
@@ -472,7 +481,7 @@ export function MonitorDetailPage({
 
           <Panel className="latest-incidents">
             <header className="panel__header"><h2>{t('monitorDetail.latestIncidents')}<span className="title-dot">.</span></h2>{onExportLogs ? <Button variant="secondary" size="sm" onClick={onExportLogs}><Download size={15} /> {t('monitorDetail.exportLogs')}</Button> : <a ref={exportLinkRef} className="button button--secondary button--sm" href={exportHref} download={exportFileName}><Download size={15} /> {t('monitorDetail.exportLogs')}</a>}</header>
-            {incidents.length ? incidents.map((incident) => <div className="latest-incidents__row" key={incident.id}><span><StatusDot status={incident.status} /><strong className={incident.status === 'resolved' ? 'success-text' : 'warning-text'}>{formatStatus(incident.status)}</strong></span><span>{incident.rootCause}</span><span>{formatDate(incident.startedAt)}</span><span>{formatDuration(incident.durationSeconds)}</span></div>) : <div className="latest-incidents__empty"><ShieldCheck size={27} /><span>{t('monitorDetail.noIncidents')}</span></div>}
+            {incidents.length ? incidents.map((incident) => <div className="latest-incidents__row" key={incident.id}><span><StatusDot status={incident.status} /><strong className={incident.status === 'resolved' ? 'success-text' : 'warning-text'}>{formatStatus(incident.status, locale)}</strong></span><span>{incident.rootCause}</span><span>{formatDate(incident.startedAt)}</span><span>{formatDuration(incident.durationSeconds, 3, locale)}</span></div>) : <div className="latest-incidents__empty"><ShieldCheck size={27} /><span>{t('monitorDetail.noIncidents')}</span></div>}
           </Panel>
 
           <section id="notifications" className="monitor-notifications">
@@ -494,7 +503,7 @@ export function MonitorDetailPage({
             {monitor.domainRegistration ? <div>
               <span>{domainEvidenceState === 'known' ? t('monitorDetail.domainValidUntil') : t('monitorDetail.domainLastKnown')}</span>
               <strong><ShieldCheck size={19} /> {formatDate(monitor.domainRegistration.expiresAt, { includeYear: true })}</strong>
-              {monitor.domainRegistration.issuer ? <small>{monitor.domainRegistration.issuer}</small> : null}
+              {monitor.domainRegistration.issuer ? <small>{monitor.domainRegistration.issuer}</small> : null}<EvidenceFreshness evidence={monitor.domainRegistration} now={clock} />
               {domainEvidenceState === 'known' && domainSource ? <small>{t('monitorDetail.domainSource', { source: domainSource })}</small> : null}
               {domainEvidenceState === 'known' && domainEvidence?.checkedAt ? <small>{t('monitorDetail.domainLastAttempt', { date: formatDate(domainEvidence.checkedAt, { includeYear: true }) })}</small> : null}
             </div> : null}
@@ -511,9 +520,9 @@ export function MonitorDetailPage({
               {domainSource ? <small>{t('monitorDetail.domainSource', { source: domainSource })}</small> : null}
               {domainEvidence?.checkedAt ? <small>{t('monitorDetail.domainLastAttempt', { date: formatDate(domainEvidence.checkedAt, { includeYear: true }) })}</small> : null}
             </div> : !monitor.domainRegistration ? <p className="muted">{t('monitorDetail.domainNotChecked')}</p> : null}
-            {monitor.sslCertificate ? <div><span>{t('monitorDetail.sslValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.sslCertificate.expiresAt, { includeYear: true })}</strong><small>{monitor.sslCertificate.issuer}</small></div> : null}
+            {monitor.sslCertificate ? <div><span>{t('monitorDetail.sslValidUntil')}</span><strong><ShieldCheck size={19} /> {formatDate(monitor.sslCertificate.expiresAt, { includeYear: true })}</strong><small>{monitor.sslCertificate.issuer}</small><EvidenceFreshness evidence={monitor.sslCertificate} now={clock} /></div> : null}
           </Panel>}
-          <Panel className="side-card"><h2>{t('monitorDetail.nextMaintenance')}<span className="title-dot">.</span></h2><CalendarDays size={26} className="side-card__feature-icon" />{nextMaintenance ? <div className="side-card__resource"><strong>{nextMaintenance.name}</strong><span>{formatDate(nextMaintenance.startsAt)}</span><small>{formatDuration(nextMaintenance.durationMinutes * 60)} · {nextMaintenance.timezone}</small></div> : <p>{suppliedMonitor ? t('monitorDetail.noMaintenance') : demoMaintenanceWindows[1]?.name ?? t('monitorDetail.noMaintenance')}</p>}<Button variant="secondary" size="sm" onClick={() => navigate(`/maintenance?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.setupMaintenance')}</Button></Panel>
+          <Panel className="side-card"><h2>{t('monitorDetail.nextMaintenance')}<span className="title-dot">.</span></h2><CalendarDays size={26} className="side-card__feature-icon" />{nextMaintenance ? <div className="side-card__resource"><strong>{nextMaintenance.name}</strong><span>{formatDate(nextMaintenance.startsAt)}</span><small>{formatDuration(nextMaintenance.durationMinutes * 60, 3, locale)} · {nextMaintenance.timezone}</small></div> : <p>{suppliedMonitor ? t('monitorDetail.noMaintenance') : demoMaintenanceWindows[1]?.name ?? t('monitorDetail.noMaintenance')}</p>}{canEdit && <Button variant="secondary" size="sm" onClick={() => navigate(`/maintenance?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.setupMaintenance')}</Button>}</Panel>
           <Panel className="side-card region-card"><h2>{t('monitorDetail.regions')}<span className="title-dot">.</span></h2><RegionMap regions={mappedRegions} label={t('monitorDetail.monitoringRegions')} /></Panel>
           <Panel className="side-card"><h2>{t('monitorDetail.toBeNotified')}<span className="title-dot">.</span></h2>{notifications.length ? <div className="side-card__resource-list">{notifications.slice(0, 3).map((integration) => <div key={integration.id}><BellRing size={16} /><span><strong>{integration.name}</strong><small>{integration.destinationLabel}</small></span></div>)}</div> : <div className="notification-logos"><span>—</span></div>}<a className="button button--secondary button--sm" href="#notifications">{t('monitorDetail.manageNotifications')}</a></Panel>
 		  {!evidenceOnly && <Panel className="side-card"><h2>{t('monitorDetail.appearsOn')}<span className="title-dot">.</span></h2>{statusPages.length ? <div className="side-card__resource-list">{statusPages.slice(0, 3).map((page) => <div key={page.id}><RadioTower size={16} /><span><strong>{page.name}</strong><small>{formatStatus(page.status)}</small></span></div>)}</div> : <><RadioTower size={25} className="side-card__feature-icon" /><p>{suppliedMonitor ? t('monitorDetail.notOnStatusPage') : t('monitorDetail.systemStatus')}</p></>}<Button variant="secondary" size="sm" onClick={() => navigate(`/status-pages?create=1&monitor=${encodeURIComponent(monitor.id)}`)}>{t('monitorDetail.manageStatusPages')}</Button></Panel>}

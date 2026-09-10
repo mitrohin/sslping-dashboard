@@ -1,3 +1,5 @@
+import { observationIsStale, statusReason } from '../../lib/monitorStatus'
+import type { BulkOutcome } from '../../lib/bulk'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import {
@@ -28,7 +30,7 @@ import {
   Unlink,
   X,
 } from 'lucide-react'
-import { demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
+import { DEMO_NOW, demoMonitors, type MonitorStatus, type MonitorViewModel } from '../../data'
 import { formatDuration, formatRelativeTime, formatUptime } from '../../lib/format'
 import { UptimeBars } from '../../components/UptimeBars'
 import { Badge, Button, EmptyState, FeedbackBanner, IconButton, Modal, PageHeader, PageLoadingSkeleton, Panel, SearchInput, Select, StatusDot, Toggle } from '../../components/ui'
@@ -40,6 +42,7 @@ import './monitors.css'
 const statusOrder: Record<MonitorStatus, number> = { down: 0, degraded: 1, pending: 2, up: 3, paused: 4 }
 
 export interface MonitorsPageProps {
+  canEdit?: boolean
   data?: readonly MonitorViewModel[]
   loading?: boolean
   error?: string | null
@@ -51,8 +54,8 @@ export interface MonitorsPageProps {
   onTest?: (monitor: MonitorViewModel) => Promise<void>
   onDelete?: (monitor: MonitorViewModel) => Promise<void>
   onUnsubscribe?: (monitor: MonitorViewModel) => Promise<void>
-  onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void>
-  onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void>
+  onBulkAction?: (monitors: readonly MonitorViewModel[], action: MonitorRowAction) => Promise<void | BulkOutcome[]>
+  onBulkTags?: (monitors: readonly MonitorViewModel[], mode: 'add' | 'remove', tags: readonly string[]) => Promise<void | BulkOutcome[]>
   manualTestEnabled?: boolean
   monitorLimit?: number
   pageNumber?: number
@@ -72,6 +75,7 @@ export interface MonitorsPageProps {
 type MonitorRowAction = 'pause' | 'resume' | 'test' | 'delete'
 
 export function MonitorsPage({
+  canEdit = true,
   data,
   loading = false,
   error = null,
@@ -100,7 +104,7 @@ export function MonitorsPage({
   onSortChange,
   summaryPageScoped = false,
 }: MonitorsPageProps = {}) {
-  const { locale, t } = useI18n()
+  const { t, locale } = useI18n()
   const [demoMonitorState, setDemoMonitorState] = useState<MonitorViewModel[]>([...demoMonitors])
   const monitors = data ?? demoMonitorState
   const ownedMonitors = useMemo(() => monitors.filter((monitor) => monitor.access !== 'subscription'), [monitors])
@@ -120,6 +124,13 @@ export function MonitorsPage({
   const [busyActionId, setBusyActionId] = useState<string | null>(null)
   const [actionFeedback, setActionFeedback] = useState<{ tone: 'success' | 'danger'; message: string } | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkOutcomes, setBulkOutcomes] = useState<BulkOutcome[]>([])
+  const [bulkRetry, setBulkRetry] = useState<{ rows: readonly MonitorViewModel[]; action?: MonitorRowAction; mode?: 'add' | 'remove'; tags?: readonly string[] } | null>(null)
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const referenceNow = data ? Date.now() : Date.parse(DEMO_NOW)
+  const now = new Date(referenceNow)
+  const pageScopedSummary = summaryPageScoped || hasPreviousPage || hasNextPage || (totalMonitors !== undefined && totalMonitors > ownedMonitors.length)
   const [bulkTagsOpen, setBulkTagsOpen] = useState(false)
   const [bulkTagMode, setBulkTagMode] = useState<'add' | 'remove'>('add')
   const [bulkTagSelection, setBulkTagSelection] = useState<Set<string>>(() => new Set())
@@ -157,9 +168,13 @@ export function MonitorsPage({
         ? 0
         : latestIncidentAt === undefined
           ? 86_400
-          : Math.max(0, Math.min(86_400, Math.floor((Date.now() - latestIncidentAt) / 1000)))
+          : Math.max(0, Math.min(86_400, Math.floor(((data ? Date.now() : Date.parse(DEMO_NOW)) - latestIncidentAt) / 1000)))
 
     return {
+      uptimeTotal: uptimeMonitors.length,
+      risk: uptimeMonitors.filter((monitor) => monitor.status !== 'paused' && (monitor.status === 'degraded'
+        || [monitor.sslCertificate?.state, monitor.domainRegistration?.state].some((state) => state === 'warning' || state === 'expired'))).length,
+      stale: uptimeMonitors.filter((monitor) => monitor.status !== 'paused' && (!monitor.lastCheckedAt || observationIsStale(monitor, referenceNow))).length,
 	  up: uptimeMonitors.filter((monitor) => monitor.status === 'up').length,
 	  down: uptimeMonitors.filter((monitor) => monitor.status === 'down').length,
 	  degraded: uptimeMonitors.filter((monitor) => monitor.status === 'degraded').length,
@@ -184,7 +199,7 @@ export function MonitorsPage({
 		total: complianceMonitors.length,
 	  },
     }
-  }, [monitors])
+  }, [monitors, data, referenceNow])
 
   const visibleIds = useMemo(() => filtered.filter((monitor) => monitor.access !== 'subscription').map((monitor) => monitor.id), [filtered])
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
@@ -249,7 +264,7 @@ export function MonitorsPage({
       intervalSeconds: draft.intervalSeconds,
       timeoutSeconds: draft.timeoutSeconds,
       regions: draft.regions,
-      last24Hours: Array.from({ length: 30 }, (_, index) => ({ id: `${id}-${index}`, startedAt: new Date().toISOString(), status: 'no-data' as const })),
+      last24Hours: Array.from({ length: 30 }, (_, index) => ({ id: `${id}-${index}`, startedAt: now.toISOString(), status: 'no-data' as const })),
     }, ...current])
     setCreateOpen(false)
   }
@@ -279,9 +294,9 @@ export function MonitorsPage({
       : current.map((item) => item.id === monitor.id
         ? {
             ...item,
-            ...(action === 'pause' ? { status: 'paused' as const, statusChangedAt: new Date().toISOString() } : {}),
-            ...(action === 'resume' ? { status: previousStatuses.current.get(item.id) ?? 'pending', statusChangedAt: new Date().toISOString() } : {}),
-            ...(action === 'test' ? { lastCheckedAt: new Date().toISOString() } : {}),
+            ...(action === 'pause' ? { status: 'paused' as const, statusChangedAt: now.toISOString() } : {}),
+            ...(action === 'resume' ? { status: previousStatuses.current.get(item.id) ?? 'pending', statusChangedAt: now.toISOString() } : {}),
+            ...(action === 'test' ? { lastCheckedAt: now.toISOString() } : {}),
           }
         : item))
   }
@@ -339,16 +354,21 @@ export function MonitorsPage({
     }
   }
 
-  const runBulkAction = async (action: MonitorRowAction) => {
-    if (!selectedMonitors.length) return
-    if (action === 'delete' && !window.confirm(t('monitors.confirmBulkDelete', { count: selectedMonitors.length }))) return
+  const runBulkAction = async (action: MonitorRowAction, rows: readonly MonitorViewModel[] = selectedMonitors) => {
+    if (!canEdit || !rows.length) return
+    if (action === 'delete' && !window.confirm(t('monitors.confirmBulkDelete', { count: rows.length }))) return
     setBulkBusy(true)
     setActionFeedback(null)
     try {
-      if (onBulkAction) await onBulkAction(selectedMonitors, action)
-      else selectedMonitors.forEach((monitor) => applyDemoAction(monitor, action))
-      if (action === 'delete') setSelectedIds(new Set())
-      setActionFeedback({ tone: 'success', message: t(`monitors.feedback.bulk.${action}`, { count: selectedMonitors.length }) })
+      const outcomes = onBulkAction ? await onBulkAction(rows, action) : undefined
+      if (!onBulkAction) rows.forEach((monitor) => applyDemoAction(monitor, action))
+      const results: BulkOutcome[] = outcomes ?? rows.map(({ id, name }) => ({ id, name }))
+      const failed = new Set(results.filter((row) => row.error).map((row) => row.id))
+      setBulkOutcomes(results)
+      if (failed.size) setSelectedIds(failed)
+      if (!failed.size && action === 'delete') setSelectedIds(new Set())
+      setBulkRetry(failed.size ? { action, rows: rows.filter((row) => failed.has(row.id)) } : null)
+      setActionFeedback({ tone: failed.size ? 'danger' : 'success', message: t(`monitors.feedback.bulk.${action}`, { count: rows.length - failed.size }) })
     } catch (actionError) {
       setActionFeedback({ tone: 'danger', message: actionError instanceof Error ? actionError.message : t('monitors.feedback.bulkFailed', { action: t(`monitors.action.${action}`) }) })
     } finally {
@@ -373,25 +393,29 @@ export function MonitorsPage({
     setBulkTagQuery('')
   }
 
-  const applyBulkTags = async () => {
-    const tags = [...bulkTagSelection]
-    if (!tags.length || !selectedMonitors.length) return
+  const applyBulkTags = async (rows: readonly MonitorViewModel[] = selectedMonitors, mode = bulkTagMode, tags: readonly string[] = [...bulkTagSelection]) => {
+    if (!canEdit || !tags.length || !rows.length) return
     setBulkBusy(true)
     setActionFeedback(null)
     try {
-      if (onBulkTags) await onBulkTags(selectedMonitors, bulkTagMode, tags)
-      else {
-        const selected = new Set(selectedMonitors.map((monitor) => monitor.id))
+      const outcomes = onBulkTags ? await onBulkTags(rows, mode, tags) : undefined
+      if (!onBulkTags) {
+        const selected = new Set(rows.map((monitor) => monitor.id))
         const changes = new Set(tags.map((tag) => tag.toLocaleLowerCase()))
         setDemoMonitorState((current) => current.map((monitor) => {
           if (!selected.has(monitor.id)) return monitor
-          const nextTags = bulkTagMode === 'add'
+          const nextTags = mode === 'add'
             ? [...monitor.tags, ...tags.filter((tag) => !monitor.tags.some((currentTag) => currentTag.toLocaleLowerCase() === tag.toLocaleLowerCase()))]
             : monitor.tags.filter((tag) => !changes.has(tag.toLocaleLowerCase()))
           return { ...monitor, tags: nextTags }
         }))
       }
-      setActionFeedback({ tone: 'success', message: t(`monitors.tags.feedback.${bulkTagMode}`, { tags: tags.length, monitors: selectedMonitors.length }) })
+      const results: BulkOutcome[] = outcomes ?? rows.map(({ id, name }) => ({ id, name }))
+      const failed = new Set(results.filter((row) => row.error).map((row) => row.id))
+      setBulkOutcomes(results)
+      if (failed.size) setSelectedIds(failed)
+      setBulkRetry(failed.size ? { mode, tags, rows: rows.filter((row) => failed.has(row.id)) } : null)
+      setActionFeedback({ tone: failed.size ? 'danger' : 'success', message: t(`monitors.tags.feedback.${mode}`, { tags: tags.length, monitors: rows.length - failed.size }) })
       setBulkTagsOpen(false)
     } catch (actionError) {
       setActionFeedback({ tone: 'danger', message: actionError instanceof Error ? actionError.message : t('monitors.tags.feedback.failed') })
@@ -410,7 +434,7 @@ export function MonitorsPage({
     return (
     <article className={`monitor-row ${selectedIds.has(monitor.id) ? 'monitor-row--selected' : ''} ${subscribed ? 'monitor-row--subscription' : ''}`} key={`${monitor.access ?? 'owner'}:${monitor.subscriptionId ?? monitor.id}`}>
       <div className="monitor-row__lead">
-        {subscribed
+        {(subscribed || !canEdit)
           ? <span className="monitor-checkbox monitor-checkbox--spacer" aria-hidden="true" />
           : <input
               className="monitor-checkbox"
@@ -423,12 +447,15 @@ export function MonitorsPage({
       </div>
       <div className="monitor-row__identity">
         <Link to={detailPath}>{monitor.name}</Link>
-        <div><Badge>{monitor.typeLabel}</Badge>{subscribed && <Badge tone="info">{t('subscriptions.readOnly')}</Badge>}<span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatRelativeTime(monitor.statusChangedAt) : '—'}` : locale === 'en' ? monitor.status : t(`status.${monitor.status}`)}</span></div>
+        <div><Badge>{monitor.typeLabel}</Badge>{subscribed && <Badge tone="info">{t('subscriptions.readOnly')}</Badge>}<span>{monitor.type === 'leakcheck' ? (monitor.status === 'down' ? t('monitorDetail.exposureFound') : monitor.status === 'up' ? t('monitorDetail.noExposure') : t(`status.${monitor.status}`)) : monitor.type === 'compliance' ? (!monitor.lastCheckedAt ? t('monitorDetail.scanInProgress') : monitor.status === 'up' ? t('monitorDetail.compliant') : t('monitorDetail.complianceIssues')) : monitor.status === 'up' ? `${t('status.up')} ${monitor.statusChangedAt ? formatDuration((referenceNow - Date.parse(monitor.statusChangedAt)) / 1000, 2) : '—'}` : t(`status.${monitor.status}`)}</span></div>
+        {statusReason(monitor.statusReason, locale) && <small className="monitor-status-reason">{statusReason(monitor.statusReason, locale)}</small>}
+        <div className="monitor-row__warnings">
+          {observationIsStale(monitor, now.getTime()) && <Badge tone="warning">{locale === 'ru' ? 'Нет свежих проверок' : 'No fresh checks'}</Badge>}        {(monitor.sslCertificate?.state === 'warning' || monitor.sslCertificate?.state === 'expired') && <Badge tone={monitor.sslCertificate.state === 'expired' ? 'danger' : 'warning'}>{monitor.sslCertificate.state === 'expired' ? (locale === 'ru' ? 'Сертификат истёк' : 'Certificate expired') : t('monitors.sslExpires', { days: monitor.sslCertificate.daysRemaining ?? 0 })}</Badge>}
+        {(monitor.domainRegistration?.state === 'warning' || monitor.domainRegistration?.state === 'expired') && <Badge tone={monitor.domainRegistration.state === 'expired' ? 'danger' : 'warning'}>{monitor.domainRegistration.state === 'expired' ? (locale === 'ru' ? 'Регистрация домена истекла' : 'Domain expired') : t('monitors.domainExpires')}</Badge>}
+</div>
       </div>
       <div className="monitor-row__meta">
         {monitor.tags.slice(0, 2).map((tag) => <Badge key={tag}>{tag}</Badge>)}
-        {monitor.sslCertificate?.state === 'warning' && <Badge tone="warning">{t('monitors.sslExpires', { days: monitor.sslCertificate.daysRemaining ?? 0 })}</Badge>}
-        {monitor.domainRegistration?.state === 'warning' && <Badge tone="warning">{t('monitors.domainExpires')}</Badge>}
       </div>
       <div className="monitor-row__interval">
         {monitor.type !== 'leakcheck' && <><RotateCw size={15} /> {formatDuration(monitor.intervalSeconds)}</>}
@@ -440,7 +467,7 @@ export function MonitorsPage({
             aria-label={leakFound !== undefined ? (leakFound ? t('monitorDetail.exposedRecords', { count: leakFound }) : t('monitorDetail.noLeaksFound')) : t('monitorDetail.noLeakReport')}
           >
             <ShieldAlert size={16} />
-            <small>{monitor.lastCheckedAt ? formatRelativeTime(monitor.lastCheckedAt) : '—'}</small>
+            <small>{monitor.lastCheckedAt ? formatRelativeTime(monitor.lastCheckedAt, now) : '—'}</small>
           </div>
         ) : monitor.type === 'compliance' ? (
           <div
@@ -448,7 +475,7 @@ export function MonitorsPage({
             aria-label={complianceSummary ? t('monitorDetail.complianceResult', { score: complianceSummary.score, failed: complianceSummary.failed, warnings: complianceSummary.warnings }) : t('monitorDetail.noComplianceReport')}
           >
             {!monitor.lastCheckedAt ? <LoaderCircle className="compliance-scan-spinner" size={16} /> : <Scale size={16} />}
-            <small>{monitor.lastCheckedAt ? formatRelativeTime(monitor.lastCheckedAt) : '—'}</small>
+            <small>{monitor.lastCheckedAt ? formatRelativeTime(monitor.lastCheckedAt, now) : '—'}</small>
           </div>
         ) : (
           <><UptimeBars compact label={t('monitors.hourlyChecks')} values={monitor.last24Hours.map((bar) => bar.status === 'up' ? 100 : bar.status === 'down' ? 0 : bar.status === 'degraded' ? 98 : null)} titles={monitor.last24Hours.map((bar) => `${new Date(bar.startedAt).toLocaleString([], { hour: '2-digit', minute: '2-digit' })} · ${bar.status === 'no-data' ? t('status.noData') : t(`status.${bar.status}`)}`)} /><span>{monitor.uptime24h === undefined ? '—' : formatUptime(monitor.uptime24h)}</span></>
@@ -470,14 +497,14 @@ export function MonitorsPage({
               <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void unsubscribeMonitor(monitor)}><Unlink size={16} /> {t('subscriptions.unsubscribe')}</button>
             </> : <>
               <Link role="menuitem" to={detailPath} onClick={() => { setOpenActionId(null); onView?.(monitor) }}><Eye size={16} /> {t('common.view')}</Link>
-              <Link role="menuitem" to={`/monitors/${monitor.id}/edit`} onClick={() => { setOpenActionId(null); onEdit?.(monitor) }}><Pencil size={16} /> {t('common.edit')}</Link>
+              {canEdit && <Link role="menuitem" to={`/monitors/${monitor.id}/edit`} onClick={() => { setOpenActionId(null); onEdit?.(monitor) }}><Pencil size={16} /> {t('common.edit')}</Link>}
               <Link role="menuitem" to={`${detailPath}#notifications`} onClick={() => setOpenActionId(null)}><Bell size={16} /> {t('subscriptions.notifications')}</Link>
-              <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, monitor.status === 'paused' ? 'resume' : 'pause')}>
+              {canEdit && <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, monitor.status === 'paused' ? 'resume' : 'pause')}>
                 {monitor.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
                 {monitor.status === 'paused' ? t('monitors.action.resume') : t('monitors.action.pause')}
-              </button>
-              {(manualTestEnabled || monitor.type === 'leakcheck') && <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}>{monitor.type === 'leakcheck' ? <ShieldAlert size={16} /> : monitor.type === 'compliance' ? <Scale size={16} /> : <BellRing size={16} />} {monitor.type === 'leakcheck' ? t('monitorDetail.scanLeaks') : monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitors.action.test')}</button>}
-              <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'delete')}><Trash2 size={16} /> {t('common.delete')}</button>
+              </button>}
+              {canEdit && (manualTestEnabled || monitor.type === 'leakcheck') && <button role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'test')}>{monitor.type === 'leakcheck' ? <ShieldAlert size={16} /> : monitor.type === 'compliance' ? <Scale size={16} /> : <BellRing size={16} />} {monitor.type === 'leakcheck' ? t('monitorDetail.scanLeaks') : monitor.type === 'compliance' ? t('monitorDetail.runComplianceReview') : t('monitors.action.test')}</button>}
+              {canEdit && <button className="monitor-action-menu__danger" role="menuitem" type="button" onClick={() => void runMonitorAction(monitor, 'delete')}><Trash2 size={16} /> {t('common.delete')}</button>}
             </>}
           </div>
         )}
@@ -505,9 +532,10 @@ export function MonitorsPage({
 
   return (
     <div className="page page--wide monitors-page" aria-busy={loading}>
-      <PageHeader title={t('monitors.title')} actions={<Button onClick={() => setCreateOpen(true)}><Plus size={18} /> {t('monitors.new')}</Button>} />
+      <PageHeader title={t('monitors.title')} actions={canEdit ? <Button onClick={() => setCreateOpen(true)}><Plus size={18} /> {t('monitors.new')}</Button> : undefined} />
 
-      <div className="monitor-toolbar">
+      <div className={`monitor-toolbar ${filtersOpen ? 'monitor-toolbar--expanded' : ''}`}>
+        <Button className="monitor-filters-toggle" variant="secondary" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><Filter size={16} />{t('monitors.filterStatus')}</Button>
         <label className="monitor-toolbar__count">
           <input
             ref={selectAllRef}
@@ -515,7 +543,7 @@ export function MonitorsPage({
             type="checkbox"
             checked={allVisibleSelected}
             onChange={toggleSelectAllVisible}
-            disabled={visibleIds.length === 0}
+            disabled={!canEdit || bulkBusy || visibleIds.length === 0}
             aria-label={t('monitors.selectAll')}
           />
           <span>{selectedIds.size} / {monitors.length}</span>
@@ -527,7 +555,7 @@ export function MonitorsPage({
         <div className="filter-dropdown"><Select aria-label={t('monitors.sort')} value={sort} onChange={(event) => { const value = event.target.value as typeof sort; setSort(value); onSortChange?.(value) }}><option value="status">{t('monitors.sortDown')}</option><option value="name">{t('monitors.sortName')}</option><option value="response">{t('monitors.sortSlowest')}</option></Select></div>
       </div>
 
-      {selectedMonitors.length > 0 && <div className="monitor-bulk-toolbar" role="toolbar" aria-label={t('monitors.bulkActions')}>
+      {canEdit && selectedMonitors.length > 0 && <div className="monitor-bulk-toolbar" role="toolbar" aria-label={t('monitors.bulkActions')}>
         <strong>{t('monitors.selected', { count: selectedMonitors.length })}</strong>
         {selectedCanTest && <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('test')}><BellRing size={16} /> {t('monitors.action.test')}</Button>}
         <Button variant="secondary" disabled={bulkBusy} onClick={() => void runBulkAction('pause')}><PauseCircle size={16} /> {t('monitors.action.pause')}</Button>
@@ -539,12 +567,18 @@ export function MonitorsPage({
 
       {actionFeedback && <FeedbackBanner tone={actionFeedback.tone === 'danger' ? 'error' : 'success'} className="feedback-banner--page" onDismiss={() => setActionFeedback(null)}>{actionFeedback.message}</FeedbackBanner>}
 
+      {bulkOutcomes.length > 0 && <Panel className="monitor-bulk-results" aria-live="polite">
+        <strong>{t('monitors.bulkActions')}</strong>
+        <ul>{bulkOutcomes.map((row) => <li key={row.id} className={row.error ? 'danger-text' : 'success-text'}><span>{row.name}</span><span>{row.error ?? t('common.done')}</span></li>)}</ul>
+        {bulkRetry && <Button disabled={bulkBusy} variant="secondary" onClick={() => void (bulkRetry.action ? runBulkAction(bulkRetry.action, bulkRetry.rows) : applyBulkTags(bulkRetry.rows, bulkRetry.mode, bulkRetry.tags))}>{t('common.tryAgain')}</Button>}
+      </Panel>}
+
       <div className="monitor-layout">
         <div className="monitor-list-column">
           <Panel className="monitor-list">
             {error ? (
               <EmptyState icon={<SearchX size={34} />} title={t('monitors.loadFailed')} description={error} action={onRetry ? <Button onClick={onRetry}>{t('common.tryAgain')}</Button> : undefined} />
-            ) : filtered.length === 0 ? <EmptyState icon={<SearchX size={34} />} title={t('monitors.empty')} description={t('monitors.emptyHint')} action={<Button onClick={() => setCreateOpen(true)}><Plus size={17} /> {t('monitors.create')}</Button>} /> : showGroups ? grouped.map(([group, rows]) => rows && <section key={group} className="monitor-group"><header><span><Layers3 size={17} /> {group}</span><Badge>{rows.length}</Badge></header>{renderRows(rows)}</section>) : renderRows(filtered)}
+            ) : filtered.length === 0 ? <EmptyState icon={<SearchX size={34} />} title={t('monitors.empty')} description={t('monitors.emptyHint')} action={canEdit ? <Button onClick={() => setCreateOpen(true)}><Plus size={17} /> {t('monitors.create')}</Button> : undefined} /> : showGroups ? grouped.map(([group, rows]) => rows && <section key={group} className="monitor-group"><header><span><Layers3 size={17} /> {group}</span><Badge>{rows.length}</Badge></header>{renderRows(rows)}</section>) : renderRows(filtered)}
           </Panel>
           {(hasPreviousPage || hasNextPage) && <nav className="monitor-pagination" aria-label={t('monitors.pagination')}>
             <Button variant="secondary" disabled={!hasPreviousPage || loading} onClick={onPreviousPage}><ChevronLeft size={16} /> {t('common.previous')}</Button>
@@ -553,11 +587,17 @@ export function MonitorsPage({
           </nav>}
         </div>
 
-        <aside className="monitor-summary">
+        <aside className={`monitor-summary ${summaryExpanded ? 'is-expanded' : ''}`}>
           <Panel className={`status-summary ${summary.leaks.total > 0 || summary.compliance.total > 0 ? 'status-summary--has-special' : ''}`}>
-            <h2>{t(summaryPageScoped ? 'monitors.currentPageStatus' : 'monitors.currentStatus')}<span className="title-dot">.</span></h2>
+            <h2>{t(pageScopedSummary ? 'monitors.currentPageStatus' : 'monitors.currentStatus')}<span className="title-dot">.</span></h2>
             <div className={`status-summary__visual status-summary__visual--${summary.down ? 'down' : summary.degraded ? 'degraded' : summary.up ? 'up' : 'idle'}`}><span>{summary.down ? '!' : summary.degraded ? '~' : summary.up ? '✓' : '–'}</span></div>
-            <div className="status-summary__counts"><div><strong className="danger-text">{summary.down}</strong><span>{t('status.down')}</span></div><div><strong>{summary.up}</strong><span>{t('status.up')}</span></div><div><strong>{summary.paused}</strong><span>{t('status.paused')}</span></div></div>
+            <div className="status-summary__counts status-summary__counts--standard"><div><strong className="danger-text">{summary.down}</strong><span>{t('status.down')}</span></div><div><strong>{summary.up}</strong><span>{t('status.up')}</span></div><div><strong>{summary.paused}</strong><span>{t('status.paused')}</span></div></div>
+            <div className="status-summary__counts status-summary__counts--compact" role="group" aria-label={t('monitors.availabilitySignals')}>
+              <div aria-label={`${t('status.down')}: ${summary.down}`}><strong className="danger-text">{summary.down}</strong><span>{t('status.down')}</span></div>
+              <div aria-label={`${t('monitors.atRisk')}: ${summary.risk}`} title={t('monitors.riskHint')}><strong className="warning-text">{summary.risk}</strong><span>{t('monitors.atRisk')}</span></div>
+              <div aria-label={`${t('monitors.noFreshChecks')}: ${summary.stale}`}><strong className="warning-text">{summary.stale}</strong><span>{t('monitors.noFreshChecks')}</span></div>
+              <small className="status-summary__signal-scope">{t(pageScopedSummary ? 'monitors.signalPageScope' : 'monitors.signalLoadedScope', { count: summary.uptimeTotal })}</small>
+            </div>
             <p>{t('monitors.usage', { used: totalMonitors ?? ownedMonitors.length, total: monitorLimit })}</p>
             {(summary.leaks.total > 0 || summary.compliance.total > 0) && <div className="status-summary__secondary">
               {summary.leaks.total > 0 && <div className="status-summary__secondary-row">
@@ -577,8 +617,9 @@ export function MonitorsPage({
               </div>}
             </div>}
           </Panel>
-		  <Panel className="status-summary status-summary--stats">
-            <h2>{t(summaryPageScoped ? 'monitors.last24hPage' : 'monitors.last24h')}<span className="title-dot">.</span></h2>
+		  <Button className="monitor-summary-toggle" variant="secondary" aria-expanded={summaryExpanded} onClick={() => setSummaryExpanded((value) => !value)}>{t('monitors.last24h')}</Button>
+          <Panel className="status-summary status-summary--stats">
+            <h2>{t(pageScopedSummary ? 'monitors.last24hPage' : 'monitors.last24h')}<span className="title-dot">.</span></h2>
             <div className="status-summary__metric-grid"><div><strong className={summary.uptime !== undefined && summary.uptime < 99 ? 'danger-text' : 'success-text'}>{summary.uptime === undefined ? '—' : formatUptime(summary.uptime)}</strong><span>{t('monitors.overallUptime')}</span></div><div><strong>{summary.mtbfSeconds === undefined ? '—' : formatDuration(summary.mtbfSeconds)}</strong><span>MTBF</span></div><div><strong>{summary.secondsWithoutIncident === undefined ? '—' : formatDuration(summary.secondsWithoutIncident)}</strong><span>{t('monitors.withoutIncidents')}</span></div><div><strong>{summary.incidents}</strong><span>{t('nav.incidents')}</span></div></div>
 		  </Panel>
 		</aside>

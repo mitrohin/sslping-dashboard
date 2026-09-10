@@ -47,6 +47,7 @@ const defaultTeamDetails: TeamDetails = {
 }
 
 export interface TeamPageProps {
+  canManage?: boolean
   initialMembers?: readonly TeamMemberViewModel[]
   initialSummary?: TeamSummary
   initialDetails?: TeamDetails
@@ -72,6 +73,7 @@ function badgeToneForStatus(status: TeamMemberViewModel['status']) {
 }
 
 export function TeamPage({
+  canManage = true,
   initialMembers = demoTeam.members,
   initialSummary = demoTeam.summary,
   initialDetails = defaultTeamDetails,
@@ -361,7 +363,7 @@ export function TeamPage({
         title={t('team.title')}
         description={t('team.description', { count: activeMembers })}
         actions={
-          section === 'members' ? (
+          canManage && section === 'members' ? (
             <Button onClick={openInvite} disabled={seatsRemaining === 0}><UserPlus size={18} /> {t('team.invite')}</Button>
           ) : undefined
         }
@@ -434,11 +436,11 @@ export function TeamPage({
                         </td>
                         <td data-label={t('common.status')}><Badge tone={badgeToneForStatus(member.status)}>{formatStatus(member.status)}</Badge></td>
                         <td className="account-row-actions">
-                          <IconButton
+                          {canManage && <IconButton
                             label={t('team.editMember', { name: member.name })}
                             onClick={() => openEdit(member)}
                             disabled={member.role === 'owner'}
-                          ><Pencil size={16} /></IconButton>
+                          ><Pencil size={16} /></IconButton>}
                         </td>
                       </tr>
                     ))}
@@ -447,7 +449,7 @@ export function TeamPage({
               </div>
               <footer className="account-table-footer">
                 {t('team.seatSummary', { used: summary.seatsUsed, total: summary.seatsTotal, plan: summary.planName, remaining: seatsRemaining })}
-                <Button variant="secondary" size="sm" type="button" onClick={() => setSeatsOpen(true)}>{t('team.manageSeats')}</Button>
+                {canManage && <Button variant="secondary" size="sm" type="button" onClick={() => setSeatsOpen(true)}>{t('team.manageSeats')}</Button>}
               </footer>
             </Panel>
           </div>
@@ -456,7 +458,7 @@ export function TeamPage({
             <Panel>
               <div className="panel__header"><h2>{t('team.workspaceDetails')}<span className="title-dot">.</span></h2></div>
               <form className="panel__body account-details-form" onSubmit={submitDetails}>
-                <div className="form-grid">
+                <fieldset className="form-grid capability-fieldset" disabled={!canManage}>
                   <Field label={t('team.workspaceName')} hint={t('team.workspaceNameHint')}>
                     <input value={detailsDraft.name} onChange={(event) => setDetailsDraft((current) => ({ ...current, name: event.target.value }))} required />
                   </Field>
@@ -472,12 +474,12 @@ export function TeamPage({
                   <Field label={t('team.notificationEmail')} hint={t('team.notificationEmailHint')}>
                     <input type="email" value={detailsDraft.notificationEmail} onChange={(event) => setDetailsDraft((current) => ({ ...current, notificationEmail: event.target.value }))} required />
                   </Field>
-                </div>
+                </fieldset>
                 <div className="account-details-meta">
                   <span><Clock3 size={15} /> {t('team.currentZone')}: {details.timezone}</span>
                   <span><Mail size={15} /> {t('team.notices')}: {details.notificationEmail}</span>
                 </div>
-                <div className="form-actions"><Button type="submit" disabled={saving}><Save size={17} />{saving ? t('team.saving') : t('team.saveChanges')}</Button></div>
+                {canManage && <div className="form-actions"><Button type="submit" disabled={saving}><Save size={17} />{saving ? t('team.saving') : t('team.saveChanges')}</Button></div>}
               </form>
             </Panel>
           </div>

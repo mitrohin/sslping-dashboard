@@ -1,21 +1,29 @@
-import { SessionStore } from './session'
+import { isTokens, SessionRecoveryError, SessionStore, sessionChangedError, type SessionChange, type SessionSnapshot } from './session'
 import type * as Api from './types'
 
 type QueryValue = string | number | boolean | null | undefined
 
-interface RequestOptions {
+export interface ApiRequestOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+interface RequestOptions extends ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   headers?: HeadersInit
   auth?: boolean
   retryUnauthorized?: boolean
   responseType?: 'json' | 'blob'
+  preserveUnauthorized?: boolean
+  sessionBound?: boolean
 }
 
 export interface ApiClientOptions {
   baseUrl?: string
   sessionStore?: SessionStore
   fetch?: typeof fetch
+  requestTimeoutMs?: number
 }
 
 function normalizeBaseUrl(baseUrl?: string): string {
@@ -80,15 +88,31 @@ export class ApiError extends Error {
   readonly code: Api.ProblemCode
   readonly problem: Api.Problem
   readonly requestId?: string
+  readonly retryAfterMs?: number
+  readonly retryAt?: number
 
-  constructor(problem: Api.Problem, requestId?: string) {
+  constructor(problem: Api.Problem, requestId?: string, retryAfterMs?: number) {
     super(problem.detail || problem.title)
     this.name = 'ApiError'
     this.status = problem.status
     this.code = problem.code
     this.problem = problem
     this.requestId = requestId
+    this.retryAfterMs = retryAfterMs
+    this.retryAt = retryAfterMs === undefined ? undefined : Date.now() + retryAfterMs
   }
+}
+
+export function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
+  if (!value?.trim()) return undefined
+  const trimmed = value.trim()
+  if (/^\d+$/.test(trimmed)) {
+    const milliseconds = Number(trimmed) * 1000
+    return Number.isFinite(milliseconds) ? milliseconds : undefined
+  }
+  if (/^[+-]?\d/.test(trimmed)) return undefined
+  const date = Date.parse(trimmed)
+  return Number.isFinite(date) ? Math.max(0, date - now) : undefined
 }
 
 async function responseToError(response: Response): Promise<ApiError> {
@@ -103,7 +127,7 @@ async function responseToError(response: Response): Promise<ApiError> {
   }
 
   const problem = isProblem(body) ? body : fallbackProblem(response, text)
-  return new ApiError(problem, response.headers.get('X-Request-ID') ?? undefined)
+  return new ApiError(problem, response.headers.get('X-Request-ID') ?? undefined, parseRetryAfter(response.headers.get('Retry-After')))
 }
 
 function missingRefreshTokenError(): ApiError {
@@ -117,29 +141,58 @@ function missingRefreshTokenError(): ApiError {
   })
 }
 
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason ?? sessionChangedError())
+  return new Promise<T>((resolve, reject) => {
+    const aborted = () => reject(signal.reason ?? sessionChangedError())
+    signal.addEventListener('abort', aborted, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', aborted))
+  })
+}
+
 export class ApiClient {
   readonly baseUrl: string
   readonly session: SessionStore
   readonly #fetch: typeof fetch
+  readonly #requestTimeoutMs: number
   #refreshInFlight: Promise<Api.Tokens> | null = null
+  #epoch = 0
+  readonly #controllers = new Set<AbortController>()
   readonly #authenticationRequiredListeners = new Set<() => void>()
+  readonly #sessionChangedListeners = new Set<(change: SessionChange) => void>()
+  readonly #unsubscribeSession: () => void
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl)
     this.session = options.sessionStore ?? new SessionStore()
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis)
+    this.#requestTimeoutMs = options.requestTimeoutMs ?? 30_000
+    this.#unsubscribeSession = this.session.subscribe((change) => {
+      if (!change.identityChanged) return
+      this.#invalidateRequests()
+      for (const listener of this.#sessionChangedListeners) listener(change)
+      if (change.external && !change.snapshot.tokens) {
+        for (const listener of this.#authenticationRequiredListeners) listener()
+      }
+    })
   }
 
-  get tokens(): Api.Tokens | null {
-    return this.session.getTokens()
-  }
+  get tokens(): Api.Tokens | null { return this.session.getTokens() }
+  get sessionGeneration(): string | null { return this.session.getSnapshot().generation }
 
-  setTokens(tokens: Api.Tokens): void {
-    this.session.setTokens(tokens)
-  }
+  setTokens(tokens: Api.Tokens): void { this.session.setTokens(tokens) }
 
   clearSession(): void {
+    // Also invalidate an unauthenticated login that has not produced tokens yet.
+    this.#invalidateRequests()
     this.session.clear()
+  }
+
+  dispose(): void {
+    this.#invalidateRequests()
+    this.#unsubscribeSession()
+    this.#authenticationRequiredListeners.clear()
+    this.#sessionChangedListeners.clear()
   }
 
   onAuthenticationRequired(listener: () => void): () => void {
@@ -147,105 +200,182 @@ export class ApiClient {
     return () => this.#authenticationRequiredListeners.delete(listener)
   }
 
+  onSessionChanged(listener: (change: SessionChange) => void): () => void {
+    this.#sessionChangedListeners.add(listener)
+    return () => this.#sessionChangedListeners.delete(listener)
+  }
+
+  #invalidateRequests(): void {
+    this.#epoch += 1
+    this.#refreshInFlight = null
+    for (const controller of this.#controllers) controller.abort(sessionChangedError())
+    this.#controllers.clear()
+  }
+
+  #assertCurrent(epoch: number): void {
+    this.session.getSnapshot()
+    if (epoch !== this.#epoch) throw sessionChangedError()
+  }
+
   #requireAuthentication(): void {
-    this.session.clear()
+    this.clearSession()
     for (const listener of this.#authenticationRequiredListeners) listener()
   }
 
-  async #request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  async #request<T>(path: string, options: RequestOptions = {}, epoch = this.#epoch): Promise<T> {
     const auth = options.auth ?? true
+    const bound = options.sessionBound ?? auth
     const requestTokens = auth ? this.session.getTokens() : null
+    if (bound) this.#assertCurrent(epoch)
+    options.signal?.throwIfAborted()
     const headers = new Headers(options.headers)
     headers.set('Accept', 'application/json')
-
     if (requestTokens) headers.set('Authorization', `Bearer ${requestTokens.access_token}`)
     const multipart = typeof FormData !== 'undefined' && options.body instanceof FormData
     if (options.body !== undefined && !multipart) headers.set('Content-Type', 'application/json')
-
-    const body: BodyInit | undefined = options.body === undefined
-      ? undefined
-      : multipart
-        ? options.body as FormData
-        : JSON.stringify(options.body)
-
-    const response = await this.#fetch(`${this.baseUrl}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      body,
-      credentials: 'same-origin',
-    })
-
-    if (response.status === 401 && auth && (options.retryUnauthorized ?? true) && requestTokens) {
-      const currentTokens = this.session.getTokens()
-      if (currentTokens && currentTokens.access_token !== requestTokens.access_token) {
-        return this.#request<T>(path, { ...options, retryUnauthorized: false })
-      }
-
-      try {
-        await this.#refreshSession(currentTokens?.refresh_token ?? requestTokens.refresh_token)
-      } catch (error) {
-        this.#requireAuthentication()
-        throw error
-      }
-
-      return this.#request<T>(path, { ...options, retryUnauthorized: false })
+    const body: BodyInit | undefined = options.body === undefined ? undefined
+      : multipart ? options.body as FormData : JSON.stringify(options.body)
+    const controller = new AbortController()
+    if (bound) this.#controllers.add(controller)
+    const abortFromCaller = () => controller.abort(options.signal?.reason ?? sessionChangedError())
+    options.signal?.addEventListener('abort', abortFromCaller, { once: true })
+    const timeout = setTimeout(() => controller.abort(new DOMException('The request timed out. Please try again.', 'TimeoutError')), options.timeoutMs ?? this.#requestTimeoutMs)
+    let result: { response: Response; value?: T; error?: ApiError }
+    try {
+      result = await abortable((async () => {
+        const response = await this.#fetch(`${this.baseUrl}${path}`, {
+          method: options.method ?? 'GET', headers, body,
+          credentials: 'same-origin', signal: controller.signal,
+        })
+        controller.signal.throwIfAborted()
+        if (!response.ok) return { response, error: await responseToError(response) }
+        if (response.status === 204) return { response }
+        if (options.responseType === 'blob') return { response, value: await response.blob() as T }
+        const text = await response.text()
+        return { response, value: (text.length === 0 ? undefined : JSON.parse(text)) as T }
+      })(), controller.signal)
+    } finally {
+      clearTimeout(timeout)
+      options.signal?.removeEventListener('abort', abortFromCaller)
+      this.#controllers.delete(controller)
     }
-
-    if (response.status === 401 && auth) this.#requireAuthentication()
-    if (!response.ok) throw await responseToError(response)
-    if (response.status === 204) return undefined as T
-    if (options.responseType === 'blob') return await response.blob() as T
-
-    const text = await response.text()
-    return (text.length === 0 ? undefined : JSON.parse(text)) as T
+    if (bound) this.#assertCurrent(epoch)
+    options.signal?.throwIfAborted()
+    if (result.response.status === 401 && auth && (options.retryUnauthorized ?? true) && requestTokens) {
+      const current = this.session.getSnapshot()
+      if (!current.tokens) throw sessionChangedError()
+      if (current.tokens.access_token === requestTokens.access_token) await this.#refreshSession(current)
+      this.#assertCurrent(epoch)
+      options.signal?.throwIfAborted()
+      return this.#request<T>(path, { ...options, retryUnauthorized: false }, epoch)
+    }
+    if (result.response.status === 401 && auth && !options.preserveUnauthorized) this.#requireAuthentication()
+    if (result.error) throw result.error
+    return result.value as T
   }
 
-  #refreshSession(refreshToken: string): Promise<Api.Tokens> {
+  #refreshSession(expected: SessionSnapshot): Promise<Api.Tokens> {
     if (this.#refreshInFlight) return this.#refreshInFlight
-
-    this.#refreshInFlight = this.#request<Api.Tokens>('/v1/auth/refresh', {
-      method: 'POST',
-      body: { refresh_token: refreshToken },
-      auth: false,
-      retryUnauthorized: false,
-    })
-      .then((tokens) => {
-        this.session.setTokens(tokens)
+    const epoch = this.#epoch
+    const controller = new AbortController()
+    this.#controllers.add(controller)
+    const timeout = setTimeout(() => controller.abort(new DOMException('Session refresh timed out. Please try again.', 'TimeoutError')), this.#requestTimeoutMs)
+    const work = this.session.withRefreshLock(controller.signal, async () => {
+      this.#assertCurrent(epoch)
+      controller.signal.throwIfAborted()
+      const current = this.session.getRefreshSnapshot()
+      if (!current.tokens || current.generation !== expected.generation) throw sessionChangedError()
+      if (current.tokens.refresh_token !== expected.tokens?.refresh_token) return current.tokens
+      if (current.refresh?.status === 'pending' || current.refresh?.status === 'uncertain') throw new SessionRecoveryError('refresh_uncertain')
+      if (current.refresh?.status === 'cooldown' && current.refresh.retryAt > Date.now()) {
+        throw new ApiError({ type: 'about:blank', title: 'Please try again shortly', status: current.refresh.httpStatus,
+          detail: 'The session service is temporarily unavailable. Please wait before retrying.', instance: '',
+          code: current.refresh.httpStatus === 429 ? 'rate_limited' : 'internal_error' }, undefined, current.refresh.retryAt - Date.now())
+      }
+      this.session.setRefreshState(current, { status: 'pending' })
+      try {
+        const tokens = await this.#request<Api.Tokens>('/v1/auth/refresh', {
+          method: 'POST', body: { refresh_token: current.tokens.refresh_token },
+          auth: false, sessionBound: true, retryUnauthorized: false, signal: controller.signal,
+        }, epoch)
+        this.#assertCurrent(epoch)
+        controller.signal.throwIfAborted()
+        if (!isTokens(tokens)) throw new SessionRecoveryError('refresh_uncertain')
+        this.session.replaceRefreshedTokens(current, tokens)
         return tokens
-      })
-      .finally(() => {
-        this.#refreshInFlight = null
-      })
+      } catch (error) {
+        // Never let a completed old request clear/overwrite a newer account.
+        this.#assertCurrent(epoch)
+        if (error instanceof ApiError && [400, 401, 403].includes(error.status)) {
+          // Preserve this definitive server error for all refresh waiters while
+          // canceling the other requests belonging to the rejected session.
+          this.#controllers.delete(controller)
+          this.#requireAuthentication()
+        } else if (error instanceof ApiError && (error.status === 429 || error.status >= 500)) {
+          this.session.setRefreshState(current, { status: 'cooldown', httpStatus: error.status, retryAt: Date.now() + Math.max(error.retryAfterMs ?? 5_000, 1_000) })
+        } else {
+          // A network loss/timeout can happen after server-side rotation. Do
+          // not send this one-time token again, including after tab closure.
+          this.session.setRefreshState(current, { status: 'uncertain' })
+        }
+        throw error
+      }
+    })
+    const promise = abortable(work, controller.signal).finally(() => {
+      clearTimeout(timeout)
+      this.#controllers.delete(controller)
+      if (this.#refreshInFlight === promise) this.#refreshInFlight = null
+    })
+    this.#refreshInFlight = promise
+    return promise
+  }
 
-    return this.#refreshInFlight
+  async #oneTimeRequest<T>(path: string, body: unknown): Promise<T> {
+    const epoch = this.#epoch
+    const current = this.session.getSnapshot()
+    if (current.tokens && Date.parse(current.tokens.expires_at) <= Date.now() + 60_000) await this.#refreshSession(current)
+    this.#assertCurrent(epoch)
+    return this.#request(path, { method: 'POST', body, retryUnauthorized: false, preserveUnauthorized: true }, epoch)
   }
 
   async register(input: Api.RegisterRequest): Promise<Api.RegisterResponse> {
+    this.#invalidateRequests()
+    const epoch = this.#epoch
     const result = await this.#request<Api.RegisterResponse>('/v1/auth/register', {
       method: 'POST',
       body: input,
       auth: false,
+      sessionBound: true,
     })
+    this.#assertCurrent(epoch)
     if (result.tokens) this.session.setTokens(result.tokens)
     return result
   }
 
   async login(input: Api.LoginRequest): Promise<Api.LoginResult> {
+    this.#invalidateRequests()
+    const epoch = this.#epoch
     const result = await this.#request<Api.LoginResult>('/v1/auth/login', {
       method: 'POST',
       body: input,
       auth: false,
+      sessionBound: true,
     })
+    this.#assertCurrent(epoch)
     if (!result.two_factor_required) this.session.setTokens(result.tokens)
     return result
   }
 
   async completeTwoFactorLogin(input: Api.TwoFactorLoginRequest): Promise<Api.LoginResponse> {
+    this.#invalidateRequests()
+    const epoch = this.#epoch
     const result = await this.#request<Api.LoginResponse>('/v1/auth/login/2fa', {
       method: 'POST',
       body: input,
       auth: false,
+      sessionBound: true,
     })
+    this.#assertCurrent(epoch)
     this.session.setTokens(result.tokens)
     return result
   }
@@ -267,31 +397,24 @@ export class ApiClient {
   }
 
   async refresh(): Promise<Api.Tokens> {
-    const refreshToken = this.session.getTokens()?.refresh_token
-    if (!refreshToken) throw missingRefreshTokenError()
-    return this.#refreshSession(refreshToken)
+    const current = this.session.getSnapshot()
+    if (!current.tokens) throw missingRefreshTokenError()
+    return this.#refreshSession(current)
   }
 
   async logout(): Promise<void> {
     const refreshToken = this.session.getTokens()?.refresh_token
-    if (!refreshToken) {
-      this.session.clear()
-      return
-    }
-
-    try {
-      await this.#request<void>('/v1/auth/logout', {
-        method: 'POST',
-        body: { refresh_token: refreshToken },
-        auth: false,
-      })
-    } finally {
-      this.session.clear()
-    }
+    // Local logout completes before waiting for the network. A later login
+    // must not be erased by the completion/failure of this revocation request.
+    this.clearSession()
+    if (!refreshToken) return
+    await this.#request<void>('/v1/auth/logout', {
+      method: 'POST', body: { refresh_token: refreshToken }, auth: false, sessionBound: false,
+    })
   }
 
-  me(): Promise<Api.MeResponse> {
-    return this.#request('/v1/me')
+  me(options: ApiRequestOptions = {}): Promise<Api.MeResponse> {
+    return this.#request('/v1/me', options)
   }
 
   updateMe(input: { locale: Api.Locale }): Promise<Api.User> {
@@ -307,8 +430,10 @@ export class ApiClient {
   }
 
   async changePassword(input: Api.PasswordChangeRequest): Promise<void> {
+    const epoch = this.#epoch
     await this.#request<void>('/v1/auth/password/change', { method: 'POST', body: input })
-    this.session.clear()
+    this.#assertCurrent(epoch)
+    this.clearSession()
   }
 
   setupTwoFactor(input: Api.PasswordProofRequest): Promise<Api.TwoFactorSetup> {
@@ -316,17 +441,21 @@ export class ApiClient {
   }
 
   async confirmTwoFactor(input: Api.TOTPCodeRequest): Promise<Api.RecoveryCodesResponse> {
+    const epoch = this.#epoch
     const result = await this.#request<Api.RecoveryCodesResponse>('/v1/auth/2fa/confirm', {
       method: 'POST',
       body: input,
     })
-    this.session.clear()
+    this.#assertCurrent(epoch)
+    this.clearSession()
     return result
   }
 
   async disableTwoFactor(input: Api.TwoFactorProofRequest): Promise<void> {
+    const epoch = this.#epoch
     await this.#request<void>('/v1/auth/2fa/disable', { method: 'POST', body: input })
-    this.session.clear()
+    this.#assertCurrent(epoch)
+    this.clearSession()
   }
 
   regenerateRecoveryCodes(input: Api.TwoFactorProofRequest): Promise<Api.RecoveryCodesResponse> {
@@ -341,24 +470,24 @@ export class ApiClient {
     return this.#request('/v1/customer-regions', { auth: false })
   }
 
-  listTenants(): Promise<Api.ItemList<Api.Workspace>> {
-    return this.#request('/v1/tenants')
+  listTenants(options: ApiRequestOptions = {}): Promise<Api.ItemList<Api.Workspace>> {
+    return this.#request('/v1/tenants', options)
   }
 
-  getTenant(tenantId: Api.UUID): Promise<Api.Workspace> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/`)
+  getTenant(tenantId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.Workspace> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/`, options)
   }
 
   updateTenant(tenantId: Api.UUID, input: Api.WorkspacePatch): Promise<Api.Workspace> {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/`, { method: 'PATCH', body: input })
   }
 
-  listMembers(tenantId: Api.UUID): Promise<Api.ItemList<Api.Membership>> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/members`)
+  listMembers(tenantId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.ItemList<Api.Membership>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/members`, options)
   }
 
-  listInvitations(tenantId: Api.UUID): Promise<Api.ItemList<Api.Invitation>> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/invitations`)
+  listInvitations(tenantId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.ItemList<Api.Invitation>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/invitations`, options)
   }
 
   updateMember(tenantId: Api.UUID, memberId: Api.UUID, input: Api.MembershipPatch): Promise<Api.Membership> {
@@ -379,34 +508,35 @@ export class ApiClient {
   }
 
   acceptInvitation(input: Api.TokenRequest): Promise<Api.Membership> {
-    return this.#request('/v1/invitations/accept', { method: 'POST', body: input })
+    return this.#oneTimeRequest('/v1/invitations/accept', input)
   }
 
-  listMonitors(tenantId: Api.UUID, query?: Api.ListQuery): Promise<Api.Page<Api.Monitor>> {
-    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors`, query))
+  listMonitors(tenantId: Api.UUID, query?: Api.ListQuery, options: ApiRequestOptions = {}): Promise<Api.Page<Api.Monitor>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors`, query), options)
   }
 
   createMonitor(tenantId: Api.UUID, input: Api.MonitorCreateRequest): Promise<Api.MonitorCreateResponse> {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors`, { method: 'POST', body: input })
   }
 
-  getMonitor(tenantId: Api.UUID, monitorId: Api.UUID): Promise<Api.Monitor> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`)
+  getMonitor(tenantId: Api.UUID, monitorId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.Monitor> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}`, options)
   }
 
-  getMonitorDashboard(tenantId: Api.UUID, query?: Api.MonitorDashboardQuery): Promise<Api.MonitorDashboard> {
-    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/dashboard`, query))
+  getMonitorDashboard(tenantId: Api.UUID, query?: Api.MonitorDashboardQuery, options: ApiRequestOptions = {}): Promise<Api.MonitorDashboard> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/monitors/dashboard`, query), options)
   }
 
   getMonitorOverview(
     tenantId: Api.UUID,
     monitorId: Api.UUID,
     responseRange: '1h' | '24h' | '7d',
+    options: ApiRequestOptions = {},
   ): Promise<Api.MonitorOverview> {
     return this.#request(withQuery(
       `/v1/tenants/${encodePath(tenantId)}/monitors/${encodePath(monitorId)}/overview`,
       { response_range: responseRange },
-    ))
+    ), options)
   }
 
   updateMonitor(
@@ -521,12 +651,16 @@ export class ApiClient {
     )
   }
 
-  listIncidents(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.Page<Api.Incident>> {
-    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/incidents`, query))
+  listIncidents(tenantId: Api.UUID, query?: Api.HistoryQuery, options: ApiRequestOptions = {}): Promise<Api.Page<Api.Incident>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/incidents`, query), options)
   }
 
-  getIncident(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Api.IncidentDetail> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}`)
+  getIncidentSummary(tenantId: Api.UUID, options: ApiRequestOptions = {}): Promise<{ open_count: number; assigned_to_me_count: number }> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/incidents/summary`, options)
+  }
+
+  getIncident(tenantId: Api.UUID, incidentId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.IncidentDetail> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/incidents/${encodePath(incidentId)}`, options)
   }
 
   acknowledgeIncident(tenantId: Api.UUID, incidentId: Api.UUID): Promise<Api.Incident> {
@@ -596,20 +730,20 @@ export class ApiClient {
     })
   }
 
-  listStatusPages(tenantId: Api.UUID, query?: Api.ListQuery): Promise<Api.Page<Api.StatusPage>> {
-    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/status-pages`, query))
+  listStatusPages(tenantId: Api.UUID, query?: Api.ListQuery, options: ApiRequestOptions = {}): Promise<Api.Page<Api.StatusPage>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/status-pages`, query), options)
   }
 
-  getStatusPageDashboard(tenantId: Api.UUID, query?: Api.ListQuery): Promise<Api.StatusPageDashboard> {
-    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/status-pages/dashboard`, query))
+  getStatusPageDashboard(tenantId: Api.UUID, query?: Api.ListQuery, options: ApiRequestOptions = {}): Promise<Api.StatusPageDashboard> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/status-pages/dashboard`, query), options)
   }
 
   createStatusPage(tenantId: Api.UUID, input: Api.StatusPageCreateRequest): Promise<Api.StatusPage> {
     return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages`, { method: 'POST', body: input })
   }
 
-  getStatusPage(tenantId: Api.UUID, statusPageId: Api.UUID): Promise<Api.StatusPageDetail> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}`)
+  getStatusPage(tenantId: Api.UUID, statusPageId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.StatusPageDetail> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/status-pages/${encodePath(statusPageId)}`, options)
   }
 
   updateStatusPage(
@@ -749,14 +883,11 @@ export class ApiClient {
   }
 
   acceptMonitorSubscription(tenantId: Api.UUID, token: string): Promise<void> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions`, {
-      method: 'POST',
-      body: { token },
-    })
+    return this.#oneTimeRequest(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions`, { token })
   }
 
-  listMonitorSubscriptions(tenantId: Api.UUID): Promise<Api.ItemList<Api.MonitorSubscription>> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions`)
+  listMonitorSubscriptions(tenantId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.ItemList<Api.MonitorSubscription>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscriptions`, options)
   }
 
   getMonitorSubscription(tenantId: Api.UUID, subscriptionId: Api.UUID): Promise<Api.MonitorSubscriptionDetail> {
@@ -765,8 +896,8 @@ export class ApiClient {
     )
   }
 
-  listMonitorSubscriptionIncidents(tenantId: Api.UUID): Promise<Api.ItemList<Api.MonitorSubscriptionIncident>> {
-    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscription-incidents`)
+  listMonitorSubscriptionIncidents(tenantId: Api.UUID, options: ApiRequestOptions = {}): Promise<Api.ItemList<Api.MonitorSubscriptionIncident>> {
+    return this.#request(`/v1/tenants/${encodePath(tenantId)}/monitor-subscription-incidents`, options)
   }
 
   updateMonitorSubscriptionNotifications(
@@ -787,11 +918,15 @@ export class ApiClient {
   }
 
   async registerMonitorSubscriber(input: Api.MonitorSubscriberRegisterRequest): Promise<Api.MonitorSubscriberRegistrationResponse> {
+    this.#invalidateRequests()
+    const epoch = this.#epoch
     const response = await this.#request<Api.MonitorSubscriberRegistrationResponse>('/v1/public/monitor-subscription-requests/register', {
       method: 'POST',
       body: input,
       auth: false,
+      sessionBound: true,
     })
+    this.#assertCurrent(epoch)
     this.session.setTokens(response.tokens)
     return response
   }
@@ -870,8 +1005,8 @@ export class ApiClient {
     })
   }
 
-  listAuditLogs(tenantId: Api.UUID, query?: Api.HistoryQuery): Promise<Api.Page<Api.AuditLog>> {
-    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/audit-logs`, query))
+  listAuditLogs(tenantId: Api.UUID, query?: Api.HistoryQuery, options: ApiRequestOptions = {}): Promise<Api.Page<Api.AuditLog>> {
+    return this.#request(withQuery(`/v1/tenants/${encodePath(tenantId)}/audit-logs`, query), options)
   }
 
   listBillingPlans(): Promise<Api.BillingPlanCatalog> {

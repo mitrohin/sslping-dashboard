@@ -154,6 +154,8 @@ export function MonitorForm({
   const [statusPickerOpen, setStatusPickerOpen] = useState(false)
   const [statusQuery, setStatusQuery] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const errorSummaryRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (submitError) errorSummaryRef.current?.focus() }, [submitError])
   const tagPickerRef = useRef<HTMLDivElement>(null)
   const statusPickerRef = useRef<HTMLDivElement>(null)
 
@@ -469,10 +471,12 @@ export function MonitorForm({
 
       <div className="form-actions">
         {submitError && (
+          <div ref={errorSummaryRef} tabIndex={-1}>
           <span className={`field__error ${planLimitReached ? 'monitor-form__plan-limit' : ''}`} role="alert">
             <span>{submitError}</span>
             {planLimitReached && <Button type="button" onClick={openWorkspaceBilling}>{t('shell.plansBilling')}</Button>}
           </span>
+          </div>
         )}
         {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>}
         <Button type="submit" disabled={saving}><Clock3 size={17} />{saving ? t('common.saving') : submitLabel === 'Create monitor' ? t('monitors.create') : submitLabel === 'Save changes' ? t('common.saveChanges') : submitLabel}</Button>

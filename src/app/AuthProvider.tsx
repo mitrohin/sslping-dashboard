@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router'
 import { ApiClient, ApiError } from '../api/client'
+import { sessionChangedError } from '../api/session'
 import type {
   EmailVerificationRequestedResponse,
   LoginRequest,
@@ -93,7 +95,10 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
   const [restorationError, setRestorationError] = useState<Error | null>(null)
   const [impersonation, setImpersonation] = useState<MeResponse['impersonation'] | null>(null)
 
+  const identityRevision = useRef(0)
+
   const clearIdentity = useCallback(() => {
+    identityRevision.current += 1
     setUser(null)
     setWorkspace(null)
     setTenants([])
@@ -104,7 +109,10 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
   }, [])
 
   const hydrateIdentity = useCallback(async () => {
+    const revision = identityRevision.current
+    const generation = api.sessionGeneration
     const identity = await api.me()
+    if (revision !== identityRevision.current || generation !== api.sessionGeneration) throw sessionChangedError()
     const activeWorkspace = identity.tenants.find((item) => item.id === identity.active_tenant_id) ?? null
     setUser(identity.user)
     setTenants(identity.tenants)
@@ -125,17 +133,19 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
   }), [api, clearIdentity])
 
   useEffect(() => {
-    let cancelled = false
-
+    let active = true
+    let restoreSequence = 0
     const restore = async () => {
+      const sequence = ++restoreSequence
+      const generation = api.sessionGeneration
       if (!api.tokens) {
-        if (!cancelled) setLoading(false)
+        if (active) setLoading(false)
         return
       }
-
+      setLoading(true)
       try {
         const identity = await api.me()
-        if (cancelled) return
+        if (!active || sequence !== restoreSequence || generation !== api.sessionGeneration) return
         const activeWorkspace = identity.tenants.find((item) => item.id === identity.active_tenant_id) ?? null
         setUser(identity.user)
         setTenants(identity.tenants)
@@ -145,19 +155,25 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
         setRestorationError(null)
         setImpersonation(identity.impersonation ?? null)
       } catch (error) {
-        if (cancelled) return
+        if (!active || sequence !== restoreSequence || generation !== api.sessionGeneration) return
         clearIdentity()
         setRestorationError(error instanceof Error ? error : new Error('Unable to restore the session.'))
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) api.clearSession()
       } finally {
-        if (!cancelled) setLoading(false)
+        if (active && sequence === restoreSequence) setLoading(false)
       }
     }
-
+    const unsubscribe = api.onSessionChanged((change) => {
+      if (!change.external && change.snapshot.tokens) return
+      restoreSequence += 1
+      clearIdentity()
+      setPendingVerificationEmail(null)
+      setRestorationError(null)
+      if (change.snapshot.tokens) void restore()
+      else setLoading(false)
+    })
     void restore()
-    return () => {
-      cancelled = true
-    }
+    return () => { active = false; restoreSequence += 1; unsubscribe() }
   }, [api, clearIdentity])
 
   const startLogin = useCallback(
@@ -246,13 +262,11 @@ export function AuthProvider({ children, api = defaultApi }: AuthProviderProps) 
   )
 
   const logout = useCallback(async () => {
-    try {
-      await api.logout()
-    } finally {
-      clearIdentity()
-      setPendingVerificationEmail(null)
-      setRestorationError(null)
-    }
+    const revocation = api.logout()
+    clearIdentity()
+    setPendingVerificationEmail(null)
+    setRestorationError(null)
+    await revocation
   }, [api, clearIdentity])
 
   const changePassword = useCallback(

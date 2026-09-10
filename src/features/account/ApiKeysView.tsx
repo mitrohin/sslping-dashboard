@@ -1,3 +1,4 @@
+import { presentationNow } from '../../lib/clock'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Check, Copy, KeyRound, LockKeyhole, Plus, ShieldAlert, Trash2 } from 'lucide-react'
 import {
@@ -115,7 +116,7 @@ export function ApiKeysView({
       return
     }
 
-    const now = new Date().toISOString()
+    const now = new Date(presentationNow()).toISOString()
     const optimisticId = `local-${crypto.randomUUID()}`
     const monitor = monitors.find((item) => item.id === draft.monitorId)
     const optimistic: ApiKeyViewModel = {
@@ -167,7 +168,7 @@ export function ApiKeysView({
     const optimistic: ApiKeyViewModel = {
       ...revoking,
       status: 'revoked',
-      revokedAt: new Date().toISOString(),
+      revokedAt: new Date(presentationNow()).toISOString(),
     }
     setSaving(true)
     setKeys((current) => current.map((key) => (key.id === original.id ? optimistic : key)))

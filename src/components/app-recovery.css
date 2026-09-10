@@ -1,0 +1,9 @@
+.app-recovery { max-width: 640px; margin: 12vh auto; padding: 24px; color: var(--text); }
+.app-recovery div { display: flex; gap: 12px; flex-wrap: wrap; }
+.app-recovery button, .app-recovery a, .app-update-notice button, .locale-loading button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--panel); cursor: pointer; }
+.app-recovery a { display: inline-flex; align-items: center; text-decoration: none; }
+.app-update-notice { position: fixed; z-index: 10000; bottom: 20px; left: 20px; right: 20px; margin: auto; max-width: 800px; padding: 16px; border: 1px solid var(--orange); border-radius: 12px; background: var(--panel-strong); display: flex; align-items: center; gap: 20px; box-shadow: var(--shadow); }
+.app-update-notice p { margin: 6px 0 0; line-height: 1.5; }
+.app-update-notice button { flex-shrink: 0; }
+.locale-loading { padding: 16px; background: var(--panel); color: var(--text); }
+@media (max-width: 640px) { .app-update-notice { left: 10px; right: 10px; bottom: 10px; align-items: stretch; flex-direction: column; gap: 10px; } }

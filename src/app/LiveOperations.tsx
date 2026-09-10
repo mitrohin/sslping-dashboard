@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useCursorHistory, type HistoryRange } from '../lib/useCursorHistory'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { ApiClient } from '../api/client'
 import type {
   Announcement,
@@ -14,6 +15,8 @@ import type {
 } from '../api/types'
 import { Button, FeedbackBanner, PageLoadingSkeleton, Panel } from '../components/ui'
 import { formatStatus } from '../lib/format'
+import { collectCursorPages } from '../lib/pagination'
+import { workspaceCapabilities } from '../lib/capabilities'
 import {
   demoStatusPages,
   type IncidentViewModel,
@@ -119,31 +122,34 @@ interface IncidentData {
 }
 
 function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceId?: string }) {
+  const { workspaceRole } = useAuth()
   const load = useCallback(async (activeWorkspaceId: string): Promise<IncidentData> => {
-    const [monitorPage, incidentPage, memberList, subscriptionIncidentList] = await Promise.all([
-      api.listMonitors(activeWorkspaceId, { limit: 100 }),
-      api.listIncidents(activeWorkspaceId, { limit: 100 }),
+    const [monitorPage, memberList, subscriptionIncidentList] = await Promise.all([
+      collectCursorPages((cursor) => api.listMonitors(activeWorkspaceId, { limit: 100, cursor })),
       api.listMembers(activeWorkspaceId),
       api.listMonitorSubscriptionIncidents(activeWorkspaceId),
     ])
     const rawMonitors = monitorPage.items ?? []
     const memberships = memberList.items ?? []
-    const monitorById = new Map(rawMonitors.map((monitor) => [monitor.id, monitor]))
-    const memberById = new Map(memberships.map((membership) => [membership.user_id, membership]))
-
     return {
       monitors: rawMonitors.map((monitor) => toMonitorViewModel(monitor)),
       members: memberships.map((membership) => toTeamMemberViewModel(membership)),
-      incidents: [...(incidentPage.items ?? []).map((incident) => {
-        const membership = incident.assigned_to ? memberById.get(incident.assigned_to) : undefined
-        return toIncidentViewModel(incident, {
-          monitor: monitorById.get(incident.monitor_id),
-          assignee: membership?.user,
-        })
-      }), ...(subscriptionIncidentList.items ?? []).map((incident) => toSubscribedIncidentViewModel(incident))],
+      incidents: (subscriptionIncidentList.items ?? []).map((incident) => toSubscribedIncidentViewModel(incident)),
     }
   }, [api])
   const { state, retry } = useRemoteData(workspaceId, load)
+
+  const loadHistory = useCallback((cursor?: string, search?: string, range?: HistoryRange, signal?: AbortSignal) => api.listIncidents(workspaceId!, { limit: 100, cursor, search, ...range }, { signal }), [api, workspaceId])
+  const history = useCursorHistory(workspaceId ? loadHistory : undefined)
+  const incidents = useMemo(() => {
+    if (state.status !== 'ready') return []
+    const monitorById = new Map(state.data.monitors.map((monitor) => [monitor.id, monitor]))
+    const memberById = new Map(state.data.members.map((member) => [member.id, member]))
+    return [...history.items.map((incident) => toIncidentViewModel(incident, {
+      monitor: monitorById.get(incident.monitor_id),
+      assignee: incident.assigned_to ? memberById.get(incident.assigned_to) : undefined,
+    })), ...state.data.incidents]
+  }, [state, history.items])
 
   if (state.status === 'loading') return <LoadingOperations label="incidents" />
   if (state.status === 'error') return <FailedOperations error={state.error} retry={retry} />
@@ -180,7 +186,10 @@ function LiveIncidentsContent({ api, workspaceId }: { api: ApiClient; workspaceI
 
   return (
     <IncidentsPage
-      incidents={state.data.incidents}
+      canEdit={workspaceCapabilities(workspaceRole).edit}
+      incidents={incidents}
+      historyProgress={{ hasMore: history.hasMore, loading: history.loading, error: history.error, onLoadMore: history.loadMore, onRetry: history.retry, onRangeChange: history.setRange }}
+      onSearchQueryChange={history.setSearch}
       monitors={state.data.monitors}
       members={state.data.members}
       onLoadIncidentDetails={loadIncidentDetails}
@@ -219,9 +228,10 @@ function maintenanceRequest(input: MaintenanceWindowInput): MaintenanceWindowWri
 }
 
 function LiveMaintenanceContent({ api, workspaceId, workspaceTimezone, initialMonitorId }: { api: ApiClient; workspaceId?: string; workspaceTimezone?: string; initialMonitorId?: string }) {
+  const { workspaceRole } = useAuth()
   const load = useCallback(async (activeWorkspaceId: string): Promise<MaintenanceData> => {
     const [monitorPage, windowList] = await Promise.all([
-      api.listMonitors(activeWorkspaceId, { limit: 100 }),
+      collectCursorPages((cursor) => api.listMonitors(activeWorkspaceId, { limit: 100, cursor })),
       api.listMaintenanceWindows(activeWorkspaceId),
     ])
     const rawMonitors = monitorPage.items ?? []
@@ -247,6 +257,7 @@ function LiveMaintenanceContent({ api, workspaceId, workspaceTimezone, initialMo
 
   return (
     <MaintenancePage
+      canEdit={workspaceCapabilities(workspaceRole).edit}
       windows={state.data.windows}
       monitors={state.data.monitors}
       initialCreateMonitorId={initialMonitorId}
@@ -320,6 +331,7 @@ function LiveStatusPagesContent({
   onEdit: (pageId: string, tab: StatusPageEditorTab) => void
   initialMonitorId?: string
 }) {
+  const { workspaceRole } = useAuth()
   const [pageNumber, setPageNumber] = useState(1)
   const [cursor, setCursor] = useState<string | undefined>()
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([])
@@ -331,7 +343,7 @@ function LiveStatusPagesContent({
     if (!monitorPageCache.current || monitorPageCache.current.workspaceId !== activeWorkspaceId) {
       monitorPageCache.current = {
         workspaceId: activeWorkspaceId,
-        promise: api.listMonitors(activeWorkspaceId, { limit: 100 }),
+        promise: collectCursorPages((cursor) => api.listMonitors(activeWorkspaceId, { limit: 100, cursor })).catch((error) => { monitorPageCache.current = undefined; throw error }),
       }
     }
     const [monitorPage, dashboard] = await Promise.all([
@@ -368,6 +380,7 @@ function LiveStatusPagesContent({
 
   return (
     <StatusPagesPage
+      canEdit={workspaceCapabilities(workspaceRole).edit}
       pages={state.data.pages}
       monitors={state.data.monitors}
       pageNumber={pageNumber}
@@ -582,7 +595,7 @@ function LiveStatusPageEditorContent({
     if (!statusPageId) throw new Error('Status page was not specified.')
     const [detail, monitorPage, announcementList] = await Promise.all([
       api.getStatusPage(activeWorkspaceId, statusPageId),
-      api.listMonitors(activeWorkspaceId, { limit: 100 }),
+      collectCursorPages((cursor) => api.listMonitors(activeWorkspaceId, { limit: 100, cursor })),
       api.listAnnouncements(activeWorkspaceId, statusPageId),
     ])
     const components = [...(detail.components ?? [])].sort(
@@ -590,10 +603,8 @@ function LiveStatusPageEditorContent({
     )
     const monitors = (monitorPage.items ?? []).map((monitor) => toMonitorViewModel(monitor))
     const loadedMonitorIDs = new Set(monitors.map((monitor) => monitor.id))
-    // The picker is intentionally bounded, but an existing status page may
-    // reference a monitor outside its first page. Retain those components in
-    // the editor so saving appearance or SEO settings cannot silently remove
-    // them. A server-searchable picker can enrich these rows later.
+    // Preserve components whose monitor is no longer returned by the API.
+    // Saving presentation settings must never silently remove those references.
     for (const component of components) {
       if (!loadedMonitorIDs.has(component.monitor_id)) {
         monitors.push(retainedComponentMonitor(component))
@@ -665,7 +676,7 @@ function LiveStatusPageEditorContent({
 }
 
 export function LiveStatusPageEditorPage() {
-  const { api, workspace } = useAuth()
+  const { api, workspace, workspaceRole } = useAuth()
   const navigate = useNavigate()
   const { statusPageId } = useParams()
   const [searchParams] = useSearchParams()
@@ -684,6 +695,8 @@ export function LiveStatusPageEditorPage() {
       />
     )
   }
+
+  if (!workspaceCapabilities(workspaceRole).edit) return <Navigate to="/status-pages" replace />
 
   return (
     <LiveStatusPageEditorContent

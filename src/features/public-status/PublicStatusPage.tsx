@@ -552,14 +552,15 @@ function ProblemReportPanel({ component, copy, locale, pageSlug, onReport }: { c
 }
 
 function ComponentRow({ component, followEnabled, showBars, showPercentage, showResponseTime, showOutageDetails, copy, locale, pageSlug, generatedAt, onReport }: { component: PublicStatusComponent; followEnabled: boolean; showBars: boolean; showPercentage: boolean; showResponseTime: boolean; showOutageDetails: boolean; copy: PublicStatusCopy; locale: string; pageSlug: string; generatedAt: string; onReport?: (reasonKey: string, turnstileToken?: string) => Promise<void> }) {
+  const staleLabel = locale.startsWith('ru') ? 'Нет свежих проверок' : 'No fresh checks'
   const bars = component.history_24h?.length ? component.history_24h : uptimeBars(component.uptime_24h)
   return (
     <article className="ps-component-row">
       <div className={`ps-component-state ps-component-state--${component.status}`}>{statusIcon(component.status, 18)}</div>
-      <div className="ps-component-copy"><h3>{component.name}</h3><p>{component.last_checked_at ? `${copy.lastChecked} ${formatRelativeTime(component.last_checked_at, new Date(), { locale })}` : copy.waitingForFirstCheck}</p>{component.target && <p className="ps-component-target">{component.target}</p>}{showOutageDetails && Boolean(component.response_issues?.length) && <p className="ps-response-issue"><TriangleAlert size={13} /> {copy.highResponseTime}: {component.response_issues?.join(', ')}</p>}</div>
+      <div className="ps-component-copy"><h3>{component.name}</h3><p>{component.last_checked_at ? `${copy.lastChecked} ${formatRelativeTime(component.last_checked_at, new Date(), { locale })}` : copy.waitingForFirstCheck}</p>{component.observation_stale && <p className="ps-evidence-warning">{staleLabel}. {locale.startsWith('ru') ? 'Текущий статус неизвестен; показано время последней сохранённой проверки.' : 'Current status is unknown; the last retained check time is shown.'}</p>}{Boolean(component.check_regions?.length) && <p>{locale.startsWith('ru') ? 'Локации проверки' : 'Check locations'}: {component.check_regions?.join(', ')}</p>}{component.target && <p className="ps-component-target">{component.target}</p>}{showOutageDetails && Boolean(component.response_issues?.length) && <p className="ps-response-issue"><TriangleAlert size={13} /> {copy.highResponseTime}: {component.response_issues?.join(', ')}</p>}</div>
       {showBars && <div className="ps-uptime-bars" aria-label={`${copy.uptime24h}: ${formatUptime(component.uptime_24h, 3, locale)}`}>{bars.map((status, index) => <span key={index} className={`is-${status}`} />)}</div>}
       {showPercentage && <strong className="ps-uptime-value">{formatUptime(component.uptime_24h, 3, locale)}</strong>}
-      <span className={`ps-status-label ps-status-label--${component.status}`}>{formatStatus(component.status, locale)}</span>
+      <span className={`ps-status-label ps-status-label--${component.status}`}>{component.observation_stale ? staleLabel : formatStatus(component.status, locale)}</span>
 	  {followEnabled && component.follow_url && <a className="ps-component-follow" href={component.follow_url} aria-label={`${copy.followMonitor ?? 'Follow'}: ${component.name}`}><Bell size={14} /> {copy.followMonitor ?? 'Follow'}</a>}
 	  {showResponseTime && <div className="ps-component-details"><div className="ps-component-details__heading"><div><strong>{copy.activityAndResponse}</strong><span>{copy.last24Hours}</span></div></div><CombinedActivityChart responsePoints={component.response_time ?? []} reportPoints={component.report_activity ?? []} copy={copy} locale={locale} generatedAt={generatedAt} /></div>}
 	  {onReport && <ProblemReportPanel component={component} copy={copy} locale={locale} pageSlug={pageSlug} onReport={onReport} />}
@@ -725,7 +726,7 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
   if (!snapshot) return <LoadingView copy={copy} />
 
   const settings = snapshot.page.settings
-  const visibleComponents = (snapshot.components ?? []).filter((component) => !(settings.hide_paused_monitors && component.status === 'paused'))
+  const visibleComponents = (snapshot.components ?? []).filter((component) => !(settings.hide_paused_monitors && component.status === 'paused')).map((component) => component.observation_stale && component.status !== 'paused' ? { ...component, status: 'pending' as const } : component)
   const announcements = snapshot.announcements ?? []
   const activeIncidentStates = new Map<string, { unresolved: boolean; resolved: boolean }>()
   for (const announcement of announcements) {
@@ -736,7 +737,8 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
     activeIncidentStates.set(key, state)
   }
   const activeIncidentCount = [...activeIncidentStates.values()].filter((state) => state.unresolved && !state.resolved).length
-  const overallStatus = deriveOverallStatus(snapshot.overall_status, visibleComponents)
+  const hasStaleObservations = visibleComponents.some((component) => component.observation_stale)
+  const overallStatus = deriveOverallStatus(hasStaleObservations ? undefined : snapshot.overall_status, visibleComponents)
   const overall = copy.overall[overallStatus]
   const uptimeValues = visibleComponents.map((component) => component.uptime_24h).filter((value): value is number => value !== undefined)
   const overallUptime = uptimeValues.length > 0 ? uptimeValues.reduce((total, value) => total + value, 0) / uptimeValues.length : undefined
@@ -770,9 +772,15 @@ export function PublicStatusPage({ api = defaultApi }: PublicStatusPageProps) {
       <main className="ps-container ps-main">
         <section className={`ps-overall ps-overall--${overallStatus}`} aria-live="polite">
           <div className="ps-overall__icon">{statusIcon(overallStatus, 29)}</div>
-          <div><p>{copy.currentStatus}{countryName && <span className="ps-country-name"> · {countryName}</span>}</p><h1>{overall.title}</h1><span>{overall.description}</span></div>
-          <time dateTime={snapshot.generated_at}>{copy.updated} {formatRelativeTime(snapshot.generated_at, new Date(), { locale })}</time>
+          <div><p>{copy.currentStatus}</p><h1>{hasStaleObservations && overallStatus === 'pending' ? (locale.startsWith('ru') ? 'Нет свежих проверок' : 'Fresh checks are unavailable') : overall.title}</h1><span>{overall.description}</span></div>
+          <time dateTime={snapshot.generated_at}>{locale.startsWith('ru') ? 'Страница обновлена' : 'Page refreshed'} {formatRelativeTime(snapshot.generated_at, new Date(), { locale })}</time>
         </section>
+
+        <aside className="ps-monitoring-context">
+          {snapshot.page.monitoring_source === 'public_catalog' && <p>{locale.startsWith('ru') ? 'SSLPing независимо проверяет доступность сайта. Это не официальная страница состояния сервиса. Проверка сайта не подтверждает работу всех функций, приложения или личного кабинета.' : 'SSLPing independently checks website availability. This is not the service’s official status page. A website check does not confirm every feature, app, or account is working.'}</p>}
+          {countryName && <p>{locale.startsWith('ru') ? `${snapshot.page.monitoring_source === 'public_catalog' ? 'Страна каталога' : 'Страна страницы'}: ${countryName}. Она не указывает местоположение проверяющих серверов.` : `${snapshot.page.monitoring_source === 'public_catalog' ? 'Catalog country' : 'Page country'}: ${countryName}. This does not identify the location of the checking servers.`}</p>}
+          <p>{locale.startsWith('ru') ? 'Время обновления страницы отличается от времени проверки сайта. Последняя проверка указана отдельно у каждого сервиса.' : 'The page refresh time differs from the website check time. Each service lists its last check separately.'}</p>
+        </aside>
 
         {settings.show_overall_percentage && (
           <section className="ps-metrics" aria-label={copy.overallUptime}>

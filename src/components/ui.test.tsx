@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
-import { FeedbackBanner, Modal, Select } from './ui'
+import { FeedbackBanner, Field, Modal, Select } from './ui'
 
 describe('FeedbackBanner', () => {
   it('renders a consistent success notification and can be dismissed', () => {
@@ -116,5 +116,20 @@ describe('Modal', () => {
 
     expect(input).toHaveValue('release')
     expect(input).toHaveFocus()
+  })
+})
+
+
+describe('Field accessibility', () => {
+  it('associates nested input hints and errors and clears invalid state after repair', () => {
+    const view = render(<Field label="Endpoint" hint="Use HTTPS" error="Invalid address"><div><input aria-describedby="existing" /></div></Field>)
+    const input = screen.getByRole('textbox', { name: /Endpoint/ })
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    const described = input.getAttribute('aria-describedby')!.split(' ')
+    expect(described).toContain('existing')
+    expect(described.map((id) => document.getElementById(id)?.textContent)).toEqual([undefined, 'Use HTTPS', 'Invalid address'])
+    view.rerender(<Field label="Endpoint" hint="Use HTTPS"><div><input aria-describedby="existing" /></div></Field>)
+    expect(input).not.toHaveAttribute('aria-invalid')
+    expect(input.getAttribute('aria-describedby')!.split(' ')).toHaveLength(2)
   })
 })

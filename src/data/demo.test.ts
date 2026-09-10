@@ -13,6 +13,7 @@ import {
   demoTeamMembers,
   demoUptimeBars,
   demoUptimeBarsByMonitor,
+  demoUptimePeriodsByMonitor,
 } from './demo'
 import type { DemoStateSet, MonitorStatus } from './models'
 
@@ -21,6 +22,31 @@ const expectUniqueIds = (items: readonly { id: string }[]): void => {
 }
 
 describe('demo monitor data', () => {
+  it('keeps Checkout availability windows consistent with its active and historical incidents', () => {
+    const checkout = demoMonitors.find((monitor) => monitor.name === 'Checkout API')!
+    const periods = demoUptimePeriodsByMonitor[checkout.id]
+    expect(periods.map(({ period, incidentCount, downtimeSeconds }) => ({ period, incidentCount, downtimeSeconds }))).toEqual([
+      { period: '24h', incidentCount: 1, downtimeSeconds: 312 },
+      { period: '7d', incidentCount: 1, downtimeSeconds: 312 },
+      { period: '30d', incidentCount: 2, downtimeSeconds: 918 },
+      { period: '365d', incidentCount: 2, downtimeSeconds: 918 },
+    ])
+    expect(periods[0].uptime).toBeCloseTo(99.6388889)
+    expect(periods[1].uptime).toBeCloseTo(99.9484127)
+    expect(periods[2].uptime).toBeCloseTo(99.9645833)
+    expect(periods[3].uptime).toBeCloseTo(99.9970890)
+  })
+
+  it('keeps each demo monitor 24-hour figure equal to its own period fixture', () => {
+    for (const monitor of demoMonitors) {
+      expect(demoUptimePeriodsByMonitor[monitor.id][0].uptime).toBe(monitor.uptime24h)
+    }
+    const website = demoMonitors.find((monitor) => monitor.name === 'Marketing website')!
+    expect(demoUptimePeriodsByMonitor[website.id][1]).toMatchObject({ incidentCount: 1, downtimeSeconds: 315 })
+    const mail = demoMonitors.find((monitor) => monitor.name === 'Transactional mail')!
+    expect(demoUptimePeriodsByMonitor[mail.id].every((period) => period.incidentCount === 0)).toBe(true)
+  })
+
   it('has stable unique identifiers and complete 24-hour bars', () => {
     expectUniqueIds(demoMonitors)
     expect(demoMonitors.length).toBeGreaterThanOrEqual(8)

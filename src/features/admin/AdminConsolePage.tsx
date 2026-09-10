@@ -50,7 +50,8 @@ function saveInvoiceDocument(blob: Blob, filename: string) {
 
 export function AdminConsolePage() {
   const { api, user } = useAuth()
-  const { t } = useI18n()
+  const { t, requestAdminMessages } = useI18n()
+  useEffect(requestAdminMessages, [requestAdminMessages])
   const accountant = user?.system_role === 'accountant'
   const [section, setSection] = useState<Section>(() => accountant ? 'invoices' : 'users')
   const [users, setUsers] = useState<AdminUser[]>([])

@@ -50,7 +50,7 @@ const mocks = vi.hoisted(() => {
   return {
     api,
     demo: false,
-    auth: { api, workspace: { id: 'workspace-1' } },
+    auth: { api, workspace: { id: 'workspace-1' }, workspaceRole: 'owner' },
     incidentProps: undefined as unknown,
     maintenanceProps: undefined as unknown,
     statusPagesProps: undefined as unknown,

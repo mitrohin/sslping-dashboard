@@ -1,3 +1,5 @@
+import { presentationNow } from '../../lib/clock'
+import { HistoryProgress, type HistoryProgressProps } from '../../components/HistoryProgress'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Link } from 'react-router'
 import {
@@ -46,6 +48,9 @@ export interface IncidentDetailsViewModel {
 }
 
 export interface IncidentsPageProps {
+  canEdit?: boolean
+  historyProgress?: HistoryProgressProps
+  onSearchQueryChange?: (query: string) => void
   incidents?: readonly IncidentViewModel[]
   monitors?: readonly MonitorViewModel[]
   members?: readonly TeamMemberViewModel[]
@@ -74,7 +79,7 @@ const incidentTone = (status: IncidentStatus): 'success' | 'warning' | 'info' =>
 const makeId = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
-    : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    : `local-${presentationNow()}-${Math.random().toString(16).slice(2)}`
 
 const REPORT_CHART_WINDOW_MS = 24 * 60 * 60 * 1000
 const REPORT_CHART_BUCKETS = 48
@@ -126,7 +131,7 @@ function VisitorReportActivityChart({ incident, reports, translate, locale }: { 
   const latestReportAt = Math.max(0, ...reports.map((report) => Date.parse(report.reported_at)).filter(Number.isFinite))
   const resolvedAt = Date.parse(incident.resolvedAt ?? '')
   const endAt = useMemo(
-    () => Number.isFinite(resolvedAt) ? resolvedAt : Math.max(Date.now(), latestReportAt),
+    () => Number.isFinite(resolvedAt) ? resolvedAt : Math.max(presentationNow(), latestReportAt),
     [latestReportAt, resolvedAt],
   )
   const buckets = useMemo(() => buildReportActivity(reports, endAt), [endAt, reports])
@@ -232,8 +237,8 @@ function VisitorReportActivityChart({ incident, reports, translate, locale }: { 
 }
 
 function IncidentActivityChart({ incident, comments, translate }: { incident: IncidentViewModel; comments: readonly IncidentCommentViewModel[]; translate: (key: string, variables?: Record<string, string | number>) => string }) {
-  const startedAt = Date.parse(incident.startedAt) || Date.now()
-  const endedAt = Date.parse(incident.resolvedAt ?? '') || Math.max(Date.now(), startedAt + 1)
+  const startedAt = Date.parse(incident.startedAt) || presentationNow()
+  const endedAt = Date.parse(incident.resolvedAt ?? '') || Math.max(presentationNow(), startedAt + 1)
   const span = Math.max(endedAt - startedAt, 1)
   const width = 640
   const chartBottom = 122
@@ -247,6 +252,9 @@ function IncidentActivityChart({ incident, comments, translate }: { incident: In
 }
 
 export function IncidentsPage({
+  canEdit = true,
+  historyProgress,
+  onSearchQueryChange,
   incidents: initialIncidents = demoIncidents,
   monitors = demoMonitors,
   members = demoTeamMembers,
@@ -261,6 +269,7 @@ export function IncidentsPage({
   const { t, locale } = useI18n()
 	const countryNames = useMemo(() => new Intl.DisplayNames([locale], { type: 'region' }), [locale])
   const [incidents, setIncidents] = useState<IncidentViewModel[]>(() => [...initialIncidents])
+  useEffect(() => setIncidents([...initialIncidents]), [initialIncidents])
   const [query, setQuery] = useState('')
   const [tag, setTag] = useState('all')
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -448,7 +457,7 @@ export function IncidentsPage({
           id: makeId(),
           author: t('common.you'),
           message,
-          createdAt: new Date().toISOString(),
+          createdAt: new Date(presentationNow()).toISOString(),
           status: selected.status,
         }
         setComments((current) => ({
@@ -471,6 +480,7 @@ export function IncidentsPage({
 
   const resetFilters = () => {
     setQuery('')
+    onSearchQueryChange?.('')
     setTag('all')
     setStatus('all')
     setSort('newest')
@@ -498,7 +508,7 @@ export function IncidentsPage({
         <SearchInput
           className="ops-toolbar__search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => { setQuery(event.target.value); onSearchQueryChange?.(event.target.value) }}
           placeholder={t('incidents.search')}
           aria-label={t('incidents.searchLabel')}
         />
@@ -581,6 +591,8 @@ export function IncidentsPage({
         )}
       </Panel>
 
+      {historyProgress && <HistoryProgress {...historyProgress} />}
+
       <Modal
         open={Boolean(selected)}
         onClose={() => { setSelectedId(null); setActionError('') }}
@@ -610,7 +622,7 @@ export function IncidentsPage({
               </>
             ) : <>
 
-            <div className="ops-action-row">
+            {canEdit && <div className="ops-action-row">
               <label className="ops-assign-control">
                 <UserRoundCheck size={17} />
                 <Select
@@ -630,7 +642,7 @@ export function IncidentsPage({
                   <CheckCircle2 size={17} /> {t('incidents.resolve')}
                 </Button>
               )}
-            </div>
+            </div>}
 
             {selectedAssignment && (
               <p className="ops-assignment-note">{t('incidents.assignedTo', { name: memberById.get(selectedAssignment)?.name ?? t('incidents.teamMember') })}</p>
@@ -734,14 +746,14 @@ export function IncidentsPage({
               )}
             </section>
 
-            <form className="ops-comment-form" onSubmit={submitComment}>
+            {canEdit && <form className="ops-comment-form" onSubmit={submitComment}>
               <Field label={t('incidents.addUpdate')} hint={t('incidents.updateHint')}>
                 <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={10_000} placeholder={t('incidents.updatePlaceholder')} />
               </Field>
               <Button type="submit" disabled={!commentDraft.trim() || busyAction !== null}>
                 <MessageSquareText size={17} /> {t('incidents.addComment')}
               </Button>
-            </form>
+            </form>}
             </>}
             </>}
           </div>

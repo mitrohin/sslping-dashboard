@@ -360,3 +360,20 @@ describe('PublicStatusPage', () => {
 		expect(component.queryByText(/уже недавно получили/i)).not.toBeInTheDocument()
 	})
 })
+
+
+it('distinguishes independent catalog checks, region metadata, stale evidence and page refresh time', async () => {
+  renderRoute(createApi({
+    ...snapshot,
+    page: { ...snapshot.page, country_code: 'US', monitoring_source: 'public_catalog' },
+    components: [{ ...snapshot.components![0], observation_stale: true, status: 'pending', check_regions: ['eu-west'], uptime_24h: undefined }],
+    overall_status: 'pending',
+  }))
+  expect(await screen.findByText(/SSLPing independently checks website availability/)).toBeInTheDocument()
+  expect(screen.getByText(/Catalog country: United States/)).toBeInTheDocument()
+  expect(screen.getByText('Check locations: eu-west')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Fresh checks are unavailable' })).toBeInTheDocument()
+  expect(screen.getByText(/Current status is unknown/)).toBeInTheDocument()
+  expect(screen.getByText(/Page refreshed/)).toBeInTheDocument()
+  expect(screen.queryByText('Waiting for the first check')).not.toBeInTheDocument()
+})

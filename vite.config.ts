@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { localePlugin } from './build/localePlugin'
 
 export default defineConfig(() => {
   const apiTarget = (globalThis as typeof globalThis & {
@@ -7,7 +8,7 @@ export default defineConfig(() => {
   }).process?.env?.VITE_API_TARGET || 'http://127.0.0.1:8080'
 
   return {
-    plugins: [react()],
+    plugins: [localePlugin(), react()],
     server: {
       host: '127.0.0.1',
       port: 5173,
@@ -25,12 +26,12 @@ export default defineConfig(() => {
       // Public status HTML is rendered by the API so crawlers and social
       // unfurlers receive live metadata. Stable entry names let that HTML
       // start the same SPA while lazy chunks remain content-hashed.
-      cssCodeSplit: false,
+      cssCodeSplit: true,
       rollupOptions: {
         output: {
           entryFileNames: 'assets/app.js',
           chunkFileNames: 'assets/chunk-[name]-[hash].js',
-          assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css')
+          assetFileNames: (assetInfo) => assetInfo.name === 'index.css'
             ? 'assets/app.css'
             : 'assets/[name]-[hash][extname]',
         },

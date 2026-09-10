@@ -76,6 +76,8 @@
 .status-summary__visual--degraded > span { background: var(--orange); box-shadow: 0 0 0 8px rgb(228 161 59 / 10%); }
 .status-summary__visual--down > span { background: var(--red); box-shadow: 0 0 0 8px rgb(240 82 85 / 10%); }
 .status-summary__counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+.status-summary__counts--compact { display: none; }
+.status-summary__signal-scope { grid-column: 1 / -1; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .status-summary__counts div, .status-summary__metric-grid div { display: grid; gap: 4px; }
 .status-summary__counts strong { font-size: 21px; }
 .status-summary__counts span, .status-summary__metric-grid span { color: var(--muted); font-size: 11px; }
@@ -460,4 +462,48 @@
   .monitor-pagination { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .monitor-pagination > span { min-width: 0; grid-column: 1 / -1; grid-row: 1; }
   .monitor-pagination .button { width: 100%; }
+}
+
+/* Essential monitor evidence remains visible at every viewport width. */
+.monitor-row__warnings { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.monitor-row__warnings:empty { display: none; }
+.monitor-row__warnings .badge { white-space: normal; overflow-wrap: anywhere; }
+.monitor-filters-toggle { display: none; }
+.monitor-bulk-results { padding: 16px; margin-bottom: 16px; }
+.monitor-bulk-results ul { list-style: none; padding: 0; max-height: 240px; overflow: auto; }
+.monitor-bulk-results li { display: flex; justify-content: space-between; gap: 20px; padding: 6px 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .monitor-toolbar .monitor-filters-toggle { display: inline-flex; order: 2; margin-left: auto; }
+  .monitor-toolbar:not(.monitor-toolbar--expanded) .filter-dropdown,
+  .monitor-toolbar:not(.monitor-toolbar--expanded) .monitor-toolbar__groups { display: none; }
+  .monitor-toolbar__count { min-height: 36px; }
+  .monitor-summary .status-summary:first-child { display: block; padding: 12px 16px; }
+  .monitor-summary .status-summary__counts--standard { display: none; }
+  .monitor-summary .status-summary__counts--compact { display: grid; }
+  .monitor-summary .status-summary__visual,
+  .monitor-summary .status-summary > p,
+  .monitor-summary .status-summary--stats { display: none; }
+  .monitor-summary .status-summary h2 { margin: 0 0 10px; font-size: 13px; }
+  .monitor-summary { gap: 10px; }
+  .monitor-row__identity { min-width: 0; }
+  .monitor-row__identity > a { overflow-wrap: anywhere; }
+  .monitor-row__warnings { grid-column: 1 / -1; }
+}
+
+.monitor-summary-toggle { display: none; }
+.monitor-status-reason { color: var(--text-muted); overflow-wrap: anywhere; }
+.availability-note { display: block; line-height: 1.5; max-width: 40em; }
+.history-range { display: flex; flex-wrap: wrap; gap: 12px; width: 100%; }
+.history-range label { display: grid; gap: 4px; font-size: 12px; }
+@media (max-width: 760px) {
+  .monitor-summary-toggle { display: inline-flex; }
+  .monitor-summary.is-expanded .status-summary--stats { display: block; }
+}
+/* Keep the first incident visible without making primary touch targets smaller. */
+@media (min-width: 360px) and (max-width: 760px) {
+  .monitors-page > .page-header { flex-direction: row; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .monitors-page > .page-header h1 { font-size: 25px; }
+  .monitors-page > .page-header .page-header__actions { width: auto; flex: 0 1 auto; }
+  .monitors-page > .page-header .button { width: auto; min-height: 44px; padding: 0 12px; font-size: 13px; }
+  .monitor-summary .status-summary:first-child h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }

@@ -30,6 +30,7 @@ import { useI18n } from '../../app/I18nProvider'
 type MaybePromise<T> = T | Promise<T>
 
 export interface StatusPagesPageProps {
+  canEdit?: boolean
   pages?: readonly StatusPageViewModel[]
   monitors?: readonly MonitorViewModel[]
   initialCreateMonitorId?: string
@@ -100,6 +101,7 @@ const emptyAnnouncement: StatusPageAnnouncementInput = {
 }
 
 export function StatusPagesPage({
+  canEdit = true,
   pages: initialPages = demoStatusPages,
   monitors = demoMonitors,
   initialCreateMonitorId,
@@ -156,7 +158,7 @@ export function StatusPagesPage({
   ]
 
   useEffect(() => {
-	if (!initialCreateMonitorId || !publishableMonitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
+	if (!canEdit || !initialCreateMonitorId || !publishableMonitors.some((monitor) => monitor.id === initialCreateMonitorId)) return
 	const monitor = publishableMonitors.find((item) => item.id === initialCreateMonitorId)
     const suggestedName = monitor ? `${monitor.name} status` : ''
     setError('')
@@ -167,7 +169,7 @@ export function StatusPagesPage({
       monitorIds: [initialCreateMonitorId],
     })
     setCreateOpen(true)
-	}, [initialCreateMonitorId, publishableMonitors])
+	}, [canEdit, initialCreateMonitorId, publishableMonitors])
 
   const filteredPages = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -288,7 +290,7 @@ export function StatusPagesPage({
       <PageHeader
         title={t('statusPages.title')}
         description={t('statusPages.description')}
-        actions={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button>}
+        actions={canEdit ? <Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button> : undefined}
       />
 
       {pages.length === 0 && !query.trim() && (totalCount ?? 0) === 0 ? (
@@ -297,7 +299,7 @@ export function StatusPagesPage({
             icon={<Radio size={36} />}
             title={t('statusPages.create')}
             description={t('statusPages.emptyHint')}
-            action={<Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button>}
+            action={canEdit ? <Button type="button" onClick={openCreate}><Plus size={18} /> {t('statusPages.create')}</Button> : undefined}
           />
         </Panel>
       ) : (
@@ -322,9 +324,9 @@ export function StatusPagesPage({
                       <td>{formatDate(page.updatedAt)}</td>
                       <td>
                         <div className="ops-row-actions">
-                          <Button size="sm" type="button" onClick={() => { setAnnouncementPageId(page.id); setError('') }}><Megaphone size={16} /> {t('statusPages.addAnnouncement')}</Button>
+                          {canEdit && <Button size="sm" type="button" onClick={() => { setAnnouncementPageId(page.id); setError('') }}><Megaphone size={16} /> {t('statusPages.addAnnouncement')}</Button>}
                           <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={t('monitors.open', { name: page.name })} title={t('statusPages.openPublic')}><ExternalLink size={17} /></a>
-                          <div className="ops-status-edit-menu-wrap" ref={editMenuPageId === page.id ? editMenuRef : undefined}>
+                          {canEdit && <div className="ops-status-edit-menu-wrap" ref={editMenuPageId === page.id ? editMenuRef : undefined}>
                             <IconButton
                               label={t('maintenance.editNamed', { name: page.name })}
                               aria-haspopup="menu"
@@ -339,8 +341,8 @@ export function StatusPagesPage({
                                 })}
                               </div>
                             )}
-                          </div>
-                          {onDelete && <Button variant="ghost" size="sm" type="button" onClick={() => void deletePage(page)}>{t('common.delete')}</Button>}
+                          </div>}
+                          {canEdit && onDelete && <Button variant="ghost" size="sm" type="button" onClick={() => void deletePage(page)}>{t('common.delete')}</Button>}
                         </div>
                       </td>
                     </tr>
@@ -357,8 +359,8 @@ export function StatusPagesPage({
                   <small>/{page.slug} · {page.countryCode ? `${page.countryCode} · ` : ''}{page.language}</small>
                   <p>{t('statusPages.mobileStats', { monitors: page.monitorCount, access: t(`statusPages.access.${page.accessLevel}`), subscribers: page.subscribers })}</p>
                   <div className="ops-card-actions">
-                    <Button size="sm" type="button" onClick={() => setAnnouncementPageId(page.id)}><Megaphone size={16} /> {t('statusPages.announce')}</Button>
-                    <Button size="sm" variant="secondary" type="button" onClick={() => onEdit?.(page.id, 'global')}>{t('common.edit')}</Button>
+                    {canEdit && <><Button size="sm" type="button" onClick={() => setAnnouncementPageId(page.id)}><Megaphone size={16} /> {t('statusPages.announce')}</Button>
+                    <Button size="sm" variant="secondary" type="button" onClick={() => onEdit?.(page.id, 'global')}>{t('common.edit')}</Button></>}
                     <a className="icon-button" href={page.url} target="_blank" rel="noreferrer" aria-label={t('monitors.open', { name: page.name })}><ExternalLink size={17} /></a>
                   </div>
                 </article>

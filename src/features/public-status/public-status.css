@@ -373,3 +373,7 @@
   .public-status-page *::before,
   .public-status-page *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.ps-monitoring-context { color: var(--ps-muted); font-size: 13px; line-height: 1.6; margin: -8px 0 24px; padding: 0 8px; }
+.ps-monitoring-context p { margin: 8px 0; }
+.ps-evidence-warning { color: #a36300; }

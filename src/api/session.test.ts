@@ -21,8 +21,9 @@ describe('SessionStore', () => {
 
     expect(store.getTokens()).toEqual(tokens)
     expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toEqual({
-      version: 1,
+      version: 2,
       tokens,
+      generation: expect.any(String),
     })
   })
 

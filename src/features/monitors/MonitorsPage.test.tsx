@@ -325,7 +325,7 @@ describe('MonitorsPage row actions', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: /pause/i }))
     expect(await screen.findByText(`Paused ${name}.`)).toBeInTheDocument()
     let row = screen.getByRole('link', { name: `Open ${name}` }).closest('article') as HTMLElement
-    expect(within(row).getByText('paused')).toBeInTheDocument()
+    expect(within(row).getByText('Paused')).toBeInTheDocument()
 
     menu = actionsFor(name)
     fireEvent.click(within(menu).getByRole('menuitem', { name: /resume/i }))
@@ -341,5 +341,75 @@ describe('MonitorsPage row actions', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: /delete/i }))
     expect(await screen.findByText(`Deleted ${name}.`)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: `Open ${name}` })).not.toBeInTheDocument()
+  })
+})
+
+
+describe('Permission and partial bulk failure handling', () => {
+  it('keeps viewing available while hiding write controls for a viewer', () => {
+    const monitor = demoMonitors[0]
+    renderPage({ data: [monitor], canEdit: false })
+    expect(screen.queryByRole('button', { name: /new monitor/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: `Select ${monitor.name}` })).not.toBeInTheDocument()
+    const menu = actionsFor(monitor.name)
+    expect(within(menu).getByRole('menuitem', { name: /view/i })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: /edit|pause|delete|test/i })).not.toBeInTheDocument()
+  })
+
+  it('shows individual failures and retries only failed rows', async () => {
+    const data = demoMonitors.slice(0, 2)
+    const onBulkAction = vi.fn().mockResolvedValueOnce(data.map((row, index) => ({ id: row.id, name: row.name, ...(index ? { error: 'Rate limited' } : {}) })))
+      .mockResolvedValueOnce([{ id: data[1].id, name: data[1].name }])
+    renderPage({ data, onBulkAction })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all visible monitors' }))
+    fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /^pause$/i }))
+    expect(await screen.findByText(/Rate limited/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() => expect(onBulkAction).toHaveBeenLastCalledWith([data[1]], 'pause'))
+    expect(onBulkAction).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(screen.queryByText(/Rate limited/)).not.toBeInTheDocument())
+  })
+})
+
+describe('MonitorsPage compact evidence and duration', () => {
+  it('describes an ongoing up state with an elapsed duration', () => {
+    const now = Date.parse('2026-09-10T12:00:00Z')
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const monitor = { ...demoMonitors[0], status: 'up' as const, statusChangedAt: new Date(now - (90 * 86_400 + 3 * 3600) * 1000).toISOString(), lastCheckedAt: new Date(now).toISOString() }
+    renderPage({ data: [monitor] })
+    const row = screen.getByRole('link', { name: `Open ${monitor.name}` }).closest('article')!
+    expect(within(row).getByText('Up 90d 3h')).toBeInTheDocument()
+    expect(row).not.toHaveTextContent('ago')
+  })
+
+  it('keeps down, risk and missing evidence visible without claiming workspace-wide counts', () => {
+    const now = Date.parse('2026-09-10T12:00:00Z')
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const base: MonitorViewModel = { ...demoMonitors[0], status: 'up', lastCheckedAt: new Date(now).toISOString(), observationStale: false, sslCertificate: undefined, domainRegistration: undefined }
+    const warning = { state: 'warning' as const, daysRemaining: 8, expiresAt: '2026-09-18T12:00:00Z' }
+    const data: MonitorViewModel[] = [
+      { ...base, id: 'down', name: 'Down service', status: 'down' },
+      { ...base, id: 'expiry', name: 'Two expiry signals', sslCertificate: warning, domainRegistration: warning },
+      { ...base, id: 'degraded', name: 'Slow service', status: 'degraded' },
+      { ...base, id: 'stale', name: 'Old certificate observation', observationStale: true, sslCertificate: warning },
+      { ...base, id: 'paused', name: 'Paused service', status: 'paused', observationStale: true, sslCertificate: warning },
+      { ...base, id: 'pending', name: 'Never checked', status: 'pending', lastCheckedAt: undefined },
+      { ...base, id: 'leak', name: 'Leak check', type: 'leakcheck', status: 'down', observationStale: true },
+    ]
+    renderPage({ data, hasNextPage: true, totalMonitors: 1091, monitorLimit: 5000 })
+    expect(screen.getByRole('heading', { name: /current page status/i })).toBeInTheDocument()
+    const signals = document.querySelector('.status-summary__counts--compact') as HTMLElement
+    expect(signals).toHaveAttribute('aria-label', 'Availability signals')
+    expect(within(signals).getByLabelText('Down: 1')).toBeInTheDocument()
+    expect(within(signals).getByLabelText('At risk: 3')).toBeInTheDocument()
+    expect(within(signals).getByLabelText('No fresh checks: 2')).toBeInTheDocument()
+    expect(within(signals).getByText('This page: 6 uptime monitors. Signals may overlap.')).toBeInTheDocument()
+    expect(screen.getByText('Using 1091 of 5000 monitors.')).toBeInTheDocument()
+  })
+
+  it('labels a local filtered summary by loaded monitors rather than visible matches', () => {
+    renderPage({ data: demoMonitors.slice(0, 2) })
+    fireEvent.change(screen.getByPlaceholderText(/search by name or url/i), { target: { value: demoMonitors[0].name } })
+    expect(screen.getByText('Loaded: 2 uptime monitors. Signals may overlap.')).toBeInTheDocument()
   })
 })

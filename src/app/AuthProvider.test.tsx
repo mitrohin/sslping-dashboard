@@ -363,3 +363,74 @@ describe('auth route guards', () => {
     expect(await screen.findByText('Dashboard')).toBeInTheDocument()
   })
 })
+
+
+describe('cross-tab identity boundaries', () => {
+  it('rehydrates a replacement identity from another tab and ignores late data from the previous one', async () => {
+    const key = `provider-cross-tab:${crypto.randomUUID()}`
+    const store = new SessionStore(localStorage, key)
+    store.setTokens(oldTokens)
+    let oldResponse!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { oldResponse = resolve })
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      return new Headers(init?.headers).get('Authorization') === 'Bearer access-1'
+        ? pending : response(identity(secondWorkspace.id))
+    })
+    const api = new ApiClient({ sessionStore: store, fetch: fetchMock })
+    const other = new ApiClient({ sessionStore: new SessionStore(localStorage, key), fetch: vi.fn<typeof fetch>() })
+    const view = render(<AuthProvider api={api}><CaptureAuth /></AuthProvider>)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    act(() => other.setTokens(newTokens))
+    await waitFor(() => expect(auth().workspace?.id).toBe(secondWorkspace.id))
+    await act(async () => oldResponse(response(identity(firstWorkspace.id))))
+    expect(auth().workspace?.id).toBe(secondWorkspace.id)
+    act(() => other.clearSession())
+    expect(auth().authenticated).toBe(false)
+    expect(auth().user).toBeNull()
+    view.unmount()
+    api.dispose()
+    other.dispose()
+  })
+
+  it('does not clear the current workspace or refetch identity for another tab’s normal refresh', async () => {
+    const key = `provider-refresh:${crypto.randomUUID()}`
+    const store = new SessionStore(localStorage, key)
+    store.setTokens(oldTokens)
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response(identity()))
+    const api = new ApiClient({ sessionStore: store, fetch: fetchMock })
+    const other = new SessionStore(localStorage, key)
+    const view = render(<AuthProvider api={api}><CaptureAuth /></AuthProvider>)
+    await waitFor(() => expect(auth().authenticated).toBe(true))
+    act(() => other.replaceRefreshedTokens(other.getSnapshot(), newTokens))
+    expect(auth().workspace?.id).toBe(firstWorkspace.id)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(api.tokens).toEqual(newTokens)
+    view.unmount()
+    api.dispose()
+  })
+
+  it('clears identity immediately on logout without erasing a login completed during slow revocation', async () => {
+    const key = `provider-logout:${crypto.randomUUID()}`
+    const store = new SessionStore(localStorage, key)
+    store.setTokens(oldTokens)
+    let finishLogout!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { finishLogout = resolve })
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).endsWith('/logout')) return pending
+      if (String(input).endsWith('/login')) return response({ tokens: newTokens, user, tenant: secondWorkspace })
+      return response(identity(new Headers(init?.headers).get('Authorization') === 'Bearer access-2' ? secondWorkspace.id : firstWorkspace.id))
+    })
+    const api = new ApiClient({ sessionStore: store, fetch: fetchMock })
+    const view = render(<AuthProvider api={api}><CaptureAuth /></AuthProvider>)
+    await waitFor(() => expect(auth().authenticated).toBe(true))
+    let logout!: Promise<void>
+    act(() => { logout = auth().logout() })
+    expect(auth().authenticated).toBe(false)
+    await act(async () => { await auth().login({ email: user.email, password: 'not-real' }) })
+    expect(auth().workspace?.id).toBe(secondWorkspace.id)
+    await act(async () => { finishLogout(new Response(null, { status: 204 })); await logout })
+    expect(auth().workspace?.id).toBe(secondWorkspace.id)
+    view.unmount()
+    api.dispose()
+  })
+})

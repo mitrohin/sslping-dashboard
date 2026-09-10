@@ -1,0 +1,37 @@
+name: Security maintenance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-maintenance
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check application and build dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=moderate
+      - name: Scan the freshly built runtime image
+        run: |
+          set -euo pipefail
+          docker build --pull --build-arg VITE_API_URL=https://api.sslping.io --build-arg VITE_DEMO_MODE=false --build-arg VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA --tag sslping-dashboard:security .
+          docker save sslping-dashboard:security --output "${RUNNER_TEMP}/runtime-image.tar"
+          docker run --rm --volume "${RUNNER_TEMP}:/scan:ro" aquasec/trivy:0.74.0 image \
+            --input /scan/runtime-image.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 1

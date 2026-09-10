@@ -285,3 +285,40 @@ Object.assign(featureTranslations.ru, {'incidents.locationEvidence':'Подтв�
 
 Object.assign(featureTranslations.en, {'incidents.visitorReports':'Anonymous visitor reports','incidents.reportActivity':'Report activity over time','incidents.reportCount':'{count} reports','incidents.last24Hours':'Last 24 hours','incidents.baseline':'Baseline','incidents.reports':'Reports','incidents.lifecycle':'Incident lifecycle','incidents.statusDynamics':'Status dynamics over time','incidents.now':'Now','incidents.reportJournal':'Visitor report journal','incidents.signalCount':'{count} signals','incidents.time':'Time','incidents.country':'Country','incidents.provider':'Provider / ASN','incidents.ipAddress':'IP address','incidents.unknown':'Unknown','incidents.torNetwork':'Tor network','incidents.noVisitorReports':'No visitor reports were returned for this incident.'})
 Object.assign(featureTranslations.ru, {'incidents.visitorReports':'Анонимные сообщения пользователей','incidents.reportActivity':'Динамика сообщений по времени','incidents.reportCount':'Сообщений: {count}','incidents.last24Hours':'Последние 24 часа','incidents.baseline':'Базовый уровень','incidents.reports':'Сигналы','incidents.lifecycle':'Жизненный цикл инцидента','incidents.statusDynamics':'Динамика статуса по времени','incidents.now':'Сейчас','incidents.reportJournal':'Журнал сообщений пользователей','incidents.signalCount':'Сигналов: {count}','incidents.time':'Время','incidents.country':'Страна','incidents.provider':'Провайдер / ASN','incidents.ipAddress':'IP-адрес','incidents.unknown':'Не определено','incidents.torNetwork':'Сеть Tor','incidents.noVisitorReports':'Для этого инцидента нет записей о сообщениях пользователей.'})
+
+Object.assign(featureTranslations.en, {
+  'monitors.availabilitySignals': 'Availability signals', 'monitors.atRisk': 'At risk', 'monitors.noFreshChecks': 'No fresh checks',
+  'monitors.riskHint': 'Degraded service or a certificate/domain nearing or past expiry; each monitor counted once.',
+  'monitors.signalPageScope': 'This page: {count} uptime monitors. Signals may overlap.',
+  'monitors.signalLoadedScope': 'Loaded: {count} uptime monitors. Signals may overlap.',
+})
+Object.assign(featureTranslations.ru, {
+  'monitors.availabilitySignals': 'Сигналы доступности', 'monitors.atRisk': 'Риски', 'monitors.noFreshChecks': 'Нет свежих проверок',
+  'monitors.riskHint': 'Сбой работы или приближение/истечение срока сертификата либо домена; каждый монитор учитывается один раз.',
+  'monitors.signalPageScope': 'На этой странице: {count} мониторов доступности. Сигналы могут пересекаться.',
+  'monitors.signalLoadedScope': 'Загружено: {count} мониторов доступности. Сигналы могут пересекаться.',
+})
+Object.assign(featureTranslations.es, {
+  'monitors.availabilitySignals': 'Señales de disponibilidad', 'monitors.atRisk': 'En riesgo', 'monitors.noFreshChecks': 'Sin comprobaciones recientes',
+  'monitors.riskHint': 'Servicio degradado o certificado/dominio próximo a vencer o vencido; cada monitor se cuenta una vez.',
+  'monitors.signalPageScope': 'Esta página: {count} monitores de disponibilidad. Las señales pueden coincidir.',
+  'monitors.signalLoadedScope': 'Cargados: {count} monitores de disponibilidad. Las señales pueden coincidir.',
+})
+Object.assign(featureTranslations.zh, {
+  'monitors.availabilitySignals': '可用性信号', 'monitors.atRisk': '存在风险', 'monitors.noFreshChecks': '无近期检查',
+  'monitors.riskHint': '服务性能下降，或证书/域名即将到期或已到期；每个监控仅计一次。',
+  'monitors.signalPageScope': '本页：{count} 个可用性监控。信号可能重叠。',
+  'monitors.signalLoadedScope': '已加载：{count} 个可用性监控。信号可能重叠。',
+})
+Object.assign(featureTranslations.ka, {
+  'monitors.availabilitySignals': 'ხელმისაწვდომობის სიგნალები', 'monitors.atRisk': 'რისკი', 'monitors.noFreshChecks': 'ახალი შემოწმება არ არის',
+  'monitors.riskHint': 'მომსახურების შეფერხება ან სერტიფიკატის/დომენის ვადის გასვლა ან მოახლოება; თითოეული მონიტორი ერთხელ ითვლება.',
+  'monitors.signalPageScope': 'ამ გვერდზე: {count} ხელმისაწვდომობის მონიტორი. სიგნალები შეიძლება გადაიკვეთოს.',
+  'monitors.signalLoadedScope': 'ჩატვირთულია: {count} ხელმისაწვდომობის მონიტორი. სიგნალები შეიძლება გადაიკვეთოს.',
+})
+Object.assign(featureTranslations.tr, {
+  'monitors.availabilitySignals': 'Erişilebilirlik sinyalleri', 'monitors.atRisk': 'Riskli', 'monitors.noFreshChecks': 'Güncel kontrol yok',
+  'monitors.riskHint': 'Bozulmuş hizmet veya süresi yaklaşan/geçen sertifika ya da alan adı; her monitör bir kez sayılır.',
+  'monitors.signalPageScope': 'Bu sayfa: {count} erişilebilirlik monitörü. Sinyaller örtüşebilir.',
+  'monitors.signalLoadedScope': 'Yüklenen: {count} erişilebilirlik monitörü. Sinyaller örtüşebilir.',
+})

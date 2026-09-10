@@ -1,3 +1,5 @@
+import { presentationNow } from '../../lib/clock'
+import type { HistoryProgressProps } from '../../components/HistoryProgress'
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
 import {
@@ -81,6 +83,10 @@ const categoryIcons: Readonly<Record<IntegrationCategory, typeof Activity>> = {
 }
 
 export interface IntegrationsPageProps {
+  canEdit?: boolean
+  canAdminister?: boolean
+  auditHistoryProgress?: HistoryProgressProps
+  onAuditSearchQueryChange?: (query: string) => void
   initialTab?: AccountTab
   initialIntegrations?: readonly IntegrationViewModel[]
   catalog?: readonly IntegrationCatalogItem[]
@@ -122,6 +128,10 @@ function eventSummary(integration: IntegrationViewModel, t: (key: string, variab
 }
 
 export function IntegrationsPage({
+  canEdit = true,
+  canAdminister = true,
+  auditHistoryProgress,
+  onAuditSearchQueryChange,
   initialTab = 'integrations',
   initialIntegrations = demoIntegrations,
   catalog = demoIntegrationCatalog,
@@ -137,7 +147,7 @@ export function IntegrationsPage({
   onExportAudit,
 }: IntegrationsPageProps) {
   const { t } = useI18n()
-  const [activeTab, setActiveTab] = useState<AccountTab>(initialTab)
+  const [activeTab, setActiveTab] = useState<AccountTab>(canAdminister ? initialTab : 'integrations')
   const [integrations, setIntegrations] = useState<readonly IntegrationViewModel[]>(initialIntegrations)
   const [category, setCategory] = useState<IntegrationFilter>('all')
   const [query, setQuery] = useState('')
@@ -163,12 +173,14 @@ export function IntegrationsPage({
     })
   }, [catalog, category, focusMonitorId, integrations, query])
 
+  const visibleTabs = canAdminister ? tabs : tabs.filter((tab) => tab.value === 'integrations')
+
   const switchTabWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
-    const currentIndex = tabs.findIndex((tab) => tab.value === activeTab)
+    const currentIndex = visibleTabs.findIndex((tab) => tab.value === activeTab)
     const direction = event.key === 'ArrowRight' ? 1 : -1
-    const next = tabs[(currentIndex + direction + tabs.length) % tabs.length]
+    const next = visibleTabs[(currentIndex + direction + visibleTabs.length) % visibleTabs.length]
     setActiveTab(next.value)
     document.getElementById(`account-tab-${next.value}`)?.focus()
   }
@@ -199,7 +211,7 @@ export function IntegrationsPage({
       destinationLabel: original?.destinationLabel ?? destinationLabel(input, t),
       events: input.events,
       monitorIds: input.monitorIds,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(presentationNow()).toISOString(),
     }
 
     setSaving(true)
@@ -228,7 +240,7 @@ export function IntegrationsPage({
   }
 
   const toggleIntegration = async (integration: IntegrationViewModel, active: boolean) => {
-    const optimistic = { ...integration, active, updatedAt: new Date().toISOString() }
+    const optimistic = { ...integration, active, updatedAt: new Date(presentationNow()).toISOString() }
     setIntegrations((current) => current.map((item) => (item.id === integration.id ? optimistic : item)))
     try {
       const saved = await onToggleIntegration?.(integration.id, active)
@@ -257,11 +269,11 @@ export function IntegrationsPage({
       <PageHeader
         title={t('integrations.title')}
         description={t('integrations.description')}
-        actions={activeTab === 'integrations' ? <Button onClick={() => openCreate()}><Plus size={17} /> {t('integrations.add')}</Button> : undefined}
+        actions={canEdit && activeTab === 'integrations' ? <Button onClick={() => openCreate()}><Plus size={17} /> {t('integrations.add')}</Button> : undefined}
       />
 
       <div className="account-tabs" role="tablist" aria-label={t('integrations.sections')} onKeyDown={switchTabWithKeyboard}>
-        {tabs.map(({ value, labelKey, icon: Icon }) => (
+        {visibleTabs.map(({ value, labelKey, icon: Icon }) => (
           <button
             key={value}
             id={`account-tab-${value}`}
@@ -305,7 +317,7 @@ export function IntegrationsPage({
                       <div className="integration-card__header">
                         <div className="integration-logo"><CategoryIcon size={24} /></div>
                         <div><h2>{item.name}</h2><p>{item.description}</p></div>
-                        <Button size="sm" onClick={() => openCreate(item.type)}><Plus size={16} /> {t('common.add')}</Button>
+                        {canEdit && <Button size="sm" onClick={() => openCreate(item.type)}><Plus size={16} /> {t('common.add')}</Button>}
                       </div>
                       {configured.length > 0 && (
                         <div className="configured-integrations">
@@ -317,9 +329,9 @@ export function IntegrationsPage({
                               <span className="muted configured-integration__updated">{t('integrations.updated', { time: formatRelativeTime(integration.updatedAt) })}</span>
                               {integration.needsAttention && <Badge tone="warning">{t('integrations.activationNeeded')}</Badge>}
                               {!integration.needsAttention && <Badge tone={integration.active ? 'success' : 'neutral'}>{integration.active ? t('common.active') : t('common.paused')}</Badge>}
-                              <Toggle checked={integration.active} onChange={(active) => void toggleIntegration(integration, active)} label={t(integration.active ? 'integrations.pauseNamed' : 'integrations.enableNamed', { name: integration.name })} />
+                              {canEdit && <><Toggle checked={integration.active} onChange={(active) => void toggleIntegration(integration, active)} label={t(integration.active ? 'integrations.pauseNamed' : 'integrations.enableNamed', { name: integration.name })} />
                               <IconButton label={t('common.editNamed', { name: integration.name })} onClick={() => openEdit(integration)}><Pencil size={16} /></IconButton>
-                              <IconButton label={t('common.deleteNamed', { name: integration.name })} onClick={() => setDeleting(integration)}><Trash2 size={16} /></IconButton>
+                              <IconButton label={t('common.deleteNamed', { name: integration.name })} onClick={() => setDeleting(integration)}><Trash2 size={16} /></IconButton></>}
                             </article>
                           ))}
                         </div>
@@ -333,13 +345,13 @@ export function IntegrationsPage({
         </div>
       </div>
 
-      <div id="account-panel-api-keys" hidden={activeTab !== 'api-keys'} role="tabpanel" aria-labelledby="account-tab-api-keys">
+      {canAdminister && <div id="account-panel-api-keys" hidden={activeTab !== 'api-keys'} role="tabpanel" aria-labelledby="account-tab-api-keys">
         <ApiKeysView initialKeys={initialApiKeys} monitors={monitors} onCreate={onCreateApiKey} onRevoke={onRevokeApiKey} />
-      </div>
+      </div>}
 
-      <div id="account-panel-audit-log" hidden={activeTab !== 'audit-log'} role="tabpanel" aria-labelledby="account-tab-audit-log">
-        <AuditLogView entries={auditEntries} onExport={onExportAudit} />
-      </div>
+      {canAdminister && <div id="account-panel-audit-log" hidden={activeTab !== 'audit-log'} role="tabpanel" aria-labelledby="account-tab-audit-log">
+        <AuditLogView entries={auditEntries} onExport={onExportAudit} historyProgress={auditHistoryProgress} onSearchQueryChange={onAuditSearchQueryChange} />
+      </div>}
 
       <IntegrationFormModal
         open={Boolean(editor)}

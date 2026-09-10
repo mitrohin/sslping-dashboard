@@ -209,6 +209,7 @@ function mockAuth(api: ReturnType<typeof fakeApi>, overrides: Partial<AuthContex
     api: api as unknown as ApiClient,
     user,
     workspace,
+    workspaceRole: 'owner',
     tenant: workspace,
     ...overrides,
   } as AuthContextValue)
@@ -361,7 +362,7 @@ describe('LiveIntegrationsPage', () => {
     expect(document.body).not.toHaveTextContent('must-never-reach-the-view')
     expect(api.listIntegrations).toHaveBeenCalledWith(workspace.id)
     expect(api.listApiKeys).toHaveBeenCalledWith(workspace.id)
-    expect(api.listAuditLogs).toHaveBeenCalledWith(workspace.id, { limit: 100 })
+    expect(api.listAuditLogs).toHaveBeenCalledWith(workspace.id, expect.objectContaining({ limit: 100 }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(api.listMonitors).toHaveBeenCalledWith(workspace.id, { limit: 100 })
 
     fireEvent.click(screen.getByRole('tab', { name: 'Audit log' }))
@@ -439,4 +440,16 @@ describe('LiveIntegrationsPage', () => {
     expect(secret).toHaveValue('sp_live_one_time_secret')
     expect(screen.getByText('Checkout API')).toBeInTheDocument()
   })
+})
+
+
+it('loads read-only integration resources for a viewer without forbidden admin requests', async () => {
+  const api = fakeApi()
+  mockAuth(api, { workspaceRole: 'viewer' })
+  render(<LiveIntegrationsPage />)
+  expect((await screen.findAllByText('Production Slack')).length).toBeGreaterThan(0)
+  expect(api.listApiKeys).not.toHaveBeenCalled()
+  expect(api.listAuditLogs).not.toHaveBeenCalled()
+  expect(screen.queryByRole('tab', { name: 'API keys' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /add integration/i })).not.toBeInTheDocument()
 })

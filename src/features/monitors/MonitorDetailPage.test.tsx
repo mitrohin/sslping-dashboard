@@ -218,7 +218,7 @@ describe('MonitorDetailPage live controls', () => {
     expect(screen.getByText('58s')).toBeInTheDocument()
 
     act(() => vi.advanceTimersByTime(3000))
-    expect(screen.getByText('61s')).toBeInTheDocument()
+    expect(screen.getByText('1m 1s')).toBeInTheDocument()
   })
 
   it('filters the response chart through an accessible regions menu', () => {

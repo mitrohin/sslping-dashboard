@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
-import { useEffect, useId, useRef } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useI18n } from '../app/I18nProvider'
 import { CheckCircle2, ChevronDown, CircleAlert, Info, Search, TriangleAlert, X } from 'lucide-react'
 
 let openModalCount = 0
@@ -199,14 +200,27 @@ export function Field({
   children: ReactNode
   className?: string
 }) {
+  const fieldId = useId()
+  const hintId = `${fieldId}-hint`
+  const errorId = `${fieldId}-error`
+  const describe = (nodes: ReactNode): ReactNode => Children.map(nodes, (node) => {
+    if (!isValidElement<Record<string, unknown>>(node)) return node
+    const control = node.type === 'input' || node.type === 'textarea' || node.type === 'select' || node.type === Select
+    if (control) return cloneElement(node, {
+      'aria-describedby': [node.props['aria-describedby'], hint ? hintId : undefined, error ? errorId : undefined].filter(Boolean).join(' ') || undefined,
+      'aria-invalid': error ? true : node.props['aria-invalid'],
+    })
+    return node.props.children ? cloneElement(node, { children: describe(node.props.children as ReactNode) }) : node
+  })
   return (
     <label className={`field ${className}`}>
+
       <span className="field__intro">
         <span className="field__label">{label}</span>
-        {hint && <span className="field__hint">{hint}</span>}
+        {hint && <span id={hintId} className="field__hint">{hint}</span>}
       </span>
-      {children}
-      {error && <span className="field__error">{error}</span>}
+      {describe(children)}
+      {error && <span id={errorId} className="field__error">{error}</span>}
     </label>
   )
 }
@@ -287,6 +301,7 @@ export function Modal({
   width?: 'sm' | 'md' | 'lg' | 'xl'
   className?: string
 }) {
+  const { t } = useI18n()
   const titleId = useId()
   const dialogRef = useRef<HTMLElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -360,7 +375,7 @@ export function Modal({
         <header className="modal__header">
           {icon && <div className="modal__icon">{icon}</div>}
           <h2 id={titleId}>{title}</h2>
-          <IconButton label="Close" className="modal__close" onClick={onClose}>
+          <IconButton label={t('common.close')} className="modal__close" onClick={onClose}>
             <X size={24} />
           </IconButton>
         </header>

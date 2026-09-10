@@ -1,3 +1,4 @@
+import { HistoryProgress, type HistoryProgressProps } from '../../components/HistoryProgress'
 import { useMemo, useState } from 'react'
 import { Download, FileClock, Filter, ShieldCheck } from 'lucide-react'
 import { formatDate } from '../../lib/format'
@@ -120,11 +121,13 @@ function formatAction(action: string): string {
 }
 
 export interface AuditLogViewProps {
+  historyProgress?: HistoryProgressProps
+  onSearchQueryChange?: (query: string) => void
   entries?: readonly AuditEntry[]
   onExport?: (entries: readonly AuditEntry[]) => void | Promise<void>
 }
 
-export function AuditLogView({ entries = demoAuditEntries, onExport }: AuditLogViewProps) {
+export function AuditLogView({ entries = demoAuditEntries, onExport, historyProgress, onSearchQueryChange }: AuditLogViewProps) {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<'all' | AuditEntry['category']>('all')
@@ -181,11 +184,11 @@ export function AuditLogView({ entries = demoAuditEntries, onExport }: AuditLogV
     <section className="account-tab-panel" role="tabpanel" aria-label={t('audit.title')}>
       <div className="account-section-heading">
         <div><h2>{t('audit.title')}<span className="title-dot">.</span></h2><p>{t('audit.description')}</p></div>
-        <Button variant="secondary" onClick={exportLog} disabled={exporting || filtered.length === 0}><Download size={17} />{exporting ? t('audit.exporting') : t('audit.export')}</Button>
+        <Button variant="secondary" onClick={exportLog} disabled={exporting || filtered.length === 0 || historyProgress?.hasMore || historyProgress?.loading}><Download size={17} />{exporting ? t('audit.exporting') : t('audit.export')}</Button>
       </div>
 
       <div className="audit-toolbar">
-        <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('audit.search')} aria-label={t('audit.searchLabel')} />
+        <SearchInput value={query} onChange={(event) => { setQuery(event.target.value); onSearchQueryChange?.(event.target.value) }} placeholder={t('audit.search')} aria-label={t('audit.searchLabel')} />
         <label><Filter size={16} /><span className="sr-only">{t('audit.category')}</span><Select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}><option value="all">{t('audit.allCategories')}</option>{categories.map((item) => <option key={item} value={item}>{t(`audit.category.${item}`)}</option>)}</Select></label>
         <label><ShieldCheck size={16} /><span className="sr-only">{t('audit.outcome')}</span><Select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)}><option value="all">{t('audit.allOutcomes')}</option><option value="success">{t('audit.outcome.success')}</option><option value="warning">{t('audit.outcome.warning')}</option><option value="failure">{t('audit.outcome.failure')}</option></Select></label>
       </div>
@@ -215,6 +218,7 @@ export function AuditLogView({ entries = demoAuditEntries, onExport }: AuditLogV
         )}
         <footer className="account-table-footer"><span>{t('audit.eventsCount', { visible: filtered.length, total: entries.length })}</span><span className="muted">{t('audit.appendOnly')}</span></footer>
       </Panel>
+      {historyProgress && <HistoryProgress {...historyProgress} />}
     </section>
   )
 }

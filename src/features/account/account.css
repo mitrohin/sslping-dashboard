@@ -287,3 +287,7 @@
   .api-key-row { grid-template-columns: minmax(0, 1fr) 40px; }
   .api-key-row > .badge { display: none; }
 }
+
+.capability-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.history-progress { padding: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.history-progress > p { color: var(--text-muted); margin: 0; }

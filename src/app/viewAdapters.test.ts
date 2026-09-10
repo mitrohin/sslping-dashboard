@@ -13,6 +13,7 @@ import type {
   StatusPage,
   StatusPageDetail,
   User,
+  UptimeStats,
 } from '../api/types'
 import {
   toApiKeyViewModel,
@@ -637,4 +638,22 @@ describe('toAuditLogViewModel', () => {
       detail: 'Endpoint rejected the validation request.',
     })
   })
+})
+
+
+it('does not present missing observations as measured availability and retains freshness metadata', () => {
+  const result = toMonitorViewModel(monitor, {
+    now,
+    stats: { availability: 100, availability_known: false, sample_coverage_complete: false, unknown_seconds: 86400, observation_stale: true } as UptimeStats,
+    latest: {
+      monitor_id: monitor.id, checked_at: now, latency_ms: 100, root_cause: 'timeout',
+      certificate_expires_at: '2027-08-01T00:00:00Z',
+      certificate_evidence: { checked_at: now, refresh_after: '2026-07-26T12:00:00Z', stale: true },
+    },
+  })
+  expect(result.uptime24h).toBeUndefined()
+  expect(result.availabilityCoverage).toMatchObject({ known: false, complete: false, unknownSeconds: 86400 })
+  expect(result.observationStale).toBe(true)
+  expect(result.statusReason).toBe('timeout')
+  expect(result.sslCertificate).toMatchObject({ checkedAt: now, refreshAfter: '2026-07-26T12:00:00Z', stale: true })
 })

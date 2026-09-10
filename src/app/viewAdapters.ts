@@ -361,6 +361,9 @@ function expirySnapshot(
   const daysRemaining = Math.ceil((expiresTimestamp - referenceTime) / DAY_MS)
   return {
     expiresAt,
+    checkedAt: recordString(envelope, 'last_known_checked_at') ?? recordString(envelope, 'checked_at'),
+    refreshAfter: recordString(envelope, 'refresh_after'),
+    stale: typeof envelope?.stale === 'boolean' ? envelope.stale : undefined,
     daysRemaining,
     state: expiresTimestamp <= referenceTime ? 'expired' : daysRemaining <= 30 ? 'warning' : 'ok',
     ...(kind === 'certificate'
@@ -385,7 +388,7 @@ function expirySnapshot(
   }
 }
 
-function latestExpirySnapshot(expiresAt: string | undefined, issuer: string | undefined, referenceTime: number): ExpirySnapshot | undefined {
+function latestExpirySnapshot(expiresAt: string | undefined, issuer: string | undefined, referenceTime: number, freshness?: import('../api/types').SupplementalEvidenceFreshness): ExpirySnapshot | undefined {
   const expiresTimestamp = toTimestamp(expiresAt)
   if (!expiresAt || expiresTimestamp === null) return undefined
   const daysRemaining = Math.ceil((expiresTimestamp - referenceTime) / DAY_MS)
@@ -394,6 +397,9 @@ function latestExpirySnapshot(expiresAt: string | undefined, issuer: string | un
     daysRemaining,
     state: expiresTimestamp <= referenceTime ? 'expired' : daysRemaining <= 30 ? 'warning' : 'ok',
     issuer,
+    checkedAt: freshness?.last_known_checked_at ?? freshness?.checked_at,
+    refreshAfter: freshness?.refresh_after,
+    stale: freshness?.stale,
   }
 }
 
@@ -409,7 +415,7 @@ function domainEvidenceFromCheck(check: CheckResult | undefined): MonitorDomainE
   const details = childRecord(envelope, 'details')
   return {
     attempted: true,
-    checked_at: compactEvidenceString(recordString(envelope, 'finished_at') ?? check?.finished_at ?? check?.started_at, 64),
+    checked_at: compactEvidenceString(recordString(envelope, 'checked_at') ?? recordString(envelope, 'finished_at') ?? check?.finished_at ?? check?.started_at, 64),
     status: compactEvidenceString(recordString(envelope, 'status'), 32),
     root_cause: compactEvidenceString(recordString(envelope, 'root_cause'), 64),
     source: compactEvidenceString(recordString(details, 'source') ?? recordString(envelope, 'source'), 32),
@@ -456,7 +462,7 @@ export interface MonitorAdapterOptions {
   history?: readonly CheckResultHour[]
   latest?: MonitorLatestSummary
   stats?: UptimeStats
-  activeIncident?: Pick<Incident, 'id'>
+  activeIncident?: Pick<Incident, 'id' | 'root_cause'>
   latestIncident?: Pick<Incident, 'started_at' | 'resolved_at'>
   now?: DateInput
 }
@@ -485,7 +491,7 @@ export function toMonitorViewModel(
   const complianceReport = isRecord(complianceReportValue) ? complianceReportValue as unknown as import('../api/types').ComplianceReport : undefined
   const evidenceOnly = type === 'leakcheck' || type === 'compliance'
   const domainRegistration = tracksDomainExpiry
-    ? latestExpirySnapshot(latest?.domain_expires_at, latest?.domain_registrar, referenceTime)
+    ? latestExpirySnapshot(latest?.domain_expires_at, latest?.domain_registrar, referenceTime, latest?.domain_evidence)
       ?? expirySnapshot(lastCheck, 'domain', referenceTime)
     : undefined
   const domainEvidence = tracksDomainExpiry
@@ -508,8 +514,19 @@ export function toMonitorViewModel(
     slowThresholdMs: optionalNonNegativeNumber(monitor.slow_threshold_ms),
     lastCheckedAt: monitor.last_check_at ?? latest?.checked_at ?? lastCheck?.finished_at ?? lastCheck?.started_at,
     statusChangedAt: monitor.last_status_change_at,
+    statusReason: options.activeIncident?.root_cause ?? latest?.root_cause ?? lastCheck?.root_cause,
+    observationStale: options.stats?.observation_stale,
+    availabilityCoverage: options.stats ? {
+      known: options.stats.availability_known,
+      complete: options.stats.sample_coverage_complete,
+      sampleFrom: options.stats.sample_from ?? undefined,
+      sampleTo: options.stats.sample_to ?? undefined,
+      unknownSeconds: options.stats.unknown_seconds,
+      resolutionSeconds: options.stats.coverage_resolution_seconds,
+      method: options.stats.availability_method,
+    } : undefined,
     responseTimeMs: optionalNonNegativeNumber(latest?.latency_ms ?? lastCheck?.latency_ms),
-    uptime24h: evidenceOnly ? undefined : clampPercentage(options.stats?.availability),
+    uptime24h: evidenceOnly || options.stats?.availability_known === false ? undefined : clampPercentage(options.stats?.availability),
     incidentCount24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.incidents),
     downtimeSeconds24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.downtime_seconds),
     mtbfSeconds24h: evidenceOnly ? undefined : optionalNonNegativeNumber(options.stats?.mtbf_seconds),
@@ -519,7 +536,7 @@ export function toMonitorViewModel(
     lastIncidentAt: options.latestIncident?.resolved_at ?? options.latestIncident?.started_at,
     hasOpenIncident: Boolean(options.activeIncident),
     sslCertificate: tracksCertificateExpiry
-      ? latestExpirySnapshot(latest?.certificate_expires_at, latest?.certificate_issuer, referenceTime)
+      ? latestExpirySnapshot(latest?.certificate_expires_at, latest?.certificate_issuer, referenceTime, latest?.certificate_evidence)
         ?? expirySnapshot(lastCheck, 'certificate', referenceTime)
       : undefined,
     domainRegistration,

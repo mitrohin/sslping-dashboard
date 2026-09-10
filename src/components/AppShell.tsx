@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { recoverableImport } from '../lib/recoverableImport'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
   Activity,
@@ -22,7 +23,7 @@ import { useAuth } from '../app/AuthProvider'
 import { endDemoSession, isDemoSession } from '../app/DashboardGate'
 import { clearAdministratorSessionBackup, restoreAdministratorSession } from '../app/impersonation'
 import { SUPPORT_UNREAD_REFRESH_EVENT } from '../features/support/unread'
-import { WorkspaceBillingModal } from '../features/billing/WorkspaceBillingModal'
+const WorkspaceBillingModal = lazy(() => recoverableImport(() => import('../features/billing/WorkspaceBillingModal').then((module) => ({ default: module.WorkspaceBillingModal }))))
 import { LanguageSelect, useI18n } from '../app/I18nProvider'
 import { INCIDENT_ASSIGNMENT_REFRESH_EVENT } from '../features/operations/events'
 import type { BillingPlan } from '../api/types'
@@ -82,7 +83,9 @@ export function AppShell() {
   const adminNavigation = { to: '/admin', labelKey: isAccountant ? 'nav.billingAdmin' : 'nav.admin', icon: Shield }
   const availableNavItems = isAccountant ? [adminNavigation] : isSystemAdministrator ? [...navItems, adminNavigation] : navItems
 
+  const unreadRequest = useRef(0)
   const refreshSupportUnread = useCallback(async () => {
+    const request = ++unreadRequest.current
     if (!authenticated || demo) {
       setSupportUnread(0)
       setAdminUnread(0)
@@ -93,26 +96,29 @@ export function AppShell() {
     const [customerResult, adminResult, incidentsResult] = await Promise.allSettled([
       isAccountant ? Promise.resolve(null) : api.getSupportTicketSummary(),
       isSystemAdministrator ? api.adminGetSupportTicketSummary() : Promise.resolve(null),
-      !isAccountant && workspace?.id ? api.listIncidents(workspace.id, { limit: 100 }) : Promise.resolve(null),
+      !isAccountant && workspace?.id ? api.getIncidentSummary(workspace.id) : Promise.resolve(null),
     ])
+    if (request !== unreadRequest.current) return
     if (customerResult.status === 'fulfilled') setSupportUnread(customerResult.value?.unread_tickets ?? 0)
     if (adminResult.status === 'fulfilled') setAdminUnread(adminResult.value?.unread_tickets ?? 0)
     if (incidentsResult.status === 'fulfilled') {
-      const items = incidentsResult.value?.items ?? []
-      setAssignedIncidentCount(items.filter((incident) => incident.status !== 'resolved' && incident.assigned_to === user?.id).length)
+      setAssignedIncidentCount(incidentsResult.value?.assigned_to_me_count ?? 0)
     }
-  }, [api, authenticated, demo, isAccountant, isSystemAdministrator, workspace?.id])
+  }, [api, authenticated, demo, isAccountant, isSystemAdministrator, workspace?.id, user?.id])
 
   useEffect(() => {
-    void refreshSupportUnread()
-    const timer = window.setInterval(() => void refreshSupportUnread(), 30_000)
-    const refresh = () => void refreshSupportUnread()
+    const refresh = () => { if (document.visibilityState !== 'hidden') void refreshSupportUnread() }
+    refresh()
+    const timer = window.setInterval(refresh, 30_000)
     window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
     window.addEventListener(SUPPORT_UNREAD_REFRESH_EVENT, refresh)
     window.addEventListener(INCIDENT_ASSIGNMENT_REFRESH_EVENT, refresh)
     return () => {
+      ++unreadRequest.current
       window.clearInterval(timer)
       window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
       window.removeEventListener(SUPPORT_UNREAD_REFRESH_EVENT, refresh)
       window.removeEventListener(INCIDENT_ASSIGNMENT_REFRESH_EVENT, refresh)
     }
@@ -301,7 +307,7 @@ export function AppShell() {
         </div>
       </Modal>
 
-      {canManageBilling && <WorkspaceBillingModal open={upgradeOpen} onClose={() => { setUpgradeOpen(false); void refreshActiveBillingPlan() }} />}
+      {canManageBilling && upgradeOpen && <Suspense fallback={<div role="status">{t('common.loading')}</div>}><WorkspaceBillingModal open onClose={() => { setUpgradeOpen(false); void refreshActiveBillingPlan() }} /></Suspense>}
     </div>
   )
 }
