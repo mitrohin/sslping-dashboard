@@ -13,7 +13,7 @@ ENV VITE_DEMO_MODE=${VITE_DEMO_MODE}
 ENV VITE_TURNSTILE_SITE_KEY=${VITE_TURNSTILE_SITE_KEY}
 RUN test -n "${VITE_TURNSTILE_SITE_KEY}" && npm run build
 
-FROM nginxinc/nginx-unprivileged:1.30.4-alpine
+FROM nginxinc/nginx-unprivileged:1.31.6-alpine
 COPY --chown=101:101 deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --chown=101:101 deploy/nginx/security-headers.inc /etc/nginx/conf.d/security-headers.inc
 COPY --from=build --chown=101:101 /app/dist /usr/share/nginx/html
