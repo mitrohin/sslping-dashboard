@@ -77,7 +77,7 @@ export function AuthPage(props: AuthPageProps) {
 
   return (
     <main className="auth-layout">
-      <section className="auth-showcase" aria-label="SSLPing overview">
+      <section className="auth-showcase" aria-label={t('auth.demoExample')}>
         <div className="auth-showcase__content">
           <Brand />
           <div className="auth-showcase__copy">
@@ -86,6 +86,7 @@ export function AuthPage(props: AuthPageProps) {
             <p>{t('auth.heroText')}</p>
           </div>
           <div className="auth-signal-card">
+            <p className="auth-signal-card__demo">{t('auth.demoExample')}</p>
             <div className="auth-signal-card__header">
               <span><span className="status-dot status-dot--up" /> {t('auth.allOperational')}</span>
               <strong>99.99%</strong>
@@ -170,8 +171,8 @@ export function AuthPage(props: AuthPageProps) {
               </Field>
             )}
 
-            {props.error && <div className="auth-message auth-message--error">{props.error}</div>}
-            {'success' in props && props.success && <div className="auth-message auth-message--success">{props.success}</div>}
+            <div role="alert" aria-atomic="true" className={props.error ? 'auth-message auth-message--error' : 'auth-feedback-empty'}>{props.error ?? ''}</div>
+            <div role="status" aria-atomic="true" className={'success' in props && props.success ? 'auth-message auth-message--success' : 'auth-feedback-empty'}>{'success' in props ? props.success ?? '' : ''}</div>
 
             {((props.mode === 'register') || (props.mode === 'login' && props.captchaRequired)) && TURNSTILE_SITE_KEY && (
               <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} action={props.mode === 'login' ? 'login' : 'register'} resetSignal={props.challengeReset ?? 0} onToken={setTurnstileToken} />
@@ -193,7 +194,11 @@ export function AuthPage(props: AuthPageProps) {
             <Link className="auth-demo-link" to="/demo">{t('auth.demo')}</Link>
           )}
         </div>
-        <p className="auth-legal">{t('auth.legal')}</p>
+        <nav className="auth-legal" aria-label={t('auth.legalLinks')}>
+          <a href={`https://sslping.io/${locale === 'ru' ? 'ru/' : ''}terms`}>{t('auth.terms')}</a>
+          <span aria-hidden="true"> · </span>
+          <a href={`https://sslping.io/${locale === 'ru' ? 'ru/' : ''}privacy`}>{t('auth.privacy')}</a>
+        </nav>
       </section>
     </main>
   )

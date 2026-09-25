@@ -208,7 +208,7 @@ export function formatRelativeTime(
   const amount = Math.round(differenceSeconds / size)
 
   return new Intl.RelativeTimeFormat(options.locale ?? activeLocale(), {
-    numeric: options.numeric ?? 'always',
+    numeric: amount === 0 ? 'auto' : options.numeric ?? 'always',
   }).format(amount, unit)
 }
 

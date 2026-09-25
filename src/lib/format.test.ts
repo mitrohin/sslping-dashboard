@@ -92,3 +92,14 @@ describe('status formatting', () => {
     expect(statusTone('new-status')).toBe('neutral')
   })
 })
+
+describe('relative timestamps at the current instant', () => {
+  it.each(['en', 'ru', 'tr', 'ar', 'he', 'zh-Hant'])('uses localized now instead of a future zero in %s', (locale) => {
+    const now = new Date('2026-09-25T10:00:00Z')
+    for (const offset of [-400, 0, 400]) {
+      expect(formatRelativeTime(new Date(now.getTime() + offset), now, { locale })).toBe(new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(0, 'second'))
+    }
+    expect(formatRelativeTime(new Date(now.getTime() - 1000), now, { locale })).toBe(new Intl.RelativeTimeFormat(locale).format(-1, 'second'))
+    expect(formatRelativeTime(new Date(now.getTime() + 1000), now, { locale })).toBe(new Intl.RelativeTimeFormat(locale).format(1, 'second'))
+  })
+})

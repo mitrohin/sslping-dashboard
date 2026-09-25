@@ -323,7 +323,7 @@ describe('auth UI controllers', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1234' } })
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(/workspace has been added/i)
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/workspace has been added/i))
     expect(screen.getByText('/accept-invite')).toBeInTheDocument()
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
       '/v1/auth/login',
@@ -389,7 +389,7 @@ describe('auth UI controllers', () => {
     expect(screen.getByText('/accept-invite')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /try accepting again/i }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(/workspace has been added/i)
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/workspace has been added/i))
     expect(invitationAttempts).toBe(2)
   })
 })

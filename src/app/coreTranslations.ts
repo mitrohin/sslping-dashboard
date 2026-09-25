@@ -57,3 +57,17 @@ export const coreTranslations: Record<Locale, Messages> = {
   },
 }
 
+
+// Factual labels: sample metrics and document links do not imply live readings or legal certification.
+const authInformation: Record<Locale, [string, string, string, string, string]> = {
+  en: ['Illustrative example · sample data', 'Service information', 'Terms of use', 'Privacy information', 'Public status pages'],
+  es: ['Ejemplo ilustrativo · datos de muestra', 'Información del servicio', 'Condiciones de uso', 'Información de privacidad', 'Páginas de estado públicas'],
+  zh: ['界面示例 · 演示数据', '服务信息', '使用条款', '隐私信息', '公开状态页面'],
+  ka: ['საილუსტრაციო მაგალითი · სადემონსტრაციო მონაცემები', 'სერვისის ინფორმაცია', 'გამოყენების პირობები', 'კონფიდენციალურობის ინფორმაცია', 'საჯარო სტატუსის გვერდები'],
+  tr: ['Arayüz örneği · örnek veriler', 'Hizmet bilgileri', 'Kullanım koşulları', 'Gizlilik bilgileri', 'Herkese açık durum sayfaları'],
+  ru: ['Пример интерфейса · демонстрационные данные', 'Информация о сервисе', 'Условия использования', 'Информация о приватности', 'Публичные страницы состояния'],
+}
+for (const locale of Object.keys(authInformation) as Locale[]) {
+  const [demoExample, legalLinks, terms, privacy, publicPages] = authInformation[locale]
+  Object.assign(coreTranslations[locale], { 'auth.demoExample': demoExample, 'auth.legalLinks': legalLinks, 'auth.terms': terms, 'auth.privacy': privacy, 'auth.gdpr': publicPages })
+}

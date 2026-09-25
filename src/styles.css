@@ -732,3 +732,10 @@ input[type="date"], input[type="datetime-local"], input[type="time"] { color-sch
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.auth-signal-card__demo { margin: 0 0 14px; color: #bad0d5; font-size: 12px; line-height: 1.5; }
+.auth-legal a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.auth-legal a:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+
+/* Keep live regions mounted before feedback arrives, without adding empty grid rows. */
+.auth-feedback-empty { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

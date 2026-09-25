@@ -1,3 +1,4 @@
+import { observationCopy, type ObservationCopy } from './observation-i18n'
 import type { MonitorStatus, StatusPageLanguage } from '../../api'
 import { extendedPublicStatusCopy, type ExtendedStatusPageLanguage } from './extended-i18n'
 
@@ -189,10 +190,11 @@ const translations: Record<OriginalStatusPageLanguage, PublicStatusCopy> = {
   },
 }
 
-export function publicStatusCopy(language: StatusPageLanguage): PublicStatusCopy {
-  if (language === 'en') return en
-  if (language in translations) return translations[language as OriginalStatusPageLanguage]
-  return extendedPublicStatusCopy[language as ExtendedStatusPageLanguage]
+export function publicStatusCopy(language: StatusPageLanguage): PublicStatusCopy & ObservationCopy {
+  const base = language === 'en' ? en : language in translations
+    ? translations[language as keyof typeof translations]
+    : extendedPublicStatusCopy[language as ExtendedStatusPageLanguage]
+  return { ...base, ...observationCopy(language) }
 }
 
 const languageLocales: Record<StatusPageLanguage, string> = {

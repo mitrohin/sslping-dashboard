@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { PublicStatusSnapshot } from '../../api'
 import { PublicStatusPage, type PublicStatusApi } from './PublicStatusPage'
-import { statusPageLocale } from './i18n'
+import { publicStatusCopy, statusPageLocale } from './i18n'
 
 afterEach(() => {
   cleanup()
@@ -384,8 +384,30 @@ it('distinguishes independent catalog checks, region metadata, stale evidence an
   expect(await screen.findByText(/SSLPing independently checks website availability/)).toBeInTheDocument()
   expect(screen.getByText(/Catalog country: United States/)).toBeInTheDocument()
   expect(screen.getByText('Check locations: eu-west')).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Fresh checks are unavailable' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'No fresh checks' })).toBeInTheDocument()
   expect(screen.getByText(/Current status is unknown/)).toBeInTheDocument()
   expect(screen.getByText(/Page refreshed/)).toBeInTheDocument()
   expect(screen.queryByText('Waiting for the first check')).not.toBeInTheDocument()
+})
+
+
+describe('localized observation context', () => {
+  it.each(['tr', 'ar', 'he', 'ru'] as const)('explains stale checks and independent monitoring in %s', async (language) => {
+    const copy = publicStatusCopy(language)
+    renderRoute(createApi({ ...snapshot, overall_status: 'pending',
+      page: { ...snapshot.page, language, country_code: language === 'tr' ? 'TR' : 'AE', monitoring_source: 'public_catalog' },
+      components: [{ ...snapshot.components![0], status: 'pending', observation_stale: true, check_regions: ['eu-central', 'ap-southeast'] }],
+    }))
+    expect(await screen.findByRole('heading', { name: copy.noFreshChecks })).toBeInTheDocument()
+    expect(screen.getByText(copy.publicCatalogDisclosure)).toBeInTheDocument()
+    expect(screen.getByText(copy.refreshExplanation)).toBeInTheDocument()
+    expect(screen.getByText(`${copy.checkLocations}: eu-central, ap-southeast`)).toBeInTheDocument()
+    expect(screen.getByText(`${copy.noFreshChecks}. ${copy.staleExplanation}`)).toBeInTheDocument()
+    expect(screen.getByText((text) => text.startsWith(`${copy.catalogCountry}:`) && text.endsWith(copy.countryExplanation))).toBeInTheDocument()
+    expect(screen.getByText((text, node) => node?.tagName === 'TIME' && text.startsWith(copy.pageRefreshed))).toBeInTheDocument()
+    {
+      expect(screen.queryByText(/SSLPing independently checks/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/^Check locations:/)).not.toBeInTheDocument()
+    }
+  })
 })
