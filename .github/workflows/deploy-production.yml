@@ -39,6 +39,7 @@ jobs:
       - name: Install and test
         run: |
           npm ci
+          npm run test:security
           npm test -- --run
           npm run check
 

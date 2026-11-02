@@ -22,7 +22,7 @@ The backend API is expected in the sibling `../backend` repository. During devel
 
 ## Run locally
 
-Requirements: Node.js 20+ and the SSLPing backend running on port `8080`.
+Requirements: Node.js 22.22+ and the SSLPing backend running on port `8080`.
 
 ```bash
 npm install
@@ -87,4 +87,29 @@ The test suite covers API/session behavior, auth flows, monitor mappings, live d
 - `/:slug` on `status.sslping.io` for public status pages (`/status/:slug` redirects for compatibility)
 - `/demo` for the local product preview
 
-This directory is its own local Git repository and has no GitHub remote configured.
+This directory is its own Git repository.
+
+## Security maintenance
+
+`npm run test:security` checks the fail-closed selection of a deployed image.
+The scheduled/manual `Security maintenance` workflow runs three independent
+jobs: dependency audit (moderate and above), freshly built runtime image, and
+an image observed running in production (high/critical container findings).
+A failed dependency audit does not skip either image scan.
+
+The deployed-image job runs only on `main`, in the existing protected
+`production` environment, using its `DIGITALOCEAN_ACCESS_TOKEN`. It verifies
+the cluster ID and API endpoint, then reads only this deployment and its pods.
+Every desired replica must be ready on the same immutable registry digest.
+Missing access, incomplete rollouts, missing runtime evidence, and image
+mismatches fail the job; they are never reported as a clean scan. The job
+summary records the selected digest and observation time. A later rollout
+requires a new scan.
+
+Registry login is read-only and expires after 20 minutes. The scanner receives
+only an exported image archive, without Kubernetes or registry credentials.
+The workflow does not deploy, restart workloads, read Kubernetes Secrets, or
+execute the application image. Temporary kubeconfig and registry access files
+are removed even after failure. No new GitHub secret is required beyond the
+existing production deployment token; that token must permit cluster reads
+and a registry pull. Environment approval policies also apply to this job.
