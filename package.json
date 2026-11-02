@@ -10,7 +10,7 @@
     "check": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:security": "node --test deploy/select-deployed-image.node-test.mjs"
+    "test:security": "node --test deploy/select-deployed-image.node-test.mjs deploy/verify-deployed-release.node-test.mjs"
   },
   "dependencies": {
     "lucide-react": "1.26.0",

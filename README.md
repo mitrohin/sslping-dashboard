@@ -91,7 +91,20 @@ This directory is its own Git repository.
 
 ## Security maintenance
 
-`npm run test:security` checks the fail-closed selection of a deployed image.
+`npm run test:security` checks deployed image selection and release verification.
+After a successful rollout and public smoke checks, production deployment polls
+for up to 180 seconds for every desired replica to run the exact `DEPLOY_IMAGE`.
+It rechecks the cluster endpoint and uses the same fail-closed image selector as
+the security job. A mismatch, unavailable API, or missing runtime evidence fails
+the release and invokes the existing rollback path. Two initial local kubeconfig
+reads have separate 10-second limits; each API read is bounded by the remaining
+polling budget and 15 seconds.
+
+A successful release uploads a sanitized JSON artifact containing source SHA,
+expected image, actual container imageIDs, desired/ready replica counts, and UTC
+observation time. No raw Kubernetes objects or credentials enter the receipt.
+Artifact upload failure also fails the job, without rolling back healthy runtime.
+The receipt is retained for 90 days and describes the observed deployment only.
 The scheduled/manual `Security maintenance` workflow runs three independent
 jobs: dependency audit (moderate and above), freshly built runtime image, and
 an image observed running in production (high/critical container findings).

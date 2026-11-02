@@ -208,15 +208,33 @@ jobs:
             "${page_url}/og.png")"
           test "${image_type}" = "image/png"
 
+      - name: Verify running release and save receipt
+        id: runtime_gate
+        if: steps.public_status_smoke.outcome == 'success' && steps.public_cache_smoke.outcome == 'success'
+        continue-on-error: true
+        run: node deploy/verify-deployed-release.mjs "${IMAGE_NAME}" "${DEPLOY_IMAGE}" "${GITHUB_SHA}" "${RUNNER_TEMP}/frontend-release.json"
+
       - name: Roll back an unhealthy dashboard release
-        if: steps.public_status_smoke.outcome == 'failure' || steps.public_cache_smoke.outcome == 'failure'
+        if: steps.public_status_smoke.outcome == 'failure' || steps.public_cache_smoke.outcome == 'failure' || steps.runtime_gate.outcome == 'failure'
         run: |
           set -euo pipefail
-          kubectl -n sslping rollout undo deployment/sslping-dashboard
-          kubectl -n sslping rollout status deployment/sslping-dashboard --timeout=5m
+          rollback_context="$(timeout 10s kubectl config current-context)"
+          rollback_endpoint="$(timeout 10s kubectl config view --context "${rollback_context}" --minify -o jsonpath='{.clusters[0].cluster.server}')"
+          test "${rollback_endpoint}" = "https://${CLUSTER_ID}.k8s.ondigitalocean.com"
+          kubectl --context "${rollback_context}" --request-timeout=30s -n sslping rollout undo deployment/sslping-dashboard
+          kubectl --context "${rollback_context}" -n sslping rollout status deployment/sslping-dashboard --timeout=5m
 
       - name: Fail an unhealthy dashboard release
-        if: steps.public_status_smoke.outcome == 'failure' || steps.public_cache_smoke.outcome == 'failure'
+        if: steps.public_status_smoke.outcome == 'failure' || steps.public_cache_smoke.outcome == 'failure' || steps.runtime_gate.outcome == 'failure'
         run: |
-          echo "Public status or asset cache verification failed; dashboard was rolled back." >&2
+          echo "Public smoke or runtime image verification failed; dashboard was rolled back." >&2
           exit 1
+
+      - name: Upload verified release receipt
+        if: success() && steps.runtime_gate.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dashboard-release-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/frontend-release.json
+          if-no-files-found: error
+          retention-days: 90
