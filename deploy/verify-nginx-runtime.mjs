@@ -31,6 +31,8 @@ try {
     minor > 31 || (minor === 31 && patch >= 9) || (minor === 30 && patch >= 7)
   ))
   assert.ok(patched, 'NGINX must include the upstream fixes for CVE-2026-123007 and CVE-2026-123633')
+  console.log(version)
+  console.log(docker('exec', container, 'apk', 'info', '--who-owns', '/usr/sbin/nginx'))
   docker('exec', container, 'nginx', '-t')
   const config = docker('exec', container, 'sh', '-c', 'nginx -T 2>&1')
   assert.doesNotMatch(config, /^\s*http2\s+on\s*;|^\s*listen\s+[^;\n]*\bhttp2\b/m,
