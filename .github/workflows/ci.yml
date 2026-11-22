@@ -45,3 +45,6 @@ jobs:
 
       - name: Verify nginx asset cache policy
         run: node deploy/test-nginx-cache.mjs sslping-dashboard:ci
+
+      - name: Verify patched nginx runtime and ordinary application traffic
+        run: node deploy/verify-nginx-runtime.mjs sslping-dashboard:ci
